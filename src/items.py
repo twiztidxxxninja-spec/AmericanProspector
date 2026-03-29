@@ -41,6 +41,9 @@ class Item:
     # Extra data for special items (ammo count, map data, etc.)
     extra: Dict[str, Any] = field(default_factory=dict)
 
+    # Theft tracking — True if picked up from a store without paying
+    unpaid: bool = False
+
     def display_name(self) -> str:
         if self.stackable and self.quantity > 1:
             return f"{self.name} x{self.quantity}"

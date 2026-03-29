@@ -115,16 +115,16 @@ LOCAL_PASSABLE = {
     LocalTerrain.PIT:        True,
     LocalTerrain.SPOIL_PILE: True,
     LocalTerrain.TUNDRA:     True,
-    LocalTerrain.PINE:       True,
-    LocalTerrain.OAK:        True,
-    LocalTerrain.ASPEN:      True,
-    LocalTerrain.JUNIPER:    True,
-    LocalTerrain.CEDAR:      True,
-    LocalTerrain.MAPLE:      True,
-    LocalTerrain.CHESTNUT:   True,
-    LocalTerrain.HICKORY:    True,
-    LocalTerrain.CYPRESS:    True,
-    LocalTerrain.MAGNOLIA:   True,
+    LocalTerrain.PINE:       False,  # solid trunk at 5ft scale
+    LocalTerrain.OAK:        False,
+    LocalTerrain.ASPEN:      False,
+    LocalTerrain.JUNIPER:    False,
+    LocalTerrain.CEDAR:      False,
+    LocalTerrain.MAPLE:      False,
+    LocalTerrain.CHESTNUT:   False,
+    LocalTerrain.HICKORY:    False,
+    LocalTerrain.CYPRESS:    False,
+    LocalTerrain.MAGNOLIA:   False,
     LocalTerrain.WORKED_GRAVEL: True,
     LocalTerrain.WORKED_DIRT:   True,
     LocalTerrain.SHALLOW_PIT:   True,
@@ -191,6 +191,7 @@ class LocalTile:
     dig_depth: int = 0
     spoil_dir: Optional[Tuple[int, int]] = None
     panned: bool = False
+    mineral_hint: str = ""           # geology assessment label (set by prospecting)
     gold_column: Optional[GoldColumn] = None
     ground_items: List[Any] = field(default_factory=list)
 
@@ -253,6 +254,9 @@ class LocalMap:
         import numpy as np
         self.surface_z = np.zeros((self.height, self.width), dtype=np.int8)
         self.z_tiles: Dict[Tuple[int, int, int], ZTile] = {}  # (x,y,z) → ZTile
+
+        # Cached terrain array for fast FOV — rebuilt after generation
+        self._terrain_np: Optional[np.ndarray] = None
 
         # Structure registry: id → structure object (sluice boxes, cabins, etc.)
         self.structures: Dict[int, Any] = {}
@@ -620,6 +624,19 @@ class LocalMap:
         for row in self.tiles:
             for tile in row:
                 tile.terrain = terrain
+
+    def terrain_array(self):
+        """Cached numpy int32 array of terrain types for fast FOV/rendering."""
+        import numpy as np
+        if self._terrain_np is None:
+            self._terrain_np = np.array(
+                [[self.tiles[y][x].terrain for x in range(self.width)]
+                 for y in range(self.height)], dtype=np.int32)
+        return self._terrain_np
+
+    def invalidate_terrain_cache(self):
+        """Call after modifying tile terrain (dig, pan, build)."""
+        self._terrain_np = None
 
     def tile_at(self, x: int, y: int) -> LocalTile:
         """Legacy 2D accessor — returns surface tile."""

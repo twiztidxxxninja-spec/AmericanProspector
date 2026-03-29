@@ -379,16 +379,14 @@ class Engine:
 
         pz = self.player.local_z
 
-        # Build transparency array — vectorized for large radii
-        # Extract terrain types into a numpy array for fast lookup
-        terrain_arr = np.array(
-            [[lmap.tiles[y1 + cy][x1 + cx].terrain for cx in range(cw)]
-             for cy in range(ch)], dtype=np.int32)
-        # Build transparency from terrain (most terrain is transparent)
+        # Build transparency array — slice from cached numpy terrain array
+        full_terrain = lmap.terrain_array()
+        terrain_crop = full_terrain[y1:y2, x1:x2]
+        # Build transparency: start with all True, mark opaque terrains False
         transparent = np.ones((ch, cw), dtype=bool)
         for opaque_terrain, is_transp in LOCAL_TRANSPARENT.items():
             if not is_transp:
-                transparent[terrain_arr == opaque_terrain] = False
+                transparent[terrain_crop == opaque_terrain] = False
 
         fov = tcod.map.compute_fov(
             transparent,
@@ -412,15 +410,20 @@ class Engine:
         fov_ys, fov_xs = np.where(fov)
         new_vis = set()
         wg = getattr(lmap, 'wall_grid', None)
+        # Wall LOS check is expensive — only do it within wall range (15 tiles)
+        wall_range = 15
+        tiles_row = lmap.tiles
         for idx in range(len(fov_ys)):
-            cy, cx = int(fov_ys[idx]), int(fov_xs[idx])
-            tx, ty = x1 + cx, y1 + cy
-            # Post-process: check if edge walls block LOS from player
-            if wg and (tx != px or ty != py):
-                if self._edge_wall_blocks_los(wg, px, py, tx, ty):
-                    continue
-            lmap.tiles[ty][tx].visible  = True
-            lmap.tiles[ty][tx].explored = True
+            tx = x1 + int(fov_xs[idx])
+            ty = y1 + int(fov_ys[idx])
+            # Edge wall LOS check (only for nearby tiles where walls matter)
+            if wg and abs(tx - px) + abs(ty - py) <= wall_range:
+                if tx != px or ty != py:
+                    if self._edge_wall_blocks_los(wg, px, py, tx, ty):
+                        continue
+            row = tiles_row[ty]
+            row[tx].visible  = True
+            row[tx].explored = True
             new_vis.add((tx, ty))
         lmap._visible_tiles = new_vis
 
@@ -2277,6 +2280,7 @@ class Engine:
                 elif src_tile.terrain in (LocalTerrain.GROUND, LocalTerrain.GRASS,
                                           LocalTerrain.MUD, LocalTerrain.SAND):
                     src_tile.terrain = LocalTerrain.WORKED_DIRT
+                lmap.invalidate_terrain_cache()
                 self.advance_time(result.time_minutes)
                 self.add_message(prefix + result.message, "normal")
                 # Depletion feedback — warn when ground is thinning
@@ -2615,6 +2619,7 @@ class Engine:
                 st = lmap.tile_at(sx, sy)
                 if st.terrain not in (LocalTerrain.WATER, LocalTerrain.ROCK):
                     st.terrain = LocalTerrain.SPOIL_PILE
+            lmap.invalidate_terrain_cache()
 
             self.advance_time(time_cost)
             self.player.gain_skill_xp(skill_name, 2.0)

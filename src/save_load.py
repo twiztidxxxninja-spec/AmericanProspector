@@ -345,6 +345,7 @@ def _serialize_item(item) -> dict:
         "stackable":     item.stackable,
         "quantity":      item.quantity,
         "extra":         item.extra,
+        "unpaid":        item.unpaid,
     }
 
 
@@ -363,6 +364,7 @@ def _deserialize_item(d: dict):
         base_value=d.get("base_value", 0.0),
         stackable=d.get("stackable", False), quantity=d.get("quantity", 1),
         extra=d.get("extra", {}),
+        unpaid=d.get("unpaid", False),
     )
 
 

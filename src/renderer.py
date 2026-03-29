@@ -787,6 +787,32 @@ class Renderer:
                        fg=gold_color, bg=BLACK)
         y += 2
 
+        # Compass — show direction to nearest town if player has one
+        has_compass = any("navigate" in getattr(i, "tool_tags", [])
+                          for i in player.inventory)
+        if has_compass and world_map is not None:
+            best_name, best_dist, best_dir = "", 9999, ""
+            wx, wy = player.world_x, player.world_y
+            for loc in world_map.locations.values():
+                d = abs(loc.x - wx) + abs(loc.y - wy)
+                if d < best_dist and d > 0:
+                    best_dist = d
+                    best_name = loc.name
+                    dx = loc.x - wx
+                    dy = loc.y - wy
+                    dirs = []
+                    if dy < 0: dirs.append("N")
+                    if dy > 0: dirs.append("S")
+                    if dx < 0: dirs.append("W")
+                    if dx > 0: dirs.append("E")
+                    best_dir = "".join(dirs)
+            if best_name:
+                miles = best_dist * 5
+                self.con.print(x, y,
+                    f"Compass: {best_name} {best_dir} ~{miles}mi",
+                    fg=(140, 170, 200), bg=BLACK)
+                y += 1
+
         # Stance & Speed
         self.con.print(x, y, "── Stance ──  [S]  ── Speed ── [W]", fg=GREY, bg=BLACK)
         y += 1

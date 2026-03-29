@@ -182,9 +182,20 @@ def execute_trip(engine: "Engine", estimate: TripEstimate,
         _consume_food(player, estimate.meals_needed * 10)  # half
     # HUNT and HUNGRY consume nothing
 
-    # Mark all tiles along path as visited
+    # Mark all tiles along path as visited + travel events
+    from src.walking_events import roll_walking_event, TRAVEL_CHANCE
+    travel_events = []
     for wx, wy in estimate.path:
         world_map.mark_visited(wx, wy)
+        # Roll for atmospheric travel events (frequent)
+        lmap_key = (wx, wy, 7, 7)
+        if lmap_key in engine.locals:
+            evt = roll_walking_event(engine, engine.locals[lmap_key], 192, 192,
+                                     chance=TRAVEL_CHANCE)
+            if evt and len(travel_events) < 5:
+                travel_events.append(evt[0])
+    for msg in travel_events:
+        engine.add_message(msg, "normal")
 
     # Roll for encounters (max 3)
     rng = random.Random()

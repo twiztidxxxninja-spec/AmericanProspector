@@ -202,10 +202,12 @@ class Engine:
                         break
                 break
 
-        self.add_message("You stand at the edge of a gravel bar on the American River. "
-                         "April, 1849. The rush has begun.", "normal")
-        self.add_message("Find a creek and [A]→Pan for gold. [T]alk to people. "
-                         "[?] for help.", "normal")
+        self.add_message(
+            "You made it. California. The stories were true — men are pulling "
+            "gold out of the rivers with their bare hands. The hills are crawling "
+            "with prospectors, drifters, and dreamers. Time to get to work.",
+            "normal")
+        self.add_message("Press [?] for help.", "normal")
 
     # ── Local map management ──────────────────────────────────────────────
 
@@ -1755,55 +1757,191 @@ class Engine:
         X = (con.width - W) // 2
         Y = (con.height - H) // 2
 
-        lines = [
-            ("CONTROLS", YELLOW),
-            ("", GREY),
-            ("Arrow keys / Numpad   Move (local map)", WHITE),
-            ("< >  (Shift+,/.)     Z-level up/down", WHITE),
-            ("[ ]                   Zoom out/in (world map)", WHITE),
-            ("Enter                 Fast travel (zoomed out)", WHITE),
-            ("Space                 Wait / Rest / Sleep", WHITE),
-            ("Esc                   Pause menu", WHITE),
-            ("", GREY),
-            ("MENUS", YELLOW),
-            ("I  Inventory (items, clothing, hands)", CYAN),
-            ("C  Character (stats, health, reputation)", CYAN),
-            ("J  Journal (diary, people, places, mail, write)", CYAN),
-            ("A  Actions (pan, dig, build, custom actions)", CYAN),
-            ("T  Talk to nearby NPC", CYAN),
-            ("B  Build (equipment, walls, zones)", CYAN),
-            ("K  Combat (attack target)", CYAN),
-            ("M  Mining mode (pan or sluice work loop)", CYAN),
-            ("H  Hunting mode (stalk, track, shoot)", CYAN),
-            ("    Combat mode auto-enters when hostiles attack", GREY),
-            ("E  Examine surroundings", CYAN),
-            ("P  Pickup items / Butcher downed animal", CYAN),
-            ("L  Message log (scrollable history)", CYAN),
-            ("G  Gold overlay (shows panned tile grades)", CYAN),
-            ("S  Cycle stance  |  W  Cycle speed", CYAN),
-            ("Ctrl+S  Save game", CYAN),
-            ("", GREY),
-            ("TIPS", YELLOW),
-            ("Find a creek or gravel bar and pan for gold.", WHITE),
-            ("Sell gold dust to merchants in town.", WHITE),
-            ("Build a sluice box for 2x gold recovery.", WHITE),
-            ("Talk to NPCs for rumors about rich ground.", WHITE),
-            ("Type any action — the GM will resolve it.", WHITE),
-            ("Reload your rifle before you need it.", WHITE),
+        pages = [
+            # Page 1: Getting Started
+            [
+                ("GETTING STARTED", YELLOW),
+                ("", GREY),
+                ("You are a prospector in the California Gold Rush.", WHITE),
+                ("Pan for gold, sell it, survive. Everything else", WHITE),
+                ("is up to you.", WHITE),
+                ("", GREY),
+                ("FIRST STEPS", YELLOW),
+                ("1. You're standing near water (~). Walk to it.", WHITE),
+                ("2. Press [A] and select 'Pan for gold'.", WHITE),
+                ("3. If you see color, keep panning that spot.", WHITE),
+                ("4. Find a town to sell your gold. [T] to talk", WHITE),
+                ("   to a merchant, select 'Sell gold dust'.", WHITE),
+                ("5. Buy food and supplies. Don't starve.", WHITE),
+                ("", GREY),
+                ("TERRAIN", YELLOW),
+                (":  Gravel bar — pan here for gold", WHITE),
+                ("~  Water — needed for panning and drinking", WHITE),
+                ("^  Pine tree   T  Oak/other tree (blocks path)", WHITE),
+                (".  Ground/grass   #  Rock (impassable)", WHITE),
+                (";  Brush   o  Shallow pit   O  Deep pit", WHITE),
+                ("=  Tailings (sluice waste)", WHITE),
+                ("", GREY),
+                ("Your gold and cash show in the right sidebar.", WHITE),
+                ("Watch your hunger/thirst/fatigue bars.", WHITE),
+            ],
+            # Page 2: Controls
+            [
+                ("MOVEMENT & CONTROLS", YELLOW),
+                ("", GREY),
+                ("Arrow keys / Numpad   Move on local map", WHITE),
+                ("< >                   Z-level up/down", WHITE),
+                ("[ ]                   Zoom out/in (world map)", WHITE),
+                ("Enter                 Fast travel (zoomed out)", WHITE),
+                ("Space                 Wait / Rest / Sleep", WHITE),
+                ("Esc                   Pause menu / Exit mode", WHITE),
+                ("", GREY),
+                ("MENUS", YELLOW),
+                ("I  Inventory (items, clothing, equip)", CYAN),
+                ("C  Character (stats, health, wounds)", CYAN),
+                ("J  Journal (diary, rumors, places, mail, AAR)", CYAN),
+                ("A  Actions (pan, dig, eat, drink, custom)", CYAN),
+                ("T  Talk (conversation, trade, hire)", CYAN),
+                ("B  Build (structures, walls, zones)", CYAN),
+                ("E  Examine (look at surroundings)", CYAN),
+                ("P  Pickup items / Butcher", CYAN),
+                ("L  Message log (scroll history)", CYAN),
+                ("G  Gold overlay (panned tile grades)", CYAN),
+                ("S  Cycle stance  |  W  Cycle speed", CYAN),
+                ("Ctrl+S  Save game", CYAN),
+            ],
+            # Page 3: Work Modes
+            [
+                ("WORK MODES", YELLOW),
+                ("", GREY),
+                ("MINING MODE [M]", CYAN),
+                ("Near water + pan: enter pan mode.", WHITE),
+                ("  SPACE = pan one cycle", WHITE),
+                ("  Arrows = move to test different spots", WHITE),
+                ("  ESC = stop, see session totals", WHITE),
+                ("Near sluice + shovel + water: sluice mode.", WHITE),
+                ("  SPACE = shovel a load into sluice", WHITE),
+                ("  ENTER = clean out (recover all gold)", WHITE),
+                ("", GREY),
+                ("HUNTING MODE [H]", CYAN),
+                ("  Arrows = sneak (quiet, slower)", WHITE),
+                ("  F = fire at target", WHITE),
+                ("  TAB = cycle between animals", WHITE),
+                ("  SPACE = wait/watch", WHITE),
+                ("  Tracking skill shows tracks + directions", WHITE),
+                ("", GREY),
+                ("GAMBLING (type 'gamble' or 'cards')", CYAN),
+                ("  Poker, Blackjack, Faro (1840s card game)", WHITE),
+                ("  Buy a card table to run your own games", WHITE),
+                ("  Cheat with marked cards (risky)", WHITE),
+            ],
+            # Page 4: Combat
+            [
+                ("COMBAT", YELLOW),
+                ("", GREY),
+                ("Combat mode auto-enters when hostiles attack.", WHITE),
+                ("Red 'IN COMBAT' banner appears.", WHITE),
+                ("", GREY),
+                ("COMBAT KEYS", CYAN),
+                ("  F = Snap shot (3 sec, normal accuracy)", WHITE),
+                ("  G = Careful aim (10 sec, +25% accuracy)", WHITE),
+                ("  R = Reload weapon", WHITE),
+                ("  TAB = Cycle targets", WHITE),
+                ("  1-5 = Aim body part:", WHITE),
+                ("    1=Center  2=Head  3=Legs  4=Arms  5=Torso", WHITE),
+                ("  SPACE = Wait (enemies act, you don't)", WHITE),
+                ("  V = Free look (snap camera to target)", WHITE),
+                ("  ESC = Exit combat (access menus)", WHITE),
+                ("", GREY),
+                ("COVER", YELLOW),
+                ("Stand near trees/rocks for partial cover (-4", WHITE),
+                ("to enemy hit). Behind boulders = full cover.", WHITE),
+                ("NPCs seek cover when wounded.", WHITE),
+                ("Sidebar shows: EXPOSED / Partial / FULL", WHITE),
+                ("", GREY),
+                ("Firearms are LETHAL. One rifle shot can kill.", WHITE),
+                ("Extremity wounds bleed you out over minutes.", WHITE),
+            ],
+            # Page 5: Survival & Economy
+            [
+                ("SURVIVAL", YELLOW),
+                ("", GREY),
+                ("Hunger/Thirst/Fatigue drain with time.", WHITE),
+                ("Eat food and drink water regularly.", WHITE),
+                ("Sleep to restore fatigue (Space → Rest).", WHITE),
+                ("  0 hunger = 1 HP/hour damage", WHITE),
+                ("  0 thirst = 3 HP/hour damage", WHITE),
+                ("Carry a canteen. Fill at streams.", WHITE),
+                ("Weight matters — overloaded = slow movement.", WHITE),
+                ("", GREY),
+                ("ECONOMY", YELLOW),
+                ("Pan gold → sell to merchants in town [T].", WHITE),
+                ("Gold price: $20.67/oz (1849 fixed price).", WHITE),
+                ("Merchants lowball you. Better merchants pay", WHITE),
+                ("closer to true value.", WHITE),
+                ("Buy supplies, weapons, tools from merchants.", WHITE),
+                ("", GREY),
+                ("CRIMES", YELLOW),
+                ("Witnesses within 200ft report crimes.", WHITE),
+                ("At night, witness range drops to 75ft.", WHITE),
+                ("Stealing: pick up items in a store, leave.", WHITE),
+                ("Murder, assault, theft, fraud all tracked.", WHITE),
+                ("Reputation affects NPC attitudes.", WHITE),
+            ],
+            # Page 6: Advanced
+            [
+                ("ADVANCED", YELLOW),
+                ("", GREY),
+                ("CUSTOM ACTIONS", CYAN),
+                ("Press [A] and type ANYTHING. The AI resolves", WHITE),
+                ("it. 'climb the tree', 'set a snare', 'write", WHITE),
+                ("a letter home', 'build a still'. If you have", WHITE),
+                ("the tools and materials, it can happen.", WHITE),
+                ("", GREY),
+                ("WORLD MAP", CYAN),
+                ("[ zoom out, ] zoom in. 5 zoom levels.", WHITE),
+                ("Enter on any tile = fast travel there.", WHITE),
+                ("Compass in sidebar shows nearest town.", WHITE),
+                ("", GREY),
+                ("PROSPECTING TIPS", CYAN),
+                ("Gravel bars on inside bends = best gold.", WHITE),
+                ("Bedrock crevices trap heavy gold.", WHITE),
+                ("Dig deeper for richer pay layers.", WHITE),
+                ("Build sluice for 6x throughput vs hand pan.", WHITE),
+                ("Geology skill reveals ground quality.", WHITE),
+                ("Ground depletes — move to new spots.", WHITE),
+                ("", GREY),
+                ("RUMORS", CYAN),
+                ("Ask NPCs [T] about rumors. They point you", WHITE),
+                ("to gold, bandits, bounties, lost travelers,", WHITE),
+                ("abandoned claims, and more.", WHITE),
+            ],
         ]
 
+        page = 0
         while True:
-            draw_box(con, X, Y, W, H, "HELP")
-            for i, (text, color) in enumerate(lines):
-                if i + 2 >= H - 1:
+            draw_box(con, X, Y, W, H, f"HELP  —  Page {page + 1}/{len(pages)}")
+            for i, (text, color) in enumerate(pages[page]):
+                if i + 2 >= H - 2:
                     break
                 con.print(X + 2, Y + 2 + i, text[:W - 4], fg=color, bg=BG)
-            con.print(X + 2, Y + H - 2, "Press any key to close",
+            con.print(X + 2, Y + H - 2,
+                      f"[</>] Page  [Esc] Close    {page+1}/{len(pages)}",
                       fg=DGREY, bg=BG)
             ctx.present(con)
             for event in tcod.event.wait():
                 if isinstance(event, tcod.event.KeyDown):
-                    return
+                    sym = event.sym
+                    K = tcod.event.KeySym
+                    if sym == K.ESCAPE:
+                        return
+                    if sym in (K.RIGHT, K.PERIOD, K.DOWN):
+                        page = min(page + 1, len(pages) - 1)
+                    elif sym in (K.LEFT, K.COMMA, K.UP):
+                        page = max(page - 1, 0)
+                    else:
+                        return
+                    break
 
     def _open_pause_menu(self) -> str:
         """ESC pause menu with settings and quit."""
@@ -4404,6 +4542,12 @@ class Engine:
                 self._apply_gravity(self.player, lmap)
                 self.time.advance_seconds(cost_secs)
                 self.recompute_fov()
+                # Random walking event (very rare on local movement)
+                from src.walking_events import roll_walking_event
+                evt = roll_walking_event(self, lmap,
+                    self.player.local_x, self.player.local_y)
+                if evt:
+                    self.add_message(evt[0], evt[1])
                 # Notify if there are items on the new tile
                 new_tile = lmap.tile_at(self.player.local_x, self.player.local_y)
                 if new_tile.ground_items:

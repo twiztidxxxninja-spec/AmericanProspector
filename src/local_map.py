@@ -42,6 +42,8 @@ class LocalTerrain:
     HICKORY     = 20  # Shagbark/Bitternut Hickory, Black Walnut, Butternut, Pecan
     CYPRESS     = 21  # Baldcypress, Water Tupelo, Swamp Blackgum, Atlantic White Cedar
     MAGNOLIA    = 22  # Southern Magnolia, Sweetgum, Sassafras, Pawpaw, Persimmon
+    # Downed tree — felled but not yet processed
+    DOWNED_TREE   = 29  # fallen trunk on the ground, chop for logs
     # Worked ground — visual feedback from mining/panning
     WORKED_GRAVEL = 30  # panned gravel bar — disturbed, darker
     WORKED_DIRT   = 31  # shoveled ground — loose earth
@@ -84,6 +86,8 @@ LOCAL_GLYPH = {
     LocalTerrain.HICKORY:    ("T", (145, 165,  45),  (52, 62,  12)), # yellow-olive
     LocalTerrain.CYPRESS:    ("^", ( 35, 115,  85),  ( 8, 40,  25)), # blue-green, swamp conifer
     LocalTerrain.MAGNOLIA:   ("T", ( 45, 110,  60),  (12, 36,  16)), # warm medium green, glossy
+    # Downed tree
+    LocalTerrain.DOWNED_TREE:   ("=", ( 90,  70,  40), (30, 22, 10)),  # fallen trunk
     # Worked ground
     LocalTerrain.WORKED_GRAVEL: (":", (120, 100,  70), (40, 35, 20)),  # darker, disturbed gravel
     LocalTerrain.WORKED_DIRT:   ("~", ( 90,  75,  45), (30, 25, 12)),  # loose churned earth
@@ -125,6 +129,7 @@ LOCAL_PASSABLE = {
     LocalTerrain.HICKORY:    True,
     LocalTerrain.CYPRESS:    True,
     LocalTerrain.MAGNOLIA:   True,
+    LocalTerrain.DOWNED_TREE:   True,   # can step over
     LocalTerrain.WORKED_GRAVEL: True,
     LocalTerrain.WORKED_DIRT:   True,
     LocalTerrain.SHALLOW_PIT:   True,
@@ -166,6 +171,7 @@ LOCAL_TRANSPARENT = {
     LocalTerrain.HICKORY:    True,
     LocalTerrain.CYPRESS:    True,
     LocalTerrain.MAGNOLIA:   True,
+    LocalTerrain.DOWNED_TREE:   True,
     LocalTerrain.WORKED_GRAVEL: True,
     LocalTerrain.WORKED_DIRT:   True,
     LocalTerrain.SHALLOW_PIT:   True,

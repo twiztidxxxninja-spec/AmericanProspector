@@ -3168,13 +3168,26 @@ class Engine:
 
         # ── Move rocks ────────────────────────────────────────────────────
         if "move rock" in a or "clear rock" in a:
-            if tile.terrain != LocalTerrain.ROCK:
-                self.add_message("No rocks here to move.", "advisory")
+            # Find rock tile on or adjacent to player
+            rock_tile = None
+            if tile.terrain == LocalTerrain.ROCK:
+                rock_tile = tile
+            else:
+                for dy in range(-1, 2):
+                    for dx in range(-1, 2):
+                        nx, ny = px + dx, py + dy
+                        if lmap.in_bounds(nx, ny) and lmap.tiles[ny][nx].terrain == LocalTerrain.ROCK:
+                            rock_tile = lmap.tiles[ny][nx]
+                            break
+                    if rock_tile:
+                        break
+            if not rock_tile:
+                self.add_message("No rocks next to you to move.", "advisory")
                 return
             self.add_message(
                 "You heave the rocks aside, exposing the gravel and soil beneath. "
                 "The work is harder than it looks.", "normal")
-            tile.terrain = LocalTerrain.GRAVEL_BAR
+            rock_tile.terrain = LocalTerrain.GRAVEL_BAR
             lmap.invalidate_terrain_cache()
             self.advance_time(15)
             self.player.gain_skill_xp("placer", 1.0)
@@ -3201,61 +3214,93 @@ class Engine:
             lmap.invalidate_terrain_cache()
             return
 
-        # ── Chop wood / Cut down tree ────────────────────────────────────
+        # ── Fell tree (standing → downed) ─────────────────────────────────
         TREE_TILES = (LocalTerrain.PINE, LocalTerrain.OAK, LocalTerrain.ASPEN,
                       LocalTerrain.JUNIPER, LocalTerrain.CEDAR, LocalTerrain.MAPLE,
                       LocalTerrain.CHESTNUT, LocalTerrain.HICKORY, LocalTerrain.CYPRESS,
                       LocalTerrain.MAGNOLIA, LocalTerrain.FOREST)
-        is_tree_action = ("chop" in a and "wood" in a) or \
-                         ("cut" in a and "tree" in a) or \
-                         ("fell" in a and "tree" in a) or \
-                         ("chop" in a and "tree" in a)
-        if is_tree_action:
+        is_fell = ("fell" in a and "tree" in a) or \
+                  ("cut" in a and "tree" in a) or \
+                  ("chop" in a and "tree" in a)
+        if is_fell:
             inv_tags = {tag for item in self.player.inventory
                         for tag in item.tool_tags}
-            # Find nearest tree tile
-            tree_tile = None
-            tree_x, tree_y = px, py
-            if tile.terrain in TREE_TILES:
-                tree_tile = tile
-            else:
-                for dy in range(-2, 3):
-                    for dx in range(-2, 3):
-                        nx, ny = px + dx, py + dy
-                        if lmap.in_bounds(nx, ny) and lmap.tiles[ny][nx].terrain in TREE_TILES:
-                            tree_tile = lmap.tiles[ny][nx]
-                            tree_x, tree_y = nx, ny
-                            break
-                    if tree_tile:
-                        break
-            if not tree_tile:
-                self.add_message("No trees nearby.", "advisory")
-                self.advance_time(2)
+            if "chop" not in inv_tags:
+                self.add_message("You need an axe to fell a tree.", "advisory")
                 return
+            tree_tile = None
+            for dy in range(-2, 3):
+                for dx in range(-2, 3):
+                    nx, ny = px + dx, py + dy
+                    if lmap.in_bounds(nx, ny) and lmap.tiles[ny][nx].terrain in TREE_TILES:
+                        tree_tile = lmap.tiles[ny][nx]
+                        break
+                if tree_tile:
+                    break
+            if not tree_tile:
+                self.add_message("No standing trees nearby.", "advisory")
+                return
+            tree_tile.terrain = LocalTerrain.DOWNED_TREE
+            lmap.invalidate_terrain_cache()
+            self.add_message(
+                "CRACK — the tree leans, sways, and crashes to the ground. "
+                "Branches scatter. Chop it up for logs.", "normal")
+            self.advance_time(20)
+            self.player.gain_skill_xp("survival", 2.0)
+            return
+
+        # ── Chop wood (downed tree → logs) ────────────────────────────────
+        if "chop" in a and "wood" in a:
+            inv_tags = {tag for item in self.player.inventory
+                        for tag in item.tool_tags}
+            # Find downed tree or standing tree nearby
+            target_tile = None
+            for dy in range(-2, 3):
+                for dx in range(-2, 3):
+                    nx, ny = px + dx, py + dy
+                    if lmap.in_bounds(nx, ny):
+                        t = lmap.tiles[ny][nx].terrain
+                        if t == LocalTerrain.DOWNED_TREE:
+                            target_tile = lmap.tiles[ny][nx]
+                            break
+                        if t in TREE_TILES and target_tile is None:
+                            target_tile = lmap.tiles[ny][nx]
+                if target_tile and target_tile.terrain == LocalTerrain.DOWNED_TREE:
+                    break
+            if not target_tile:
+                self.add_message("No trees or downed timber nearby.", "advisory")
+                return
+            from src.items import make_item
             if "chop" not in inv_tags:
                 self.add_message(
-                    "You break dead branches by hand — enough for a fire, "
-                    "but felling a tree needs an axe.", "normal")
-                from src.items import make_item
-                try:
-                    self.player.inventory.append(make_item("firewood"))
-                except Exception:
-                    pass
+                    "You break dead branches by hand — enough for a fire.", "normal")
                 self.advance_time(15)
                 return
-            # Fell the tree
-            from src.items import make_item
-            tree_tile.terrain = LocalTerrain.GROUND
-            lmap.invalidate_terrain_cache()
-            try:
-                self.player.inventory.append(make_item("log"))
-                self.player.inventory.append(make_item("log"))
-            except Exception:
-                pass
-            self.add_message(
-                "You fell the tree. It crashes down, scattering branches. "
-                "Two logs and a pile of brush.", "normal")
-            self.advance_time(30)
+            if target_tile.terrain == LocalTerrain.DOWNED_TREE:
+                # Process downed tree into logs
+                target_tile.terrain = LocalTerrain.GROUND
+                lmap.invalidate_terrain_cache()
+                try:
+                    self.player.inventory.append(make_item("log"))
+                    self.player.inventory.append(make_item("log"))
+                    self.player.inventory.append(make_item("log"))
+                except Exception:
+                    pass
+                self.add_message(
+                    "You buck the downed trunk into sections. Three logs.", "normal")
+                self.advance_time(25)
+            else:
+                # Fell + chop in one go (standing tree)
+                target_tile.terrain = LocalTerrain.GROUND
+                lmap.invalidate_terrain_cache()
+                try:
+                    self.player.inventory.append(make_item("log"))
+                    self.player.inventory.append(make_item("log"))
+                except Exception:
+                    pass
+                self.add_message(
+                    "You fell a tree and split it into two rough logs.", "normal")
+                self.advance_time(40)
             self.player.gain_skill_xp("survival", 2.0)
             return
 

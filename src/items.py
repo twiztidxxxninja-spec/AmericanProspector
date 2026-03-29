@@ -298,6 +298,12 @@ ITEM_TEMPLATES: Dict[str, dict] = {
         "base_value": 0.50, "stackable": True, "perishable": True, "days_until_spoil": 60,
     },
     "sinew": {
+        "id": "brain", "name": "Brain", "weight": 0.5,
+        "category": "material",
+        "description": "Animal brain. Mixed with water to tan hides into leather.",
+        "base_value": 0.05,
+    },
+    "sinew": {
         "id": "sinew", "name": "Sinew", "weight": 0.05,
         "category": "material",
         "description": "Strong tendon fibers. Used for bowstrings, thread, and binding.",

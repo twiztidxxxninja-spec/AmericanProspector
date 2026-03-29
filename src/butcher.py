@@ -65,6 +65,7 @@ _BASE_ANATOMY = {
             ("sinew",            "Sinew",         3, 5,  0.10, None),
             ("hooves",           "Hooves",        4, 4,  0.8,  None),
             ("head",             "Head",          1, 1,  8.0,  None),
+            ("brain",            "Brain",         1, 1,  0.5,  None),
         ],
     },
     "large": {

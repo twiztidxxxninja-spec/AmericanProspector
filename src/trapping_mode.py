@@ -131,10 +131,12 @@ def enter_trapping_mode(engine: "Engine", console, ctx) -> None:
             sy = trap.y - cam_y + 1
             if 0 <= sx < VIEWPORT_W and 1 <= sy < VIEWPORT_H + 1:
                 is_sel = (i == selected_trap)
-                if trap.caught_species:
+                dist = max(abs(trap.x - px), abs(trap.y - py))
+                # Only show caught/sprung status when close enough to see
+                if trap.caught_species and dist <= 5:
                     glyph = "%"
                     fg = (255, 200, 50)
-                elif trap.sprung:
+                elif trap.sprung and dist <= 5:
                     glyph = "_"
                     fg = (150, 100, 60)
                 else:
@@ -143,7 +145,8 @@ def enter_trapping_mode(engine: "Engine", console, ctx) -> None:
                 bg = (60, 40, 20) if is_sel else (20, 15, 8)
                 console.print(sx, sy, glyph, fg=fg, bg=bg)
             else:
-                # Off-screen — show directional arrow at edge
+                # Off-screen — show directional arrow (same color for all,
+                # can't tell if caught from a distance)
                 dx = trap.x - px
                 dy = trap.y - py
                 if abs(dx) > abs(dy):
@@ -154,8 +157,7 @@ def enter_trapping_mode(engine: "Engine", console, ctx) -> None:
                     arrow = "v" if dy > 0 else "^"
                     edge_y = VIEWPORT_H if dy > 0 else 1
                     edge_x = max(0, min(VIEWPORT_W - 1, half_w + dx * half_h // max(abs(dy), 1)))
-                fg = (255, 200, 50) if trap.caught_species else (100, 180, 100)
-                console.print(edge_x, edge_y, arrow, fg=fg, bg=(40, 30, 15))
+                console.print(edge_x, edge_y, arrow, fg=(100, 180, 100), bg=(40, 30, 15))
 
         # ── Trapping banner ───────────────────────────────────────
         console.draw_rect(0, 0, 120, 1, ord(" "), fg=(255, 255, 255), bg=(50, 40, 20))
@@ -175,16 +177,27 @@ def enter_trapping_mode(engine: "Engine", console, ctx) -> None:
         for i, trap in enumerate(traps[:8]):
             sel = ">>" if i == selected_trap else "  "
             dist = max(abs(trap.x - px), abs(trap.y - py))
+            hours_set = (engine.time.total_seconds - trap.time_set) / 3600
             if trap.caught_species:
-                status = trap.caught_species[:12]
-                fg = (255, 200, 50)
+                # Only show "caught" if player is close enough to see
+                if dist <= 5:
+                    status = trap.caught_species[:10]
+                    fg = (255, 200, 50)
+                else:
+                    status = "set"  # can't see catch from far away
+                    fg = (100, 200, 100)
             elif trap.sprung:
-                status = "sprung"
-                fg = (150, 100, 60)
+                if dist <= 5:
+                    status = "sprung"
+                    fg = (150, 100, 60)
+                else:
+                    status = "set"
+                    fg = (100, 200, 100)
             else:
                 status = "set"
                 fg = (100, 200, 100)
-            line = f"{sel}#{trap.id} {trap.trap_type[:8]:8s} {status[:12]:12s} {dist:3d}t"
+            time_str = f"{hours_set:.0f}h" if hours_set < 48 else f"{hours_set/24:.0f}d"
+            line = f"{sel}#{trap.id} {status[:10]:10s} {dist:3d}t {time_str}"
             console.print(x, y, line[:35], fg=fg)
             y += 1
 

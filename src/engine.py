@@ -154,6 +154,7 @@ class Engine:
         self.world.mark_visited_radius(self.player.world_x, self.player.world_y, 8)
 
         self.show_gold_overlay = False   # toggled with G key
+        self.combat_mode_pending = False  # auto-enter combat mode next frame
 
         # World map cursor (used in zoomed-out views for fast travel)
         self.map_cursor_x: int = self.player.world_x
@@ -1774,6 +1775,7 @@ class Engine:
             ("K  Combat (attack target)", CYAN),
             ("M  Mining mode (pan or sluice work loop)", CYAN),
             ("H  Hunting mode (stalk, track, shoot)", CYAN),
+            ("    Combat mode auto-enters when hostiles attack", GREY),
             ("E  Examine surroundings", CYAN),
             ("P  Pickup items / Butcher downed animal", CYAN),
             ("L  Message log (scrollable history)", CYAN),
@@ -3842,6 +3844,20 @@ class Engine:
                 if (abs(npc.local_x - self.player.local_x) > 20 or
                         abs(npc.local_y - self.player.local_y) > 20):
                     npc.present = False
+        self._check_combat_state()
+
+    def _check_combat_state(self):
+        """Check if any hostiles nearby — trigger combat mode if so."""
+        if self.state != GameState.LOCAL_MAP:
+            return
+        hostiles = [n for n in self._tile_npcs()
+                    if n.alive and n.combat_state == "hostile"]
+        hostile_animals = [a for a in self.wildlife_mgr.get_animals(
+            self.player.world_x, self.player.world_y,
+            self.player.area_x, self.player.area_y)
+            if a.alive and a.state == "hostile"]
+        if hostiles or hostile_animals:
+            self.combat_mode_pending = True
 
     def _apply_llm_npc_effects(self, resp):
         """Apply npc_damage and npc_killed from an LLMResponse to actual NPCs."""
@@ -4481,6 +4497,12 @@ class Engine:
                     fg=(180, 180, 180), bg=(0, 0, 0)
                 )
                 ctx.present(console)
+
+                # Auto-enter combat mode if hostiles detected
+                if self.combat_mode_pending:
+                    self.combat_mode_pending = False
+                    from src.combat_mode import enter_combat_mode
+                    enter_combat_mode(self, console, ctx)
 
                 # Auto-advance music track when current one ends
                 self.music.check_advance()

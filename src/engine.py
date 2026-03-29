@@ -4372,15 +4372,13 @@ class Engine:
             if loc:
                 self.add_message(f"You enter {loc.name}.", "normal")
 
-        # Dynamic location generation — chance of discovering a camp while traveling
-        import random as _rng_mod
-        terrain = int(self.world.tiles[new_wy][new_wx])
-        dl = self.dynamic_locs.from_travel_event(
-            new_wx, new_wy, terrain, self.time.year,
-            _rng_mod.Random())
-        if dl:
-            dl.discovered = True
-            self.add_message(f"You stumble upon {dl.name}: {dl.notes}", "normal")
+        # Location discovery when entering new world tiles
+        from src.discovery import roll_location_discovery
+        disc = roll_location_discovery(self, new_wx, new_wy)
+        if disc:
+            self.add_message(disc, "advisory")
+            # Drop to area view momentarily to show the icon
+            # (just show message — player can zoom out to see it)
 
     def _do_move(self, dx: int, dy: int):
         if self.state == GameState.LOCAL_MAP:

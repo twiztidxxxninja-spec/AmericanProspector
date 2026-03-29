@@ -3177,6 +3177,9 @@ class Engine:
 
         # ── Clear brush ───────────────────────────────────────────────────
         if "clear" in a and "brush" in a:
+            if tile.terrain != LocalTerrain.BRUSH:
+                self.add_message("No brush here to clear.", "advisory")
+                return
             inv_tags = {tag for item in self.player.inventory
                         for tag in item.tool_tags}
             if "chop" in inv_tags:
@@ -3189,43 +3192,105 @@ class Engine:
                     "You tear through the brush by hand. "
                     "Scratched up but the ground is clear.", "normal")
                 self.advance_time(45)
+            tile.terrain = LocalTerrain.GROUND
+            lmap.invalidate_terrain_cache()
             return
 
-        # ── Chop wood ─────────────────────────────────────────────────────
-        if "chop" in a and "wood" in a:
+        # ── Chop wood / Cut down tree ────────────────────────────────────
+        TREE_TILES = (LocalTerrain.PINE, LocalTerrain.OAK, LocalTerrain.ASPEN,
+                      LocalTerrain.JUNIPER, LocalTerrain.CEDAR, LocalTerrain.MAPLE,
+                      LocalTerrain.CHESTNUT, LocalTerrain.HICKORY, LocalTerrain.CYPRESS,
+                      LocalTerrain.MAGNOLIA, LocalTerrain.FOREST)
+        is_tree_action = ("chop" in a and "wood" in a) or \
+                         ("cut" in a and "tree" in a) or \
+                         ("fell" in a and "tree" in a) or \
+                         ("chop" in a and "tree" in a)
+        if is_tree_action:
             inv_tags = {tag for item in self.player.inventory
                         for tag in item.tool_tags}
-            near_timber = tile.terrain in (LocalTerrain.FOREST, LocalTerrain.BRUSH) or \
-                          any(lmap.in_bounds(self.player.local_x + dx,
-                                            self.player.local_y + dy) and
-                              lmap.tile_at(self.player.local_x + dx,
-                                           self.player.local_y + dy).terrain
-                              in (LocalTerrain.FOREST, LocalTerrain.BRUSH)
-                              for dx in range(-3, 4) for dy in range(-3, 4))
-            if not near_timber:
-                self.add_message(
-                    "No timber nearby. You'd need to find trees first.", "advisory")
-                self.advance_time(2)
-            elif "chop" in inv_tags:
-                self.add_message(
-                    "You fell a small pine and split it into usable lengths. "
-                    "Good firewood and some rough planking.", "normal")
-                self.advance_time(40)
+            # Find nearest tree tile
+            tree_tile = None
+            tree_x, tree_y = px, py
+            if tile.terrain in TREE_TILES:
+                tree_tile = tile
             else:
+                for dy in range(-2, 3):
+                    for dx in range(-2, 3):
+                        nx, ny = px + dx, py + dy
+                        if lmap.in_bounds(nx, ny) and lmap.tiles[ny][nx].terrain in TREE_TILES:
+                            tree_tile = lmap.tiles[ny][nx]
+                            tree_x, tree_y = nx, ny
+                            break
+                    if tree_tile:
+                        break
+            if not tree_tile:
+                self.add_message("No trees nearby.", "advisory")
+                self.advance_time(2)
+                return
+            if "chop" not in inv_tags:
                 self.add_message(
                     "You break dead branches by hand — enough for a fire, "
-                    "but real lumber needs an axe.", "normal")
+                    "but felling a tree needs an axe.", "normal")
+                from src.items import make_item
+                try:
+                    self.player.inventory.append(make_item("firewood"))
+                except Exception:
+                    pass
                 self.advance_time(15)
+                return
+            # Fell the tree
+            from src.items import make_item
+            tree_tile.terrain = LocalTerrain.GROUND
+            lmap.invalidate_terrain_cache()
+            try:
+                self.player.inventory.append(make_item("log"))
+                self.player.inventory.append(make_item("log"))
+            except Exception:
+                pass
+            self.add_message(
+                "You fell the tree. It crashes down, scattering branches. "
+                "Two logs and a pile of brush.", "normal")
+            self.advance_time(30)
+            self.player.gain_skill_xp("survival", 2.0)
             return
 
-        # ── Follow stream ─────────────────────────────────────────────────
-        if "follow" in a and "stream" in a:
+        # ── Follow stream / river ─────────────────────────────────────────
+        if ("follow" in a and ("stream" in a or "river" in a or "creek" in a or "water" in a)) or \
+           ("upstream" in a or "downstream" in a):
+            # Actually move the player along the water
+            direction = -1 if "upstream" in a or "up" in a else 1
+            moved = 0
+            for _ in range(20):
+                # Find adjacent water tile and move toward it
+                best_dx, best_dy = 0, 0
+                for dy in range(-1, 2):
+                    for dx in range(-1, 2):
+                        if dx == 0 and dy == 0:
+                            continue
+                        nx, ny = self.player.local_x + dx, self.player.local_y + dy
+                        if lmap.in_bounds(nx, ny):
+                            # Follow water tiles, preferring the direction
+                            if lmap.tiles[ny][nx].terrain == LocalTerrain.WATER:
+                                if dy * direction >= 0:
+                                    best_dx, best_dy = dx, dy
+                                    break
+                    if best_dx or best_dy:
+                        break
+                if best_dx == 0 and best_dy == 0:
+                    break
+                self.player.local_x += best_dx
+                self.player.local_y += best_dy
+                self.player.local_z = lmap.ground_z(
+                    self.player.local_x, self.player.local_y)
+                moved += 1
             self.add_message(
-                "You follow the watercourse upstream, reading the bends and "
-                "gravel bars as you go.", "normal")
+                f"You follow the watercourse {'upstream' if direction == -1 else 'downstream'}, "
+                f"reading the bends and gravel bars as you go. "
+                f"Moved {moved * 5}ft along the water.", "normal")
             self.advance_time(20)
             self.player.gain_skill_xp("geology", 1.5)
             self.player.gain_skill_xp("tracking", 1.0)
+            self.recompute_fov()
             return
 
         # ── Cross water ───────────────────────────────────────────────────

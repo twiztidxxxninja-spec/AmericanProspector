@@ -253,6 +253,66 @@ RECIPES: List[Recipe] = [
                        "description": "A strip of clean cloth for bandaging wounds."},
         category="general",
     ),
+
+    # ── Crafting intermediates ────────────────────────────────────────
+    Recipe(
+        id="make_charcoal", name="Charcoal",
+        description="Burn wood into charcoal. Used for smelting and filtration.",
+        materials=[("log", 1)],
+        skill="survival", difficulty=4, time_minutes=30,
+        output_id="charcoal", output_qty=3,
+        category="general",
+    ),
+    Recipe(
+        id="make_lye", name="Lye",
+        description="Mix wood ash with water to make lye. Soap, hide processing.",
+        materials=[("charcoal", 1)],
+        skill="survival", difficulty=5, time_minutes=20,
+        output_id="lye", output_qty=2,
+        category="general",
+    ),
+    Recipe(
+        id="make_cordage", name="Cordage",
+        description="Twist plant fiber into usable rope. Free materials from grass.",
+        materials=[],  # no material cost — gather from surroundings
+        skill="survival", difficulty=3, time_minutes=15,
+        output_id="cordage", output_qty=2,
+        category="general",
+    ),
+
+    # ── Survival crafting ─────────────────────────────────────────────
+    Recipe(
+        id="salt_meat", name="Salt Preserved Meat",
+        description="Preserve meat with salt. Triples time before spoiling.",
+        materials=[("salt", 1)],  # player picks meat from inventory during craft
+        skill="survival", difficulty=4, time_minutes=15,
+        output_custom={"id": "salted_meat", "name": "Salted Meat", "weight": 1.0,
+                       "category": "food", "base_value": 0.80,
+                       "nutrition": 35.0, "perishable": True,
+                       "days_until_spoil": 30,
+                       "description": "Salt-preserved meat. Lasts weeks."},
+        category="general",
+    ),
+    Recipe(
+        id="brew_coffee", name="Brew Coffee",
+        description="Brew coffee at a fire. Restores fatigue without sleeping.",
+        materials=[("coffee_beans", 1)],
+        tool_required="brew", skill="survival", difficulty=3, time_minutes=10,
+        output_custom={"id": "coffee", "name": "Hot Coffee", "weight": 0.3,
+                       "category": "drink", "base_value": 0.20,
+                       "hydration": 10.0,
+                       "extra": {"fatigue_restore": 20},
+                       "description": "Black coffee. Bitter but it wakes you up."},
+        category="general",
+    ),
+    Recipe(
+        id="make_bear_trap", name="Bear Trap",
+        description="Forge a jaw trap from iron. Immobilizes anything that steps on it.",
+        materials=[("iron_bar", 1), ("log", 1)],
+        tool_required="chop", skill="engineering", difficulty=12, time_minutes=120,
+        output_id="bear_trap",
+        category="trapping",
+    ),
 ]
 
 # Index by category

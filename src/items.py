@@ -648,6 +648,129 @@ ITEM_TEMPLATES: Dict[str, dict] = {
         "description": "A stretched canvas for painting. Reusable writing surface.",
         "base_value": 0.75, "stackable": True,
     },
+
+    # ── Survival Items ────────────────────────────────────────────────────
+    "wool_blanket": {
+        "id": "wool_blanket", "name": "Wool Blanket", "weight": 3.0,
+        "category": "misc",
+        "description": "A thick wool blanket. Drastically improves sleep quality and warmth.",
+        "base_value": 4.00,
+        "extra": {"warmth_bonus": 30, "sleep_bonus": 1.5},
+    },
+    "salt": {
+        "id": "salt", "name": "Salt", "weight": 0.5,
+        "category": "material",
+        "description": "Rock salt. Preserves meat — triples time before spoiling.",
+        "base_value": 0.30, "stackable": True,
+    },
+    "coffee_beans": {
+        "id": "coffee_beans", "name": "Coffee Beans", "weight": 0.5,
+        "category": "food",
+        "description": "Roasted coffee beans. Brew at a fire to fight fatigue.",
+        "base_value": 0.75, "stackable": True, "nutrition": 0,
+    },
+    "coffee_pot": {
+        "id": "coffee_pot", "name": "Coffee Pot", "weight": 1.0,
+        "category": "tool",
+        "description": "A tin coffee pot. Required to brew coffee at a campfire.",
+        "base_value": 1.50, "tool_tags": ["brew"],
+    },
+    "laudanum": {
+        "id": "laudanum", "name": "Laudanum", "weight": 0.3,
+        "category": "misc",
+        "description": "Tincture of opium. Kills pain from wounds. "
+                       "Highly addictive — use sparingly or pay the price.",
+        "base_value": 2.00, "stackable": True,
+        "extra": {"pain_relief": 40, "addiction_risk": 0.15},
+    },
+    "whiskey": {
+        "id": "whiskey", "name": "Whiskey", "weight": 1.5,
+        "category": "drink",
+        "description": "Frontier rotgut. Warmth, courage, and impaired aim. "
+                       "Also useful as wound disinfectant.",
+        "base_value": 0.50, "hydration": 5.0,
+        "extra": {"warmth_bonus": 15, "aim_penalty": -3, "courage_bonus": 5,
+                  "disinfect": True},
+    },
+    "tobacco": {
+        "id": "tobacco", "name": "Tobacco Pouch", "weight": 0.2,
+        "category": "misc",
+        "description": "Pipe tobacco. Universal trade currency on the frontier. "
+                       "Calms nerves, valued by everyone.",
+        "base_value": 0.40, "stackable": True,
+        "extra": {"trade_value": 0.5, "stress_relief": 10},
+    },
+    "fishing_line": {
+        "id": "fishing_line", "name": "Fishing Line & Hook", "weight": 0.1,
+        "category": "tool",
+        "description": "Braided line with a steel hook. Much better than bone hooks.",
+        "base_value": 0.30, "tool_tags": ["fish"],
+        "extra": {"catch_bonus": 3},
+    },
+
+    # ── Weapons ───────────────────────────────────────────────────────────
+    "tomahawk": {
+        "id": "tomahawk", "name": "Tomahawk", "weight": 1.5,
+        "category": "weapon",
+        "description": "A light throwing axe. Effective in melee and at range. "
+                       "Lands on the ground after a throw.",
+        "base_value": 3.00, "weapon_type": "melee",
+        "damage_min": 10, "damage_max": 22,
+        "tool_tags": ["cut", "chop"],
+        "extra": {"throwable": True, "throw_range": 8},
+    },
+    "derringer": {
+        "id": "derringer", "name": "Derringer", "weight": 0.3,
+        "category": "weapon",
+        "description": "A tiny single-shot pocket pistol. Concealable. Deadly at "
+                       "close range, useless beyond 10 feet.",
+        "base_value": 8.00, "weapon_type": "firearm",
+        "damage_min": 15, "damage_max": 35,
+        "extra": {"loaded": 0, "ammo_type": "revolver_ball", "reload_time": 20,
+                  "two_handed": False, "capacity": 1, "concealable": True},
+    },
+    "bear_trap": {
+        "id": "bear_trap", "name": "Bear Trap", "weight": 8.0,
+        "category": "tool",
+        "description": "A heavy iron jaw trap. Place on the ground — immobilizes "
+                       "anything that steps on it. Brutal.",
+        "base_value": 5.00, "tool_tags": ["trap"],
+        "extra": {"trap_damage": 20, "immobilize_turns": 10},
+    },
+
+    # ── Crafting Intermediates ────────────────────────────────────────────
+    "charcoal": {
+        "id": "charcoal", "name": "Charcoal", "weight": 0.5,
+        "category": "material",
+        "description": "Burned wood. Used for smelting, water filtration, and black powder.",
+        "base_value": 0.10, "stackable": True,
+    },
+    "lye": {
+        "id": "lye", "name": "Lye", "weight": 0.5,
+        "category": "material",
+        "description": "Caustic alkali from wood ash and water. Soap making, "
+                       "hide processing, cleaning.",
+        "base_value": 0.15, "stackable": True,
+    },
+    "cordage": {
+        "id": "cordage", "name": "Cordage", "weight": 0.2,
+        "category": "material",
+        "description": "Twisted plant fiber rope. Free to make from grass and bark. "
+                       "Weaker than hemp rope but gets the job done.",
+        "base_value": 0.05, "stackable": True,
+    },
+    "pencil": {
+        "id": "pencil", "name": "Pencil", "weight": 0.05,
+        "category": "tool",
+        "description": "A graphite pencil. Write notes, mark maps, sketch plans.",
+        "base_value": 0.10, "tool_tags": ["write"],
+    },
+    "paper": {
+        "id": "paper", "name": "Paper", "weight": 0.05,
+        "category": "material",
+        "description": "A sheet of writing paper. For letters, notes, and sketches.",
+        "base_value": 0.08, "stackable": True,
+    },
 }
 
 

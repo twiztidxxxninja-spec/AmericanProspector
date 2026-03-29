@@ -693,6 +693,50 @@ class Engine:
                             self.add_message(
                                 "The heat is intense. You're too close to the fire.",
                                 "advisory")
+                    # NPC fire damage + flee
+                    fire_tiles = lmap._fire.get_fire_tiles()
+                    for npc in self._tile_npcs():
+                        if not npc.alive:
+                            continue
+                        nk = (npc.local_x, npc.local_y)
+                        if nk in fire_tiles:
+                            npc.health -= 8.0 * minutes
+                            if npc.health <= 0:
+                                npc.alive = False
+                                npc.combat_state = "dead"
+                                self.add_message(
+                                    f"{npc.name} burns to death.", "critical")
+                                self._blood_pool(lmap, npc.local_x, npc.local_y, 1)
+                            elif npc.combat_state != "fleeing":
+                                npc.combat_state = "fleeing"
+                                self.add_message(
+                                    f"{npc.name} runs from the fire!", "advisory")
+                        elif npc.combat_state == "neutral":
+                            # Flee if fire nearby
+                            for (fx, fy) in fire_tiles:
+                                if max(abs(fx - npc.local_x), abs(fy - npc.local_y)) <= 3:
+                                    npc.combat_state = "fleeing"
+                                    break
+                    # Wildlife fire damage + flee
+                    for animal in self.wildlife_mgr.get_animals(
+                            self.player.world_x, self.player.world_y,
+                            self.player.area_x, self.player.area_y):
+                        if not animal.alive:
+                            continue
+                        ak = (animal.local_x, animal.local_y)
+                        if ak in fire_tiles:
+                            animal.take_damage(8.0 * minutes)
+                            if animal.state == "dead":
+                                self.add_message(
+                                    f"A {animal.species.display_name} burns in the fire.",
+                                    "advisory")
+                        elif animal.state == "idle":
+                            for (fx, fy) in fire_tiles:
+                                if max(abs(fx - animal.local_x),
+                                       abs(fy - animal.local_y)) <= 5:
+                                    animal.state = "fleeing"
+                                    animal.alert = True
+                                    break
 
     def _run_daily_ticks(self, current_day: int):
         """Run all once-per-day system updates."""

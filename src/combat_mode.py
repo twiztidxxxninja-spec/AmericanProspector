@@ -751,8 +751,20 @@ def enter_combat_mode(engine: "Engine", console, ctx) -> None:
                     idx = pick_from_list(console, ctx, "Equip which weapon?", labels)
                     if idx is not None and idx < len(weapons):
                         chosen = weapons[idx]
-                        engine.player.right_hand = chosen.name
-                        add_msg(f"You ready the {chosen.name}.", "normal")
+                        hand = pick_from_list(console, ctx,
+                            f"Equip {chosen.name} to which hand?",
+                            [f"Right hand (current: {engine.player.right_hand or 'empty'})",
+                             f"Left hand (current: {engine.player.left_hand or 'empty'})",
+                             "Both hands"])
+                        if hand == 0:
+                            engine.player.right_hand = chosen.name
+                        elif hand == 1:
+                            engine.player.left_hand = chosen.name
+                        elif hand == 2:
+                            engine.player.right_hand = chosen.name
+                            engine.player.left_hand = chosen.name
+                        if hand is not None:
+                            add_msg(f"You ready the {chosen.name}.", "normal")
                     break
 
                 # Free look
@@ -788,6 +800,19 @@ def enter_combat_mode(engine: "Engine", console, ctx) -> None:
 def _do_player_attack(engine, target, kind, weapon, aimed_part, dist,
                       accuracy_bonus, add_msg, lmap, rng):
     """Execute a player attack (shared by snap and careful aim)."""
+    # Bullet animation for firearms
+    is_firearm = weapon and weapon.weapon_type == "firearm"
+    if is_firearm:
+        _play_sound("bang")
+        half_w = 40
+        half_h = 19
+        cam_x = engine.player.local_x - half_w
+        cam_y = engine.player.local_y - half_h
+        _animate_bullet(engine._console, engine._ctx,
+                        engine.player.local_x, engine.player.local_y,
+                        getattr(target, 'local_x', 0), getattr(target, 'local_y', 0),
+                        cam_x, cam_y)
+
     if kind == "npc":
         # Calculate cover between player and target
         t_cover = lmap.cover_between(
@@ -798,6 +823,15 @@ def _do_player_attack(engine, target, kind, weapon, aimed_part, dist,
                                 accuracy_bonus=accuracy_bonus,
                                 target_cover=t_cover)
         add_msg(evt.message, "critical" if evt.killed else "normal")
+        # Sound effect
+        if is_firearm:
+            _play_sound("hit" if evt.hit else "miss")
+        # Stray bullet on miss — check for collateral
+        if not evt.hit and evt.stray_bullet:
+            dmg = weapon.damage_max if weapon else 10
+            _check_stray_bullet(engine, lmap,
+                engine.player.local_x, engine.player.local_y,
+                target.local_x, target.local_y, dmg, add_msg)
         if evt.hit:
             skill = "firearms" if weapon.weapon_type == "firearm" else "survival"
             engine.player.gain_skill_xp(skill, 3.0 if evt.killed else 1.5)
@@ -841,6 +875,117 @@ def _do_player_attack(engine, target, kind, weapon, aimed_part, dist,
             add_msg(f"The shot misses the {sp.display_name}.", "normal")
         engine.player.gain_skill_xp(
             "firearms" if weapon.weapon_type == "firearm" else "survival", 2.0)
+
+
+def _play_sound(sound_type: str):
+    """Play a short combat sound effect via pygame mixer."""
+    try:
+        import pygame
+        if not pygame.mixer.get_init():
+            return
+        # Generate simple sound from frequency
+        import numpy as np
+        sample_rate = 22050
+        if sound_type == "bang":
+            # Gunshot: sharp noise burst
+            duration = 0.15
+            t = np.linspace(0, duration, int(sample_rate * duration), dtype=np.float32)
+            wave = np.random.uniform(-0.8, 0.8, len(t)).astype(np.float32)
+            wave *= np.exp(-t * 20)  # fast decay
+        elif sound_type == "hit":
+            # Meaty thud
+            duration = 0.1
+            t = np.linspace(0, duration, int(sample_rate * duration), dtype=np.float32)
+            wave = np.sin(2 * np.pi * 120 * t).astype(np.float32) * 0.5
+            wave *= np.exp(-t * 15)
+        elif sound_type == "miss":
+            # Whizz/ricochet
+            duration = 0.2
+            t = np.linspace(0, duration, int(sample_rate * duration), dtype=np.float32)
+            freq = 800 + t * 2000  # rising pitch
+            wave = np.sin(2 * np.pi * freq * t).astype(np.float32) * 0.3
+            wave *= np.exp(-t * 8)
+        else:
+            return
+        # Convert to 16-bit
+        wave_int = (wave * 32767).astype(np.int16)
+        sound = pygame.mixer.Sound(wave_int)
+        sound.set_volume(0.4)
+        sound.play()
+    except Exception:
+        pass
+
+
+def _animate_bullet(console, ctx, px, py, tx, ty, cam_x, cam_y):
+    """Draw a bullet traveling from (px,py) to (tx,ty) on screen."""
+    import time
+    dx = tx - px
+    dy = ty - py
+    steps = max(abs(dx), abs(dy))
+    if steps == 0:
+        return
+    for i in range(1, steps + 1):
+        frac = i / steps
+        bx = int(px + dx * frac)
+        by = int(py + dy * frac)
+        sx = bx - cam_x
+        sy = by - cam_y + 1  # +1 for hotbar
+        if 0 <= sx < 80 and 1 <= sy < 40:
+            console.print(sx, sy, "*", fg=(255, 255, 200), bg=(80, 40, 10))
+            ctx.present(console)
+            time.sleep(0.02)
+
+
+def _check_stray_bullet(engine, lmap, px, py, tx, ty, dmg, add_msg):
+    """Trace bullet path past target, check for collateral hits."""
+    # Direction from player to target, continue 20 tiles
+    dx = tx - px
+    dy = ty - py
+    length = max(abs(dx), abs(dy))
+    if length == 0:
+        return
+    ndx = dx / length
+    ndy = dy / length
+
+    for step in range(1, 20):
+        bx = int(tx + ndx * step)
+        by = int(ty + ndy * step)
+        if not lmap.in_bounds(bx, by):
+            break
+        # Hit terrain that blocks?
+        from src.local_map import LocalTerrain
+        t = lmap.tiles[by][bx].terrain
+        if t == LocalTerrain.ROCK:
+            add_msg("The stray bullet ricochets off rock.")
+            break
+
+        # Hit a tree?
+        tree_terrains = (LocalTerrain.PINE, LocalTerrain.OAK, LocalTerrain.CEDAR,
+                         LocalTerrain.MAPLE, LocalTerrain.FOREST)
+        if t in tree_terrains:
+            if random.random() < 0.3:
+                add_msg("The bullet thuds into a tree trunk.")
+                break
+
+        # Hit an NPC?
+        for n in engine._tile_npcs():
+            if n.alive and n.local_x == bx and n.local_y == by:
+                n.health -= dmg * 0.7  # reduced damage
+                from src.combat import _check_npc_morale
+                _check_npc_morale(n)
+                engine._splatter_blood(lmap, bx, by, 2)
+                add_msg(f"The stray bullet hits {n.name}!", "critical")
+                return
+
+        # Hit an animal?
+        for a in engine.wildlife_mgr.get_animals(
+                engine.player.world_x, engine.player.world_y,
+                engine.player.area_x, engine.player.area_y):
+            if a.alive and a.local_x == bx and a.local_y == by:
+                a.take_damage(dmg * 0.7)
+                engine._splatter_blood(lmap, bx, by, 1)
+                add_msg(f"The stray bullet hits a {a.species.display_name}!")
+                return
 
 
 def _free_look(engine, console, ctx, target, lmap, on_map, animals):

@@ -5225,6 +5225,7 @@ class Engine:
                 if self.state == GameState.LOCAL_MAP and lmap:
                     _on_map = self._tile_npcs()
                     self.renderer.draw_npcs(_on_map, lmap, self.player)
+                    self.renderer._period = self.time.period
                     self.renderer.draw_npc_sidebar(_on_map, self.player)
                     _animals = self.wildlife_mgr.get_animals(
                         self.player.world_x, self.player.world_y,

@@ -44,6 +44,7 @@ class CombatEvent:
     killed: bool = False
     defender_fled: bool = False
     defender_surrendered: bool = False
+    stray_bullet: bool = False   # missed shot continues past target
 
 
 # ── Player attacks NPC ─────────────────────────────────────────────────────
@@ -154,10 +155,12 @@ def player_attack_npc(player: "Player", npc: "NPC",
 
     if roll < npc_defense:
         miss_extra = f" (aimed: {aim_label})" if aimed_part > 0 else ""
+        is_firearm = weapon and weapon.weapon_type == "firearm"
         return CombatEvent(
             attacker=player.name, defender=npc.name,
             weapon_name=weapon_name, hit=False, damage=0,
             message=_miss_msg(player.name, npc.name, weapon_name) + miss_extra,
+            stray_bullet=is_firearm,
         )
 
     # --- Damage ---

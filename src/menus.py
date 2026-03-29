@@ -409,6 +409,12 @@ def examine_menu(con: tcod.console.Console, ctx, player: "Player",
                     if animal_at and animal_at.alive:
                         lines.append(f"{animal_at.species.display_name} — "
                                      f"{animal_at.state}")
+                # Blood
+                blood = getattr(tile, "blood", 0)
+                if blood >= 2:
+                    lines.append("The ground is dark with blood.")
+                elif blood == 1:
+                    lines.append("Blood spatters on the ground.")
                 # Ground items
                 if tile.ground_items:
                     names = ", ".join(i.name for i in tile.ground_items[:3])

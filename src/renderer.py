@@ -1099,11 +1099,23 @@ class Renderer:
                 else:
                     color = (220, 110, 60)
 
-            name = npc.display_name()[:14]
-            rel_label = npc.rel_label()[:10]
+            name = npc.display_name()[:12]
             dist = max(abs(npc.local_x - player.local_x),
                        abs(npc.local_y - player.local_y))
-            line = f"{tag} {name:<14} {dist:>3}t"
+            # Eye icon: can this NPC see the player? (witness range)
+            can_see = dist <= 40  # day default
+            try:
+                from src.engine import Engine
+                # Approximate — use same ranges as _witnesses_near
+                period = getattr(self, '_period', 'day')
+                if period == "night":
+                    can_see = dist <= 15
+                elif period in ("dawn", "dusk"):
+                    can_see = dist <= 25
+            except Exception:
+                pass
+            eye = "*" if can_see and npc.alive else " "
+            line = f"{tag}{eye}{name:<12} {dist:>3}t"
             self.con.print(x, y, line[:SIDE_WIDTH - 2], fg=color, bg=BLACK)
             y += 1
 

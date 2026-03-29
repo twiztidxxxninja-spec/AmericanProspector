@@ -190,6 +190,7 @@ _bd("freight_office", "Freight Office",   8, 6, WOOD_WALL,   WOOD_FLOOR, "Freigh
 _bd("laundry",        "Laundry",          6, 5, WOOD_WALL,   WOOD_FLOOR, "Laundress")
 _bd("cobbler",        "Cobbler",          6, 5, WOOD_WALL,   WOOD_FLOOR, "Cobbler")
 _bd("fur_post",       "Fur Trading Post",12, 8, WOOD_WALL,   WOOD_FLOOR, "Fur Trader")
+_bd("bulletin_board", "Bulletin Board",   2, 2, 0,           SIGN_POST)
 # Outdoor features (no walls — placed as single terrain tiles)
 _bd("fire_pit",       "Fire Pit",         1, 1, 0, FIREPIT_T)
 _bd("well",           "Well",             1, 1, 0, WELL_TILE)
@@ -275,6 +276,7 @@ SETTLEMENT_BUILDINGS: Dict[str, dict] = {
             ("small_house",  3, 8),
             ("well",         1, 3),
             ("hitching_post",3, 6),
+            ("bulletin_board",1, 1),
             ("corral",       0, 2),
         ],
         "layout": "grid",
@@ -317,6 +319,7 @@ SETTLEMENT_BUILDINGS: Dict[str, dict] = {
             ("small_house",  5, 12),
             ("well",         2, 5),
             ("hitching_post",4, 8),
+            ("bulletin_board",1, 2),
             ("corral",       1, 3),
         ],
         "layout": "grid",

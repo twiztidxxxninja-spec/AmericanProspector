@@ -139,6 +139,22 @@ _td("scout_stream",  "Follow the stream upstream", "geology",    60, 7,  0.05, "
 _td("trade_town",    "Go to town and trade",       "trading",   120, 6,  0.05, "haul",
     "Travel to the nearest town to buy or sell goods.")
 
+# Business operations
+_td("buy_goods",     "Buy goods for business",     "trading",    90, 7,  0.03, "haul",
+    "Purchase stock from suppliers for the business.")
+_td("sell_goods",    "Sell at the counter",         "trading",    60, 5,  0.01, "camp",
+    "Man the counter and sell goods to customers.")
+_td("process_goods", "Process materials",           "engineering",60, 6,  0.02, "build",
+    "Work stretching frames, tan hides, craft goods.")
+_td("haul_goods",    "Haul goods to town",          "survival",  120, 6,  0.08, "haul",
+    "Transport business goods to another location.", unpleasant=True)
+_td("manage_biz",    "Manage operations",           "trading",    60, 8,  0.01, "camp",
+    "Run day-to-day business. Make decisions, handle customers.")
+_td("guard_stock",   "Guard inventory",             "firearms",   60, 5,  0.06, "combat",
+    "Protect stored goods and premises from theft.")
+_td("scout_prices",  "Scout market prices",         "trading",    90, 7,  0.04, "haul",
+    "Visit nearby merchants and report back on prices.")
+
 
 # ============================================================================
 #  COMPANION LINK

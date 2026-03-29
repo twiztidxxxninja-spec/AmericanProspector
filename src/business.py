@@ -787,6 +787,68 @@ class BusinessManager:
     def total_daily_income(self) -> float:
         return sum(b.net_daily for b in self.businesses.values() if b.active)
 
+    # ── Logistics ─────────────────────────────────────────────────────
+
+    def ship_goods(self, biz_id: str, items: List[Any], dest_wx: int, dest_wy: int,
+                   method: str, world_map, current_day: int) -> Dict:
+        """
+        Ship items from business to a destination.
+        method: 'teamster', 'freight', 'river'
+        Returns shipment info dict.
+        """
+        biz = self.businesses.get(biz_id)
+        if not biz:
+            return {"error": "Business not found"}
+
+        # Calculate distance
+        dist_tiles = abs(dest_wx - biz.world_x) + abs(dest_wy - biz.world_y)
+        dist_miles = dist_tiles * 5
+
+        # Weight
+        total_weight = sum(getattr(i, 'weight', 1.0) for i in items)
+
+        # Cost and time by method
+        if method == "teamster":
+            cost = 0.0  # teamster is an employee, wage covers it
+            travel_days = max(1, dist_tiles // 20)  # ~100 miles/day by wagon
+            risk_robbery = 0.05
+            risk_accident = 0.03
+        elif method == "freight":
+            cost = total_weight * dist_miles * 0.001  # $0.10/lb/100mi
+            travel_days = max(2, dist_tiles // 15)
+            risk_robbery = 0.02
+            risk_accident = 0.02
+        elif method == "river":
+            cost = total_weight * dist_miles * 0.0005  # $0.05/lb/100mi
+            travel_days = max(1, dist_tiles // 25)  # faster downstream
+            risk_robbery = 0.01
+            risk_accident = 0.04  # capsizing
+        else:
+            return {"error": "Unknown shipping method"}
+
+        # Remove items from business inventory
+        for item in items:
+            if item in biz.inventory:
+                biz.inventory.remove(item)
+
+        # Deduct cost from business cash
+        biz.cash_reserve -= cost
+
+        arrival_day = current_day + travel_days
+
+        return {
+            "items": items,
+            "dest_wx": dest_wx, "dest_wy": dest_wy,
+            "method": method,
+            "cost": cost,
+            "travel_days": travel_days,
+            "arrival_day": arrival_day,
+            "risk_robbery": risk_robbery,
+            "risk_accident": risk_accident,
+            "total_weight": total_weight,
+            "dist_miles": dist_miles,
+        }
+
     def total_empire_value(self) -> float:
         """Total value of all business assets + cash reserves."""
         return sum(

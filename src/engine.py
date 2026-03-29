@@ -3168,9 +3168,14 @@ class Engine:
 
         # ── Move rocks ────────────────────────────────────────────────────
         if "move rock" in a or "clear rock" in a:
+            if tile.terrain != LocalTerrain.ROCK:
+                self.add_message("No rocks here to move.", "advisory")
+                return
             self.add_message(
                 "You heave the rocks aside, exposing the gravel and soil beneath. "
                 "The work is harder than it looks.", "normal")
+            tile.terrain = LocalTerrain.GRAVEL_BAR
+            lmap.invalidate_terrain_cache()
             self.advance_time(15)
             self.player.gain_skill_xp("placer", 1.0)
             return

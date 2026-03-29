@@ -1336,13 +1336,98 @@ class Engine:
         self.advance_time(TIME_COST[method_key])
 
     def _open_butcher_npc(self, npc):
-        """Butcher a dead or surrendered NPC. Dark but mechanically valid."""
+        """Loot and/or butcher a dead, surrendered, or incapacitated NPC."""
         from src.menus import pick_from_list
         from src.butcher import has_sharp_tool, TIME_COST
-        from src.items import Item
+        from src.items import Item, make_item
         import random as _rnd
 
-        if npc.combat_state == "surrendered":
+        # Offer choices based on state
+        options = ["Loot body"]
+        if has_sharp_tool(self.player):
+            options.append("Butcher")
+        if npc.combat_state == "surrendered" or (npc.alive and npc.health < 25):
+            options.insert(0, "Let them go")
+
+        choice = pick_from_list(self._console, self._ctx,
+            f"{npc.display_name()} — {npc.combat_state}", options)
+        if choice is None:
+            return
+
+        chosen = options[choice]
+
+        if chosen == "Let them go":
+            npc.combat_state = "fleeing"
+            self.add_message(f"{npc.name} scrambles away.", "normal")
+            return
+
+        if chosen == "Loot body":
+            # Generate loot based on NPC occupation
+            rng = _rnd.Random(hash(npc.npc_id))
+            loot = []
+            cash_found = rng.uniform(0.50, 15.00)
+            self.player.cash += cash_found
+            loot_msgs = [f"${cash_found:.2f} in coins and dust"]
+
+            # Occupation-based loot
+            occ = (npc.occupation or "").lower()
+            if "prospector" in occ or "miner" in occ:
+                gold = rng.uniform(0.01, 0.15)
+                self.player.gold_oz += gold
+                loot_msgs.append(f"{gold:.3f} oz gold dust")
+                if rng.random() < 0.4:
+                    try:
+                        loot.append(make_item("gold_pan"))
+                    except Exception:
+                        pass
+            if "hunter" in occ or "trapper" in occ:
+                if rng.random() < 0.5:
+                    try:
+                        loot.append(make_item("hunting_knife"))
+                    except Exception:
+                        pass
+            if rng.random() < 0.3:
+                try:
+                    loot.append(make_item("hardtack"))
+                except Exception:
+                    pass
+            if rng.random() < 0.2:
+                try:
+                    loot.append(make_item("whiskey"))
+                except Exception:
+                    pass
+            # Weapon
+            if rng.random() < 0.35:
+                weapon_ids = ["percussion_revolver", "bowie_knife", "hunting_knife"]
+                try:
+                    loot.append(make_item(rng.choice(weapon_ids)))
+                except Exception:
+                    pass
+
+            for item in loot:
+                self.player.inventory.append(item)
+                loot_msgs.append(item.name)
+
+            self.add_message(
+                f"You search {npc.name}'s body: {', '.join(loot_msgs)}.",
+                "normal")
+            self.advance_time(3)
+
+            # Crime if witnessed
+            witnesses = self._witnesses_near(
+                self.player.local_x, self.player.local_y,
+                exclude_id=npc.npc_id)
+            if witnesses and npc.combat_state != "dead":
+                lmap = self.current_local
+                region = lmap._region_name if lmap else ""
+                self.legal.record_crime(
+                    "theft", self.time.total_minutes // 1440,
+                    self.player.world_x, self.player.world_y, region,
+                    nearby_npcs=witnesses)
+            return
+
+        # ── Butcher path ──────────────────────────────────────────────
+        if npc.combat_state == "surrendered" or (npc.alive and npc.health < 25):
             # Killing a surrendered person
             confirm = pick_from_list(self._console, self._ctx,
                 f"{npc.display_name()} is surrendered. Kill and butcher?",

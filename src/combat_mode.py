@@ -609,9 +609,18 @@ def enter_combat_mode(engine: "Engine", console, ctx) -> None:
                         from src.wounds import throw_damage, throw_hit_chance
                         dmg, dtype = throw_damage(item)
                     except ImportError:
-                        import random as _tr
-                        dmg = max(1, int(item.weight * 2))
-                        dtype = "blunt"
+                        # Base damage from weight + sharpness bonus
+                        base_dmg = max(1, int(item.weight * 2))
+                        tags = getattr(item, "tool_tags", [])
+                        is_sharp = any(t in tags for t in ("cut", "butcher", "skin", "chop"))
+                        is_weapon = item.weapon_type in ("melee", "firearm")
+                        if is_sharp or is_weapon:
+                            # Sharp/pointed items do 3x weight + weapon damage
+                            base_dmg = max(item.damage_max, int(item.weight * 3))
+                            dtype = "slash"
+                        else:
+                            dtype = "blunt"
+                        dmg = base_dmg
 
                     # Hit check: agility + strength vs distance
                     hit_roll = random.randint(1, 20) + \

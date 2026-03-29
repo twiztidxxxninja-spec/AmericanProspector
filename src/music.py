@@ -1,79 +1,52 @@
 """
-src/music.py
+Background music system. Folder-based categories, context-aware switching.
 
-Background music system for American Prospector.
-Uses pygame.mixer for MP3 playback.
+Folder structure:
+  music/
+    theme/      ← character creation, menus
+    explore/    ← daytime walking (default)
+    night/      ← nighttime
+    work/       ← mining, panning, crafting
+    combat/     ← combat mode
+    tense/      ← hostile nearby, low health
+    triumph/    ← gold find, big kill
+    town/       ← in settlement
 
-Features:
-    - Shuffle playback of all tracks
-    - Main menu plays a fixed theme song
-    - Category-aware: night, combat, work, tense tracks can be
-      selected by context (future feature — currently all shuffle)
-    - Volume control (0.0-1.0), saved to config.json
-    - Tracks auto-advance when one finishes
-
-Usage:
-    from src.music import MusicManager
-    music = MusicManager("music/")
-    music.play_menu_theme()       # fixed song for main menu
-    music.play_shuffle()          # random gameplay music
-    music.set_volume(0.5)
-    music.stop()
+Tracks play to completion before switching. Category changes only happen
+when a song ends, EXCEPT combat — combat interrupts immediately.
 """
 
 import os
 import random
 import json
-from typing import List, Optional, Dict
+from typing import List, Dict, Optional
 
 
 MUSIC_DIR = "music"
 CONFIG_PATH = "config.json"
 
-# Track categories — matched by filename prefix/keyword
-CATEGORIES: Dict[str, List[str]] = {
-    "theme":   [],    # main menu / title screen
-    "night":   [],    # nighttime ambient
-    "combat":  [],    # tense combat music (mapped from "tense")
-    "work":    [],    # working / panning / mining
-    "general": [],    # everything else
-}
-
-# Map filename keywords to categories
-_KEYWORD_MAP = {
-    "theme":     "theme",
-    "night":     "night",
-    "tense":     "combat",
-    "combat":    "combat",
-    "work":      "work",
-    "hardwork":  "work",
-    "panning":   "work",
-}
+# Recognized category folder names
+CATEGORY_NAMES = ["theme", "explore", "night", "work", "combat",
+                  "tense", "triumph", "town"]
 
 
 class MusicManager:
-    """
-    Manages background music playback.
-    Requires pygame.mixer — gracefully does nothing if unavailable.
-    """
-
     def __init__(self, music_dir: str = MUSIC_DIR):
         self.music_dir = music_dir
         self.volume = 0.5
         self.enabled = True
         self.current_track: str = ""
+        self.current_category: str = ""
+        self.desired_category: str = "explore"  # what we WANT to play next
         self._initialized = False
-        self._tracks: List[str] = []
-        self._shuffle_queue: List[str] = []
-        self._category_tracks: Dict[str, List[str]] = {k: [] for k in CATEGORIES}
-        self._menu_theme: str = ""
+        self._categories: Dict[str, List[str]] = {}
+        self._queue: List[str] = []
 
         self._load_config()
         self._scan_tracks()
         self._init_mixer()
 
     def _init_mixer(self) -> None:
-        """Initialize pygame.mixer. Silent failure if not available."""
         try:
             import pygame
             if not pygame.mixer.get_init():
@@ -85,36 +58,40 @@ class MusicManager:
             self._initialized = False
 
     def _scan_tracks(self) -> None:
-        """Scan music directory and categorize tracks."""
+        """Scan music directory for category subfolders and loose files."""
         if not os.path.isdir(self.music_dir):
             return
 
+        # Scan subfolders
+        for cat in CATEGORY_NAMES:
+            cat_dir = os.path.join(self.music_dir, cat)
+            if os.path.isdir(cat_dir):
+                tracks = [os.path.join(cat_dir, f) for f in os.listdir(cat_dir)
+                          if f.lower().endswith((".mp3", ".ogg", ".wav"))]
+                self._categories[cat] = tracks
+
+        # Loose files in root go to "explore" (or categorize by name)
+        _KEYWORD_MAP = {
+            "theme": "theme", "night": "night", "tense": "combat",
+            "combat": "combat", "work": "work", "hardwork": "work",
+            "panning": "work", "triumph": "triumph", "town": "town",
+            "color": "triumph", "wilderness": "explore",
+        }
         for fname in os.listdir(self.music_dir):
+            fpath = os.path.join(self.music_dir, fname)
+            if os.path.isdir(fpath):
+                continue
             if not fname.lower().endswith((".mp3", ".ogg", ".wav")):
                 continue
-            path = os.path.join(self.music_dir, fname)
-            self._tracks.append(path)
-
-            # Categorize by filename keywords
-            name_lower = fname.lower()
-            categorized = False
-            for keyword, cat in _KEYWORD_MAP.items():
-                if keyword in name_lower:
-                    self._category_tracks[cat].append(path)
-                    categorized = True
+            # Categorize by keyword in filename
+            cat = "explore"
+            for keyword, mapped in _KEYWORD_MAP.items():
+                if keyword in fname.lower():
+                    cat = mapped
                     break
-            if not categorized:
-                self._category_tracks["general"].append(path)
-
-        # Pick a menu theme (first "theme" track, or first track)
-        themes = self._category_tracks.get("theme", [])
-        if themes:
-            self._menu_theme = themes[0]
-        elif self._tracks:
-            self._menu_theme = self._tracks[0]
+            self._categories.setdefault(cat, []).append(fpath)
 
     def _load_config(self) -> None:
-        """Load volume setting from config.json."""
         try:
             with open(CONFIG_PATH, "r") as f:
                 cfg = json.load(f)
@@ -124,7 +101,6 @@ class MusicManager:
             pass
 
     def _save_config(self) -> None:
-        """Save volume setting to config.json."""
         try:
             cfg = {}
             if os.path.exists(CONFIG_PATH):
@@ -137,41 +113,51 @@ class MusicManager:
         except Exception:
             pass
 
-    # ── Playback control ───────────────────────────────────────────────
+    # ── Category control ──────────────────────────────────────────────
 
-    def play_menu_theme(self) -> None:
-        """Play the fixed main menu theme song."""
-        if not self._initialized or not self.enabled or not self._menu_theme:
+    def set_category(self, category: str, immediate: bool = False) -> None:
+        """Request a category change.
+        immediate=True: interrupt current track (for combat).
+        immediate=False: switch when current track ends (normal transitions)."""
+        if category == self.desired_category and not immediate:
             return
-        self._play_track(self._menu_theme, loops=-1)  # loop forever
+        self.desired_category = category
+        if immediate and category != self.current_category:
+            self._switch_now(category)
 
-    def play_shuffle(self) -> None:
-        """Start shuffled playback of all non-theme tracks."""
-        if not self._initialized or not self.enabled:
+    def _switch_now(self, category: str) -> None:
+        """Immediately switch to a track from the given category."""
+        tracks = self._categories.get(category, [])
+        if not tracks:
+            # Fall back to explore, then any available
+            tracks = self._categories.get("explore", [])
+        if not tracks:
+            for cat_tracks in self._categories.values():
+                if cat_tracks:
+                    tracks = cat_tracks
+                    break
+        if not tracks:
             return
-        # Build shuffle queue from non-theme tracks
-        pool = [t for t in self._tracks
-                if t not in self._category_tracks.get("theme", [])]
-        if not pool:
-            pool = list(self._tracks)
-        if not pool:
-            return
-        random.shuffle(pool)
-        self._shuffle_queue = pool
+        self.current_category = category
+        self._queue = list(tracks)
+        random.shuffle(self._queue)
         self._play_next()
 
-    def play_category(self, category: str) -> None:
-        """Play a random track from a specific category (future use)."""
+    # ── Playback ──────────────────────────────────────────────────────
+
+    def play_shuffle(self) -> None:
+        """Start playing. Uses desired_category or explore."""
         if not self._initialized or not self.enabled:
             return
-        tracks = self._category_tracks.get(category, [])
-        if not tracks:
-            tracks = self._category_tracks.get("general", self._tracks)
-        if tracks:
-            self._play_track(random.choice(tracks))
+        self._switch_now(self.desired_category or "explore")
+
+    def play_category(self, category: str) -> None:
+        """Play a random track from a specific category."""
+        if not self._initialized or not self.enabled:
+            return
+        self._switch_now(category)
 
     def _play_track(self, path: str, loops: int = 0) -> None:
-        """Play a specific track file."""
         if not self._initialized:
             return
         try:
@@ -184,33 +170,32 @@ class MusicManager:
             pass
 
     def _play_next(self) -> None:
-        """Play the next track in the shuffle queue."""
-        if not self._shuffle_queue:
-            # Reshuffle
-            pool = [t for t in self._tracks
-                    if t not in self._category_tracks.get("theme", [])]
-            if not pool:
+        """Play next track in queue. Reshuffle if empty."""
+        if not self._queue:
+            tracks = self._categories.get(self.current_category, [])
+            if not tracks:
                 return
-            random.shuffle(pool)
-            self._shuffle_queue = pool
-        track = self._shuffle_queue.pop(0)
-        self._play_track(track)
+            self._queue = list(tracks)
+            random.shuffle(self._queue)
+        if self._queue:
+            self._play_track(self._queue.pop(0))
 
     def check_advance(self) -> None:
-        """
-        Check if the current track has finished playing.
-        Does NOT touch the event queue — pygame.event.get() would
-        steal events from tcod's SDL event loop.
-        Instead, just check if music is still playing.
-        """
+        """Called every frame. When track ends, play next from desired category."""
         if not self._initialized or not self.enabled:
             return
         try:
             import pygame
-            if not pygame.mixer.music.get_busy() and self._shuffle_queue:
-                self._play_next()
+            if not pygame.mixer.music.get_busy():
+                # Song ended — switch category if desired changed
+                if self.desired_category != self.current_category:
+                    self._switch_now(self.desired_category)
+                else:
+                    self._play_next()
         except Exception:
             pass
+
+    # ── Standard controls ─────────────────────────────────────────────
 
     def stop(self) -> None:
         if not self._initialized:
@@ -240,8 +225,6 @@ class MusicManager:
         except Exception:
             pass
 
-    # ── Volume ─────────────────────────────────────────────────────────
-
     def set_volume(self, vol: float) -> None:
         self.volume = max(0.0, min(1.0, vol))
         if self._initialized:
@@ -260,20 +243,7 @@ class MusicManager:
         self.set_volume(self.volume - step)
         return self.volume
 
-    def toggle_mute(self) -> bool:
-        self.enabled = not self.enabled
-        if self.enabled:
-            self.play_shuffle()
-        else:
-            self.stop()
-        self._save_config()
-        return self.enabled
-
-    # ── Status ─────────────────────────────────────────────────────────
-
     def is_playing(self) -> bool:
-        if not self._initialized:
-            return False
         try:
             import pygame
             return pygame.mixer.music.get_busy()
@@ -281,16 +251,7 @@ class MusicManager:
             return False
 
     def track_count(self) -> int:
-        return len(self._tracks)
+        return sum(len(t) for t in self._categories.values())
 
-    def status_line(self) -> str:
-        """One-line status for UI display."""
-        if not self.enabled:
-            return "Music: OFF"
-        if not self._initialized:
-            return "Music: unavailable"
-        vol_pct = int(self.volume * 100)
-        if self.current_track:
-            name = os.path.splitext(self.current_track)[0]
-            return f"Music: {name} ({vol_pct}%)"
-        return f"Music: idle ({vol_pct}%)"
+    def category_counts(self) -> Dict[str, int]:
+        return {k: len(v) for k, v in self._categories.items() if v}

@@ -57,6 +57,7 @@ def enter_mining_mode(engine: "Engine", console, ctx) -> None:
 def _pan_mode(engine: "Engine", console, ctx) -> None:
     """Repetitive panning at current location.
     SPACE = pan one cycle, arrows = move to adjacent tile, ESC = stop."""
+    engine.music.set_category("work")
     from src.prospecting import pan_for_gold, depletion_message, tile_grade_label
     from src.nugget_system import NuggetSystem
     from src.volume_gold import VolumeGoldSystem
@@ -212,6 +213,7 @@ def _pan_mode(engine: "Engine", console, ctx) -> None:
 
 
 def _sluice_mode(engine: "Engine", console, ctx, sluice) -> None:
+    engine.music.set_category("work")
     """Sluice work mode. Shovel loads, dump at sluice, clean out for gold.
     SPACE = shovel+dump one load, ENTER = clean out, ESC = stop."""
     from src.prospecting import pan_for_gold, tile_grade_label

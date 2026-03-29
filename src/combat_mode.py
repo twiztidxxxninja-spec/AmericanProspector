@@ -363,6 +363,7 @@ def enter_combat_mode(engine: "Engine", console, ctx) -> None:
             if engine.player.survival.health <= 0:
                 return
 
+    engine.music.set_category("combat", immediate=True)
     add_msg("COMBAT!", "critical")
 
     while True:

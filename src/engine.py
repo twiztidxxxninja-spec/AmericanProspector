@@ -2961,9 +2961,10 @@ class Engine:
                 self.player.gain_skill_xp("placer",  result.xp_placer)
                 self.player.gain_skill_xp("geology", result.xp_geology)
                 self.player.gold_oz += result.gold_oz
-                # Significant find = reputation boost
+                # Significant find = reputation boost + triumph music
                 if result.gold_oz > 0.05:
                     self.reputation.adjust(lmap._region_name, 3)
+                    self.music.set_category("triumph", immediate=True)
                 src_tile.panned = True
                 # Visual terrain change on source tile
                 if src_tile.terrain == LocalTerrain.GRAVEL_BAR:
@@ -5257,6 +5258,16 @@ class Engine:
                     enter_combat_mode(self, console, ctx)
 
                 # Auto-advance music track when current one ends
+                # Update music category based on game context
+                # (category only switches when current track ends, except combat)
+                if self.combat_mode_pending:
+                    self.music.set_category("combat", immediate=True)
+                elif self.time.period == "night":
+                    self.music.set_category("night")
+                elif hasattr(lmap, 'town_layout') and lmap and lmap.town_layout:
+                    self.music.set_category("town")
+                else:
+                    self.music.set_category("explore")
                 self.music.check_advance()
 
                 # Poll keyboard state directly — SDL3 on some Windows

@@ -772,6 +772,14 @@ class Engine:
             if event:
                 self.add_message(f"[{biz_name}] {event.description}", "advisory")
 
+        # Manager weekly reports → mail
+        for biz_name, report in self.business_mgr.get_pending_reports(current_day):
+            self.writing.mail.send_letter(
+                sender=f"Manager, {biz_name}",
+                recipient=p.name,
+                body=report,
+            )
+
         # Legal sentence serving
         msg = self.legal.tick_sentence(current_day)
         if msg:

@@ -233,9 +233,33 @@ def _show_ledger(engine, console, ctx, biz):
                     cy += 1
 
         elif tab == 4:  # Orders
-            console.print(X + 2, cy, "Standing orders and pending changes:", fg=(180, 180, 180), bg=BG)
+            console.print(X + 2, cy, "STANDING ORDERS:", fg=(180, 180, 120), bg=BG)
             cy += 1
-            console.print(X + 2, cy, "(Orders system coming soon)", fg=(120, 120, 120), bg=BG)
+            if biz.standing_orders:
+                for so in biz.standing_orders:
+                    console.print(X + 4, cy, f"- {so.get('type','')}: {so}",
+                                  fg=(200, 200, 200), bg=BG)
+                    cy += 1
+            else:
+                console.print(X + 4, cy, "(none)", fg=(120, 120, 120), bg=BG)
+                cy += 1
+            cy += 1
+            console.print(X + 2, cy, "PENDING ORDERS (unsent):", fg=(255, 200, 100), bg=BG)
+            cy += 1
+            if biz.pending_orders:
+                for po in biz.pending_orders:
+                    console.print(X + 4, cy, f"> {po[:60]}", fg=(255, 255, 200), bg=BG)
+                    cy += 1
+            else:
+                console.print(X + 4, cy, "(none — press [N] to add)", fg=(120, 120, 120), bg=BG)
+                cy += 1
+            cy += 1
+            if not is_present and biz.manager_npc_id:
+                console.print(X + 2, cy, "[N] New order  [Enter] Send letter  [X] Clear",
+                              fg=(140, 140, 140), bg=BG)
+            elif is_present:
+                console.print(X + 2, cy, "[N] Add instruction (immediate)",
+                              fg=(140, 140, 140), bg=BG)
 
         elif tab == 5:  # Market
             console.print(X + 2, cy, "Known market prices:", fg=(180, 180, 180), bg=BG)
@@ -258,6 +282,62 @@ def _show_ledger(engine, console, ctx, biz):
                 K = tcod.event.KeySym
                 if sym == K.ESCAPE:
                     return
+
+                # Add order (N key)
+                if sym == K.n and tab == 4:
+                    console.print(X + 2, Y + H - 4, "Order: " + " " * 60,
+                                  fg=(255, 255, 200), bg=(20, 20, 30))
+                    ctx.present(console)
+                    typed = ""
+                    typing = True
+                    while typing:
+                        for evt in tcod.event.wait():
+                            if isinstance(evt, tcod.event.Quit):
+                                raise SystemExit()
+                            if isinstance(evt, tcod.event.KeyDown):
+                                if evt.sym == K.RETURN:
+                                    typing = False
+                                elif evt.sym == K.ESCAPE:
+                                    typed = ""
+                                    typing = False
+                                elif evt.sym == K.BACKSPACE:
+                                    typed = typed[:-1]
+                                break
+                            if isinstance(evt, tcod.event.TextInput):
+                                typed += evt.text
+                                break
+                        console.print(X + 9, Y + H - 4, typed[:55] + "_" + " " * 5,
+                                      fg=(255, 255, 255), bg=(20, 20, 30))
+                        ctx.present(console)
+                    if typed.strip():
+                        biz.add_pending_order(typed.strip())
+                    break
+
+                # Send letter with pending orders (Enter on Orders tab)
+                if sym in (K.RETURN, K.KP_ENTER) and tab == 4:
+                    if biz.pending_orders and biz.manager_npc_id and not is_present:
+                        letter_body = biz.draft_order_letter()
+                        engine.writing.mail.send_letter(
+                            sender=engine.player.name,
+                            recipient=f"Manager, {biz.name}",
+                            body=letter_body,
+                        )
+                        engine.add_message(
+                            f"Letter with {len(biz.pending_orders)} orders sent to manager.",
+                            "normal")
+                        biz.clear_pending_orders()
+                    elif is_present and biz.pending_orders:
+                        engine.add_message(
+                            f"You give {len(biz.pending_orders)} instructions directly.",
+                            "normal")
+                        biz.clear_pending_orders()
+                    break
+
+                # Clear orders (X key)
+                if sym == K.x and tab == 4:
+                    biz.clear_pending_orders()
+                    break
+
                 if sym in (K.RIGHT, K.PERIOD):
                     tab = min(tab + 1, len(tabs) - 1)
                 elif sym in (K.LEFT, K.COMMA):

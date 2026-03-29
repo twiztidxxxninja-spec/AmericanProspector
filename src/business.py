@@ -347,6 +347,18 @@ class BusinessEntity:
         # Inventory (for retail/production businesses)
         self.stock_value: float = 0.0
         self.custom_products: List[str] = []  # item IDs the business sells
+        self.inventory: List[Any] = []       # actual Item objects stored at business
+
+        # Remote management
+        self.manager_npc_id: str = ""         # NPC running things when player is away
+        self.standing_orders: List[Dict] = [] # always-active rules
+        self.pending_orders: List[str] = []   # unsent instructions
+        self.last_report_day: int = 0         # day of last manager letter
+        self.last_update_day: int = day_founded  # day player last had fresh data
+        self.paused: bool = False             # no manager + player away = paused
+
+        # Market knowledge (prices player has learned)
+        self.known_prices: Dict[str, Dict[str, float]] = {}  # item_id → {location: price}
 
     # ── Properties ─────────────────────────────────────────────────────
 
@@ -553,6 +565,75 @@ class BusinessEntity:
 
         return evt
 
+    # ── Remote Management ─────────────────────────────────────────────
+
+    def add_standing_order(self, order_type: str, **params):
+        """Add a persistent rule: buy X at Y price, maintain Z stock, etc."""
+        self.standing_orders.append({"type": order_type, **params})
+
+    def add_pending_order(self, instruction: str):
+        """Queue an instruction to send to manager via letter."""
+        self.pending_orders.append(instruction)
+
+    def clear_pending_orders(self):
+        self.pending_orders.clear()
+
+    def generate_weekly_report(self, current_day: int) -> str:
+        """Generate a manager's weekly report as letter text."""
+        recent = self.history[-7:] if self.history else []
+        total_rev = sum(d.revenue for d in recent)
+        total_exp = sum(d.expenses for d in recent)
+        total_net = sum(d.profit for d in recent)
+
+        lines = [
+            f"Weekly Report — {self.name}",
+            f"",
+            f"This week's figures:",
+            f"  Revenue:  ${total_rev:.2f}",
+            f"  Expenses: ${total_exp:.2f}",
+            f"  Net:      ${total_net:.2f}",
+            f"  Cash on hand: ${self.cash_reserve:.2f}",
+            f"",
+            f"Employees: {self.employee_count}",
+        ]
+        for emp in self.employees:
+            lines.append(f"  {emp.name} — morale {emp.morale:.0f}%")
+
+        if self.events:
+            lines.append("")
+            lines.append("Notable events:")
+            for evt in self.events[-3:]:
+                lines.append(f"  - {evt.description}")
+
+        lines.append("")
+        lines.append(f"Reputation: {self.reputation:.0f}/100")
+        lines.append(f"Tier: {self.tier_label}")
+
+        if self.inventory:
+            lines.append("")
+            lines.append(f"Inventory: {len(self.inventory)} items")
+
+        lines.append("")
+        lines.append("Awaiting your instructions.")
+        self.last_report_day = current_day
+        return "\n".join(lines)
+
+    def should_send_report(self, current_day: int) -> bool:
+        """Manager sends weekly reports when player is away."""
+        return (self.manager_npc_id and
+                current_day - self.last_report_day >= 7)
+
+    def draft_order_letter(self) -> str:
+        """Convert pending orders into a letter body for the manager."""
+        if not self.pending_orders:
+            return ""
+        lines = [f"To the manager of {self.name}:", ""]
+        for i, order in enumerate(self.pending_orders, 1):
+            lines.append(f"{i}. {order}")
+        lines.append("")
+        lines.append("Execute these at your earliest convenience.")
+        return "\n".join(lines)
+
     # ── Display ────────────────────────────────────────────────────────
 
     def summary_lines(self) -> List[str]:
@@ -686,12 +767,22 @@ class BusinessManager:
         """
         results = []
         for biz in self.businesses.values():
-            if not biz.active:
+            if not biz.active or biz.paused:
                 continue
             finance = biz.tick_daily(current_day, player_rep)
             event = biz.roll_event(current_day)
             results.append((biz.name, finance, event))
         return results
+
+    def get_pending_reports(self, current_day: int) -> List[Tuple[str, str]]:
+        """Get weekly reports ready to send as letters.
+        Returns list of (business_name, report_text)."""
+        reports = []
+        for biz in self.businesses.values():
+            if biz.should_send_report(current_day):
+                text = biz.generate_weekly_report(current_day)
+                reports.append((biz.name, text))
+        return reports
 
     def total_daily_income(self) -> float:
         return sum(b.net_daily for b in self.businesses.values() if b.active)

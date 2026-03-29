@@ -172,6 +172,23 @@ _bd("small_house",    "House",            5, 4, WOOD_WALL,   WOOD_FLOOR)
 _bd("trading_store",  "Trading Post",    12, 8, WOOD_WALL,   WOOD_FLOOR, "Merchant")
 _bd("warehouse",      "Warehouse",       14, 8, WOOD_WALL,   WOOD_FLOOR)
 _bd("dancehall",      "Dance Hall",      14,10, WOOD_WALL,   WOOD_FLOOR, "Dancehall Girl")
+# ── New buildings (1849 era) ──────────────────────────────────────────────
+_bd("brothel",        "Brothel",         12, 8, WOOD_WALL,   WOOD_FLOOR, "Madam")
+_bd("gunsmith",       "Gunsmith",         8, 6, WOOD_WALL,   WOOD_FLOOR, "Gunsmith")
+_bd("undertaker",     "Undertaker",       8, 6, WOOD_WALL,   WOOD_FLOOR, "Undertaker")
+_bd("bakery",         "Bakery",           8, 6, WOOD_WALL,   WOOD_FLOOR, "Baker")
+_bd("butcher_shop",   "Butcher Shop",     8, 6, WOOD_WALL,   WOOD_FLOOR, "Butcher")
+_bd("tailor",         "Tailor",           8, 6, WOOD_WALL,   WOOD_FLOOR, "Tailor")
+_bd("apothecary",     "Apothecary",       8, 6, WOOD_WALL,   WOOD_FLOOR, "Apothecary")
+_bd("land_office",    "Land Office",      8, 6, STONE_WALL,  WOOD_FLOOR, "Land Agent")
+_bd("courthouse",     "Courthouse",      14,10, STONE_WALL,  WOOD_FLOOR, "Judge")
+_bd("theater",        "Opera House",     16,12, WOOD_WALL,   WOOD_FLOOR, "Impresario")
+_bd("lumber_mill",    "Lumber Mill",     14, 8, WOOD_WALL,   ROAD,       "Mill Operator")
+_bd("brewery",        "Brewery",         10, 8, WOOD_WALL,   WOOD_FLOOR, "Brewmaster")
+_bd("bathhouse",      "Bathhouse",        8, 8, WOOD_WALL,   WOOD_FLOOR, "Attendant")
+_bd("freight_office", "Freight Office",   8, 6, WOOD_WALL,   WOOD_FLOOR, "Freight Agent")
+_bd("laundry",        "Laundry",          6, 5, WOOD_WALL,   WOOD_FLOOR, "Laundress")
+_bd("cobbler",        "Cobbler",          6, 5, WOOD_WALL,   WOOD_FLOOR, "Cobbler")
 # Outdoor features (no walls — placed as single terrain tiles)
 _bd("fire_pit",       "Fire Pit",         1, 1, 0, FIREPIT_T)
 _bd("well",           "Well",             1, 1, 0, WELL_TILE)
@@ -236,28 +253,74 @@ SETTLEMENT_BUILDINGS: Dict[str, dict] = {
     "small_town": {
         "required": ["general_store", "saloon", "hotel", "church", "jail"],
         "pool": [
-            ("bank",        0, 1),
-            ("school",      0, 1),
-            ("telegraph",   0, 1),
+            ("bank",         0, 1),
+            ("school",       0, 1),
+            ("telegraph",    0, 1),
             ("assay_office", 0, 1),
-            ("blacksmith",  1, 1),
-            ("doctor_office", 1, 1),
-            ("lawyer_office", 0, 1),
-            ("barber",      0, 1),
-            ("livery",      1, 1),
-            ("newspaper",   0, 1),
-            ("dancehall",   0, 1),
-            ("warehouse",   0, 1),
-            ("boarding_house", 0, 2),
-            ("house",       4, 10),
-            ("small_house", 3, 8),
-            ("well",        1, 3),
-            ("hitching_post", 3, 6),
-            ("corral",      0, 2),
+            ("blacksmith",   1, 1),
+            ("doctor_office",1, 1),
+            ("lawyer_office",0, 1),
+            ("barber",       0, 1),
+            ("livery",       1, 1),
+            ("newspaper",    0, 1),
+            ("dancehall",    0, 1),
+            ("warehouse",    0, 1),
+            ("boarding_house",0, 2),
+            ("gunsmith",     0, 1),
+            ("bakery",       0, 1),
+            ("brothel",      0, 1),
+            ("bathhouse",    0, 1),
+            ("house",        4, 10),
+            ("small_house",  3, 8),
+            ("well",         1, 3),
+            ("hitching_post",3, 6),
+            ("corral",       0, 2),
         ],
         "layout": "grid",
-        "streets_ew": 3,      # east-west streets
-        "streets_ns": 3,      # north-south streets
+        "streets_ew": 3,
+        "streets_ns": 3,
+    },
+    "city": {
+        "required": ["general_store", "saloon", "hotel", "church", "jail",
+                     "bank", "courthouse", "school", "newspaper"],
+        "pool": [
+            ("saloon",       1, 3),
+            ("hotel",        0, 2),
+            ("blacksmith",   1, 2),
+            ("doctor_office",1, 2),
+            ("lawyer_office",1, 2),
+            ("barber",       1, 2),
+            ("livery",       1, 2),
+            ("telegraph",    1, 1),
+            ("assay_office", 0, 1),
+            ("dancehall",    1, 2),
+            ("warehouse",    1, 3),
+            ("boarding_house",1, 3),
+            ("brothel",      1, 2),
+            ("gunsmith",     1, 1),
+            ("undertaker",   1, 1),
+            ("bakery",       1, 2),
+            ("butcher_shop", 1, 1),
+            ("tailor",       1, 1),
+            ("apothecary",   1, 1),
+            ("land_office",  1, 1),
+            ("theater",      0, 1),
+            ("lumber_mill",  0, 1),
+            ("brewery",      0, 1),
+            ("bathhouse",    1, 1),
+            ("freight_office",1, 1),
+            ("laundry",      1, 2),
+            ("cobbler",      0, 1),
+            ("trading_store",0, 1),
+            ("house",        8, 20),
+            ("small_house",  5, 12),
+            ("well",         2, 5),
+            ("hitching_post",4, 8),
+            ("corral",       1, 3),
+        ],
+        "layout": "grid",
+        "streets_ew": 5,
+        "streets_ns": 5,
     },
     "trading_post": {
         "required": ["trading_store"],
@@ -360,7 +423,9 @@ def classify_settlement(loc_type: str, population: int) -> str:
         return "trading_post"
     if lt == "boomtown" or (lt == "town" and population > 2000):
         return "boomtown"
-    if lt == "city" or population > 5000:
+    if lt == "city" or population > 10000:
+        return "city"
+    if population > 5000:
         return "small_town"
     if lt == "fort" or lt == "outpost":
         return "trading_post"
@@ -1126,6 +1191,188 @@ class TownGenerator:
             _set(bx + bw - 3, by + 4, LocalTerrain.CHAIR)
             # Open floor for dancing
             _place_item(bx + 2, by + 1, "whiskey", 2)
+
+        # ── Brothel ───────────────────────────────────────────────
+        elif key == "brothel":
+            # Bar in front
+            for ix in range(bx + 1, bx + 4):
+                _set(ix, by + 1, LocalTerrain.BAR_COUNTER)
+            # Private rooms with beds
+            rooms = min(4, (bw - 2) // 3)
+            for i in range(rooms):
+                rx = bx + 1 + i * 3
+                _set(rx, by + 3, LocalTerrain.BED)
+                if by + 5 < by + bh - 1:
+                    _set(rx, by + 5, LocalTerrain.BED)
+            _place_item(bx + 2, by + 1, "whiskey", 3)
+            _place_item(bx + 4, by + 1, "tobacco")
+
+        # ── Gunsmith ──────────────────────────────────────────────
+        elif key == "gunsmith":
+            # Display counter
+            counter_y = by + bh // 2
+            for ix in range(bx + 1, bx + bw - 1):
+                _set(ix, counter_y, LocalTerrain.BAR_COUNTER)
+            # Weapon racks (shelves) along back wall
+            for ix in range(bx + 1, bx + bw - 1):
+                _set(ix, by + 1, LocalTerrain.SHELF)
+            _set(bx + 1, by + bh - 2, LocalTerrain.DESK)
+            # Stock
+            _place_item(bx + 2, by + 1, "percussion_rifle")
+            _place_item(bx + 3, by + 1, "percussion_revolver")
+            _place_item(bx + 4, by + 1, "derringer")
+            _place_item(bx + 5, by + 1, "bowie_knife")
+            _place_item(bx + 2, counter_y, "rifle_ball", 20)
+            _place_item(bx + 4, counter_y, "revolver_ball", 20)
+            _place_item(bx + 6, counter_y, "shotgun_shell", 10)
+
+        # ── Undertaker ────────────────────────────────────────────
+        elif key == "undertaker":
+            # Coffin display (tables)
+            for i in range(3):
+                tx = bx + 1 + i * 2
+                if tx < bx + bw - 1:
+                    _set(tx, by + 1, LocalTerrain.TABLE)
+            _set(bx + 1, by + bh - 2, LocalTerrain.DESK)
+            _set(bx + bw - 2, by + 1, LocalTerrain.SHELF)
+
+        # ── Bakery ────────────────────────────────────────────────
+        elif key == "bakery":
+            # Oven (stove) in back
+            _set(bx + bw - 2, by + 1, LocalTerrain.STOVE)
+            _set(bx + bw - 3, by + 1, LocalTerrain.STOVE)
+            # Counter
+            counter_y = by + bh // 2
+            for ix in range(bx + 1, bx + bw - 1):
+                _set(ix, counter_y, LocalTerrain.BAR_COUNTER)
+            # Bread on counter
+            _place_item(bx + 2, counter_y, "hardtack", 10)
+            _place_item(bx + 4, counter_y, "hardtack", 10)
+
+        # ── Butcher Shop ──────────────────────────────────────────
+        elif key == "butcher_shop":
+            # Chopping block (table)
+            _set(bx + bw // 2, by + 1, LocalTerrain.TABLE)
+            # Counter
+            counter_y = by + bh // 2
+            for ix in range(bx + 1, bx + bw - 1):
+                _set(ix, counter_y, LocalTerrain.BAR_COUNTER)
+            # Meat hooks (shelf)
+            for ix in range(bx + 1, bx + bw - 1):
+                _set(ix, by + 1, LocalTerrain.SHELF)
+            _place_item(bx + 2, by + 1, "salt", 5)
+
+        # ── Tailor ────────────────────────────────────────────────
+        elif key == "tailor":
+            _set(bx + 1, by + 1, LocalTerrain.DESK)  # sewing table
+            _set(bx + 2, by + 1, LocalTerrain.CHAIR)
+            # Fabric shelves
+            for iy in range(by + 1, by + bh - 1):
+                _set(bx + bw - 2, iy, LocalTerrain.SHELF)
+            counter_y = by + bh // 2
+            for ix in range(bx + 1, bx + bw - 2):
+                _set(ix, counter_y, LocalTerrain.BAR_COUNTER)
+
+        # ── Apothecary ────────────────────────────────────────────
+        elif key == "apothecary":
+            # Medicine shelves on all walls
+            for iy in range(by + 1, by + bh - 1):
+                _set(bx + 1, iy, LocalTerrain.SHELF)
+                _set(bx + bw - 2, iy, LocalTerrain.SHELF)
+            for ix in range(bx + 2, bx + bw - 2):
+                _set(ix, by + 1, LocalTerrain.SHELF)
+            counter_y = by + bh * 3 // 5
+            for ix in range(bx + 2, bx + bw - 2):
+                _set(ix, counter_y, LocalTerrain.BAR_COUNTER)
+            _place_item(bx + 1, by + 2, "laudanum", 5)
+            _place_item(bx + 1, by + 3, "whiskey", 3)
+            _place_item(bx + bw - 2, by + 2, "bandage", 10)
+            _place_item(bx + bw - 2, by + 3, "tobacco", 3)
+
+        # ── Land Office ───────────────────────────────────────────
+        elif key == "land_office":
+            _set(bx + 1, by + 1, LocalTerrain.DESK)
+            _set(bx + 3, by + 1, LocalTerrain.DESK)
+            for iy in range(by + 1, by + bh - 1):
+                _set(bx + bw - 2, iy, LocalTerrain.SHELF)  # records
+            counter_y = by + bh // 2
+            for ix in range(bx + 1, bx + bw - 1):
+                _set(ix, counter_y, LocalTerrain.BAR_COUNTER)
+            _place_item(bx + 1, by + 1, "paper", 5)
+            _place_item(bx + 3, by + 1, "pencil")
+
+        # ── Courthouse ────────────────────────────────────────────
+        elif key == "courthouse":
+            # Judge's bench at front
+            for ix in range(bx + 3, bx + bw - 3):
+                _set(ix, by + 1, LocalTerrain.DESK)
+            _set(bx + bw // 2, by + 2, LocalTerrain.CHAIR)  # judge chair
+            # Witness stand
+            _set(bx + 2, by + 3, LocalTerrain.DESK)
+            _set(bx + 2, by + 4, LocalTerrain.CHAIR)
+            # Gallery seating
+            for row in range(min(5, bh - 6)):
+                for col in range(bw - 4):
+                    _set(bx + 2 + col, by + 5 + row, LocalTerrain.CHAIR)
+            # Railing
+            for ix in range(bx + 1, bx + bw - 1):
+                _set(ix, by + 4, LocalTerrain.BAR_COUNTER)
+
+        # ── Opera House / Theater ─────────────────────────────────
+        elif key == "theater":
+            # Stage at front (table terrain)
+            for ix in range(bx + 2, bx + bw - 2):
+                _set(ix, by + 1, LocalTerrain.TABLE)
+                _set(ix, by + 2, LocalTerrain.TABLE)
+            # Audience seating
+            for row in range(min(7, bh - 5)):
+                for col in range(bw - 4):
+                    _set(bx + 2 + col, by + 4 + row, LocalTerrain.CHAIR)
+
+        # ── Lumber Mill ───────────────────────────────────────────
+        elif key == "lumber_mill":
+            # Saw table
+            for ix in range(bx + 2, bx + bw - 2):
+                _set(ix, by + bh // 2, LocalTerrain.TABLE)
+            # Log storage (barrels)
+            for i in range(4):
+                _set(bx + 1 + i * 2, by + 1, LocalTerrain.BARREL_TILE)
+            # Plank output
+            _place_item(bx + bw - 2, by + bh - 2, "plank", 10)
+            _place_item(bx + 1, by + 1, "log", 5)
+
+        # ── Brewery ───────────────────────────────────────────────
+        elif key == "brewery":
+            # Vats (barrels)
+            for i in range(4):
+                _set(bx + 1 + i * 2, by + 1, LocalTerrain.BARREL_TILE)
+                _set(bx + 1 + i * 2, by + 2, LocalTerrain.BARREL_TILE)
+            _set(bx + bw - 2, by + bh - 2, LocalTerrain.STOVE)
+            _place_item(bx + bw - 2, by + 1, "whiskey", 10)
+
+        # ── Bathhouse ─────────────────────────────────────────────
+        elif key == "bathhouse":
+            # Tubs (beds repurposed as tubs)
+            for i in range(3):
+                _set(bx + 1 + i * 2, by + 2, LocalTerrain.BED)
+            _set(bx + bw - 2, by + 1, LocalTerrain.STOVE)  # water heater
+            _set(bx + 1, by + bh - 2, LocalTerrain.SHELF)  # towels
+
+        # ── Freight Office ────────────────────────────────────────
+        elif key == "freight_office":
+            _set(bx + 1, by + 1, LocalTerrain.DESK)
+            _set(bx + 2, by + 1, LocalTerrain.CHAIR)
+            # Crates/barrels
+            for i in range(3):
+                _set(bx + bw - 2, by + 1 + i, LocalTerrain.BARREL_TILE)
+            _set(bx + bw // 2, by + bh // 2, LocalTerrain.TABLE)  # scale
+
+        # ── Laundry / Cobbler ─────────────────────────────────────
+        elif key in ("laundry", "cobbler"):
+            _set(bx + 1, by + 1, LocalTerrain.TABLE)
+            _set(bx + 2, by + 1, LocalTerrain.CHAIR)
+            _set(bx + bw - 2, by + 1, LocalTerrain.SHELF)
+            _set(bx + bw - 2, by + bh - 2, LocalTerrain.BARREL_TILE)
 
 
 # ============================================================================

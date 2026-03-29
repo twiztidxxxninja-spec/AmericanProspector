@@ -1451,26 +1451,118 @@ class Engine:
         from src.items import Item, make_item
         import random as _rnd
 
-        # Offer choices based on state
-        options = ["Loot body"]
-        if has_sharp_tool(self.player):
-            options.append("Butcher")
+        # Build unified menu: let go / individual loot items / lodged / butcher
+        options = []
+        option_actions = []  # parallel list of (action_type, data)
+
         if npc.combat_state == "surrendered" or (npc.alive and npc.health < 25):
-            options.insert(0, "Let them go")
+            options.append("Let them go")
+            option_actions.append(("let_go", None))
 
-        choice = pick_from_list(self._console, self._ctx,
-            f"{npc.display_name()} — {npc.combat_state}", options)
-        if choice is None:
-            return
+        # Generate loot preview
+        rng = _rnd.Random(hash(npc.npc_id))
+        cash_found = rng.uniform(0.50, 15.00)
+        options.append(f"Take ${cash_found:.2f} (coins & dust)")
+        option_actions.append(("take_cash", cash_found))
 
-        chosen = options[choice]
+        # Occupation-based loot items
+        occ = (npc.occupation or "").lower()
+        loot_items = []
+        if "prospector" in occ or "miner" in occ:
+            gold = rng.uniform(0.01, 0.15)
+            options.append(f"Take {gold:.3f} oz gold dust")
+            option_actions.append(("take_gold", gold))
+            if rng.random() < 0.4:
+                loot_items.append("gold_pan")
+        if "hunter" in occ or "trapper" in occ:
+            if rng.random() < 0.5:
+                loot_items.append("hunting_knife")
+        if rng.random() < 0.3:
+            loot_items.append("hardtack")
+        if rng.random() < 0.35:
+            weapon_ids = ["percussion_revolver", "bowie_knife", "hunting_knife"]
+            loot_items.append(rng.choice(weapon_ids))
 
-        if chosen == "Let them go":
-            npc.combat_state = "fleeing"
-            self.add_message(f"{npc.name} scrambles away.", "normal")
-            return
+        for item_id in loot_items:
+            try:
+                test = make_item(item_id)
+                options.append(f"Take {test.name}")
+                option_actions.append(("take_item", item_id))
+            except Exception:
+                pass
 
-        if chosen == "Loot body":
+        # Lodged objects in wounds
+        if hasattr(npc, 'wounds') and npc.wounds:
+            for w in npc.wounds.wounds:
+                if w.lodged:
+                    options.append(f"Extract {w.lodged} from {w.part}")
+                    option_actions.append(("extract_lodged", w))
+
+        # Butcher option
+        if has_sharp_tool(self.player):
+            options.append("--- Butcher body ---")
+            option_actions.append(("butcher", None))
+
+        options.append("Done")
+        option_actions.append(("done", None))
+
+        # Loop so player can take multiple items
+        taken_cash = False
+        taken_gold = False
+        taken_items = set()
+        while True:
+            choice = pick_from_list(self._console, self._ctx,
+                f"{npc.display_name()} — {npc.combat_state}", options)
+            if choice is None:
+                return
+
+            act, data = option_actions[choice]
+
+            if act == "done":
+                return
+            if act == "let_go":
+                npc.combat_state = "fleeing"
+                self.add_message(f"{npc.name} scrambles away.", "normal")
+                return
+            if act == "take_cash" and not taken_cash:
+                self.player.cash += data
+                self.add_message(f"Took ${data:.2f}.", "normal")
+                taken_cash = True
+                options[choice] = f"(taken) ${data:.2f}"
+            elif act == "take_gold" and not taken_gold:
+                self.player.gold_oz += data
+                self.add_message(f"Took {data:.3f} oz gold dust.", "normal")
+                taken_gold = True
+                options[choice] = f"(taken) gold dust"
+            elif act == "take_item" and data not in taken_items:
+                try:
+                    self.player.inventory.append(make_item(data))
+                    nm = make_item(data).name
+                    self.add_message(f"Took {nm}.", "normal")
+                    taken_items.add(data)
+                    options[choice] = f"(taken) {nm}"
+                except Exception:
+                    pass
+            elif act == "extract_lodged":
+                w = data
+                lodged_items = {
+                    "bullet": "rifle_ball", "shot": "shotgun_shell",
+                    "arrowhead": "arrow",
+                }
+                item_id = lodged_items.get(w.lodged, "")
+                if item_id:
+                    try:
+                        self.player.inventory.append(make_item(item_id))
+                        self.add_message(f"Extracted {w.lodged} from {w.part}.", "normal")
+                    except Exception:
+                        pass
+                w.lodged = ""
+                options[choice] = f"(extracted) {w.part}"
+            elif act == "butcher":
+                break  # fall through to butcher code below
+            self.advance_time(1)
+
+        # ── Butcher path ──────────────────────────────────────────────
             # Generate loot based on NPC occupation
             rng = _rnd.Random(hash(npc.npc_id))
             loot = []

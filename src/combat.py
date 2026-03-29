@@ -61,9 +61,11 @@ AIMED_SHOTS = [
 def player_attack_npc(player: "Player", npc: "NPC",
                       weapon: Optional["Item"] = None,
                       distance: int = 1,
-                      aimed_part: int = 0) -> CombatEvent:
+                      aimed_part: int = 0,
+                      accuracy_bonus: int = 0) -> CombatEvent:
     """Resolve one attack from player onto npc. Mutates npc state.
-    aimed_part: index into AIMED_SHOTS (0 = center mass / no aim)."""
+    aimed_part: index into AIMED_SHOTS (0 = center mass / no aim).
+    accuracy_bonus: extra roll bonus from careful aim (+5 typical)."""
 
     # --- Weapon selection ---
     if weapon and weapon.weapon_type == "firearm":
@@ -122,7 +124,7 @@ def player_attack_npc(player: "Player", npc: "NPC",
 
     # --- Hit roll vs NPC dodge ---
     npc_defense = 8 + _attr_bonus(npc.attributes.get("agility", 10))
-    roll = _d20() + _skill_bonus(skill_val) + _attr_bonus(attr_val)
+    roll = _d20() + _skill_bonus(skill_val) + _attr_bonus(attr_val) + accuracy_bonus
     # Range penalty: at 5ft/tile, firearms accurate to ~40 tiles (200ft),
     # penalty kicks in beyond that. Melee penalized beyond adjacent (1 tile).
     if weapon and weapon.weapon_type == "firearm":

@@ -1,37 +1,64 @@
 """
-Combat mode — full takeover event loop for active combat.
+Combat mode — tick-based real-time combat with dedicated HUD.
 
-Auto-enters when hostiles detected. Provides one-key fire, target cycling,
-aimed shots, live hit chance, and descriptive condition readouts.
-ESC exits to normal game; re-enters automatically if hostiles remain.
+Time flows independently for all actors. Each action costs seconds.
+NPCs decide and act on their own timers, not in response to the player.
 
 Controls:
-  F       Fire at current target
+  F       Snap shot (fast, less accurate)
+  G       Careful aim (slow, +25% accuracy)
   R       Reload weapon
   TAB     Cycle target
-  1-5     Set aimed body part (1=center, 2=head, 3=legs, 4=arms, 5=torso)
-  Arrows  Move (triggers enemy turn)
-  SPACE   Wait/hold (enemy turn passes)
+  1-5     Set aimed body part
+  Arrows  Move (costs time — enemies may act while you move)
+  SPACE   Wait 1 second (watch what happens)
+  V       Free look (snap camera to target)
   ESC     Exit combat mode
 """
 
 import tcod
 import tcod.event
 import random
-from typing import List, Optional, TYPE_CHECKING
+import math
+from typing import List, Optional, Tuple, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from src.engine import Engine
 
 from src.combat import (
     player_attack_npc, AIMED_SHOTS, combat_taunt, incap_message,
+    _check_npc_morale, npc_attack_player,
 )
+from src.health_system import PART_HP
+
+
+# ── Action costs in seconds ───────────────────────────────────────────────
+
+ACTION_TIME = {
+    "snap_shot":    3,   # fast hip shot — lower accuracy
+    "aimed_shot":   6,   # normal aimed shot
+    "careful_aim":  10,  # slow careful aim — +25% hit bonus
+    "reload":       15,  # reload firearm (modified by weapon reload_time)
+    "move":         3,   # one tile movement
+    "wait":         1,   # hold position
+    "melee":        2,   # melee swing
+}
+
+# NPC action costs
+NPC_ACTION_TIME = {
+    "shoot":        5,
+    "careful_aim":  8,
+    "move_toward":  3,
+    "move_away":    3,
+    "take_cover":   4,
+    "reload":       12,
+    "wait":         2,
+}
 
 
 # ── Condition descriptions (no HP numbers) ────────────────────────────────
 
 def _condition(health: float, max_blood: float, state: str = "") -> tuple:
-    """Return (description, fg_color) based on health percentage."""
     if state == "dead":
         return "Dead", (100, 100, 100)
     if state in ("downed", "surrendered"):
@@ -60,7 +87,6 @@ def _animal_condition(a) -> tuple:
 # ── Helpers ───────────────────────────────────────────────────────────────
 
 def _get_all_hostiles(engine):
-    """Return list of (dist, kind, obj) for all hostile NPCs + animals."""
     px, py = engine.player.local_x, engine.player.local_y
     targets = []
     for n in engine._tile_npcs():
@@ -78,16 +104,13 @@ def _get_all_hostiles(engine):
 
 
 def _best_weapon(player):
-    """Find the best equipped weapon (prefer firearm with ammo)."""
     firearms = [i for i in player.inventory
                 if i.weapon_type == "firearm" and i.extra.get("loaded", 0) > 0]
     if firearms:
-        # Prefer the one in hand
         for f in firearms:
             if f.name == player.right_hand or f.name == player.left_hand:
                 return f
         return firearms[0]
-    # Fall back to melee
     melee = [i for i in player.inventory if i.weapon_type == "melee"]
     if melee:
         for m in melee:
@@ -97,8 +120,7 @@ def _best_weapon(player):
     return None
 
 
-def _calc_hit_chance(player, target, weapon, dist, aimed_part):
-    """Estimate hit chance as a percentage."""
+def _calc_hit_chance(player, target, weapon, dist, aimed_part, accuracy_bonus=0):
     if weapon is None:
         return 0
     if weapon.weapon_type == "firearm":
@@ -108,40 +130,114 @@ def _calc_hit_chance(player, target, weapon, dist, aimed_part):
         skill = player.skills.get("survival", 0)
         attr = player.attributes.get("strength", 10)
 
-    avg_roll = 10.5 + skill // 2 + attr // 3
+    avg_roll = 10.5 + skill // 2 + attr // 3 + accuracy_bonus
 
-    # Target defense
     if hasattr(target, 'attributes'):
         defense = 8 + target.attributes.get("agility", 10) // 3
     else:
         size_def = {"small": 12, "medium": 9, "large": 6, "very_large": 5}
         defense = size_def.get(getattr(target, 'species', None) and target.species.size, 8)
 
-    # Range penalty
     if weapon.weapon_type == "firearm" and dist > 40:
         avg_roll -= (dist - 40) // 5
     elif weapon.weapon_type != "firearm" and dist > 1:
         avg_roll -= (dist - 1) * 3
 
-    # Aimed penalty
     aim = AIMED_SHOTS[aimed_part] if 0 <= aimed_part < len(AIMED_SHOTS) else AIMED_SHOTS[0]
-    avg_roll += aim[1]  # penalty (negative)
+    avg_roll += aim[1]
 
     effective = avg_roll - defense
     return min(95, max(5, int(50 + effective * 5)))
 
 
+# ── NPC AI decisions ──────────────────────────────────────────────────────
+
+def _npc_decide(npc, player, lmap, rng) -> Tuple[str, int]:
+    """NPC chooses an action and returns (action_name, time_cost).
+    Called when NPC's action timer expires."""
+    dist = max(abs(npc.local_x - player.local_x),
+               abs(npc.local_y - player.local_y))
+    hp_pct = npc.health / max(getattr(npc.wounds, 'max_blood', 100), 1)
+
+    # Check if NPC has a ranged weapon (simplified)
+    has_gun = rng.random() < 0.4  # 40% of hostile NPCs are armed
+
+    # Badly hurt — try to flee or surrender
+    if hp_pct < 0.2:
+        _check_npc_morale(npc)
+        if npc.combat_state in ("fleeing", "surrendered"):
+            return "flee", NPC_ACTION_TIME["move_away"]
+        return "shoot", NPC_ACTION_TIME["shoot"]
+
+    # At range with gun — shoot or careful aim
+    if has_gun and dist > 3:
+        if hp_pct > 0.7 and rng.random() < 0.3:
+            return "careful_aim", NPC_ACTION_TIME["careful_aim"]
+        return "shoot", NPC_ACTION_TIME["shoot"]
+
+    # Close range — melee or close shot
+    if dist <= 1:
+        return "melee", 2
+
+    # Mid range without gun — close distance
+    if not has_gun and dist > 1:
+        return "move_toward", NPC_ACTION_TIME["move_toward"]
+
+    # Default — shoot or move
+    if has_gun:
+        return "shoot", NPC_ACTION_TIME["shoot"]
+    return "move_toward", NPC_ACTION_TIME["move_toward"]
+
+
+def _npc_execute(engine, npc, action, player, lmap, add_msg, rng):
+    """Execute an NPC's chosen action."""
+    if action == "flee":
+        dx = 1 if npc.local_x > player.local_x else -1
+        dy = 1 if npc.local_y > player.local_y else -1
+        npc.local_x += dx * 2
+        npc.local_y += dy * 2
+        if (abs(npc.local_x - player.local_x) > 25 or
+                abs(npc.local_y - player.local_y) > 25):
+            npc.present = False
+            add_msg(f"{npc.name} flees into the distance.")
+        return
+
+    if action == "move_toward":
+        dx = 1 if player.local_x > npc.local_x else (-1 if player.local_x < npc.local_x else 0)
+        dy = 1 if player.local_y > npc.local_y else (-1 if player.local_y < npc.local_y else 0)
+        nx, ny = npc.local_x + dx, npc.local_y + dy
+        if lmap.in_bounds(nx, ny) and lmap.is_passable(nx, ny):
+            npc.local_x, npc.local_y = nx, ny
+        return
+
+    if action in ("shoot", "careful_aim", "melee"):
+        # NPC attacks player
+        event = npc_attack_player(npc, player)
+        sev = "critical" if event.hit else "normal"
+        add_msg(event.message, sev)
+        if event.hit:
+            engine._splatter_blood(lmap, player.local_x, player.local_y, 1)
+        if event.killed:
+            engine.journal.end_combat()
+            engine._trigger_death(f"Killed by {npc.name}.")
+        return
+
+
 # ── Main combat loop ─────────────────────────────────────────────────────
 
 def enter_combat_mode(engine: "Engine", console, ctx) -> None:
-    """Full-takeover combat event loop."""
+    """Tick-based combat event loop. Time flows for all actors."""
     aimed_part = 0
     target_idx = 0
-    combat_messages = []  # local combat log
+    combat_messages = []
+    rng = random.Random()
 
     lmap = engine.current_local
     region = lmap._region_name if lmap else ""
     engine.journal.begin_combat(engine.time.date_string, region)
+
+    # NPC action timers: {npc_id: seconds_until_next_action}
+    npc_timers = {}
 
     def add_msg(text, severity="normal"):
         combat_messages.append((text, severity))
@@ -150,36 +246,80 @@ def enter_combat_mode(engine: "Engine", console, ctx) -> None:
         engine.add_message(text, severity)
         engine.journal.log_combat_event(text, severity)
 
+    def tick_time(seconds):
+        """Advance time and let NPCs act if their timers expire."""
+        remaining = seconds
+        while remaining > 0:
+            # Find soonest NPC action
+            soonest = remaining
+            for npc in engine._tile_npcs():
+                if not npc.alive or npc.combat_state not in ("hostile", "fleeing"):
+                    continue
+                timer = npc_timers.get(npc.npc_id, 0)
+                if timer < soonest:
+                    soonest = timer
+
+            # Advance to soonest event or remaining time
+            step = max(1, min(soonest, remaining))
+
+            # Tick all NPC timers
+            for npc in engine._tile_npcs():
+                if not npc.alive or npc.combat_state not in ("hostile", "fleeing"):
+                    continue
+                nid = npc.npc_id
+                npc_timers[nid] = npc_timers.get(nid, 0) - step
+                if npc_timers[nid] <= 0:
+                    # NPC acts
+                    action, cost = _npc_decide(npc, engine.player, lmap, rng)
+
+                    # Taunt before acting (30% chance)
+                    if rng.random() < 0.3:
+                        hp_pct = npc.health / max(npc.wounds.max_blood, 1)
+                        taunt = combat_taunt(npc.name, hp_pct, True)
+                        if taunt:
+                            add_msg(taunt)
+
+                    # Incap flavor if badly wounded
+                    if npc.health < 25 and npc.health > 0 and rng.random() < 0.3:
+                        add_msg(incap_message(npc.name))
+                        engine._splatter_blood(lmap, npc.local_x, npc.local_y, 1)
+
+                    _npc_execute(engine, npc, action, engine.player, lmap, add_msg, rng)
+                    npc_timers[nid] = cost
+
+            engine.time.advance_seconds(step)
+            remaining -= step
+
+            # Check if player died during NPC actions
+            if engine.player.survival.health <= 0:
+                return
+
     add_msg("COMBAT!", "critical")
 
     while True:
         lmap = engine.current_local
         px, py = engine.player.local_x, engine.player.local_y
 
-        # Get hostiles
         hostiles = _get_all_hostiles(engine)
         if not hostiles:
             add_msg("The fight is over.", "normal")
             engine.journal.end_combat()
             return
 
-        # Clamp target index
         if target_idx >= len(hostiles):
             target_idx = 0
         dist, kind, target = hostiles[target_idx]
 
-        # Current weapon
         weapon = _best_weapon(engine.player)
         hit_chance = _calc_hit_chance(engine.player, target, weapon, dist, aimed_part) if weapon else 0
+        careful_chance = _calc_hit_chance(engine.player, target, weapon, dist, aimed_part, accuracy_bonus=5) if weapon else 0
 
         # ── Render ────────────────────────────────────────────────────
         engine.recompute_fov()
         engine.renderer.render_all(
             lmap, engine.world, engine.player, engine.messages,
-            state="local_map", locals_dict=engine.locals,
-            gold_overlay=False)
+            state="local_map", locals_dict=engine.locals, gold_overlay=False)
 
-        # Draw NPCs and wildlife
         _on_map = engine._tile_npcs()
         engine.renderer.draw_npcs(_on_map, lmap, engine.player)
         _animals = engine.wildlife_mgr.get_animals(
@@ -187,19 +327,17 @@ def enter_combat_mode(engine: "Engine", console, ctx) -> None:
             engine.player.area_x, engine.player.area_y)
         engine.renderer.draw_wildlife(_animals, lmap, engine.player)
 
-        # ── Red banner (row 0) ────────────────────────────────────────
+        # Red banner
         console.draw_rect(0, 0, 120, 1, ord(" "), fg=(255, 255, 255), bg=(100, 15, 15))
         console.print(2, 0, "IN COMBAT", fg=(255, 255, 255), bg=(100, 15, 15))
         aim_label = AIMED_SHOTS[aimed_part][0] if 0 <= aimed_part < len(AIMED_SHOTS) else "Center"
         console.print(60, 0, f"Aim: {aim_label}", fg=(255, 200, 100), bg=(100, 15, 15))
 
-        # ── Combat sidebar ────────────────────────────────────────────
+        # Combat sidebar
         x = 82
-        # Clear sidebar area
         for sy in range(8, 44):
             console.print(x, sy, " " * 36, fg=(0, 0, 0), bg=(0, 0, 0))
 
-        # Target info
         y = 8
         console.print(x, y, "── Target ──────────────────", fg=(180, 60, 60))
         y += 1
@@ -217,20 +355,21 @@ def enter_combat_mode(engine: "Engine", console, ctx) -> None:
         console.print(x, y, f"   Range: {dist} tiles ({dist * 5}ft)", fg=(180, 180, 180))
         y += 1
 
-        # Hit chance
         if weapon:
-            if hit_chance >= 70:
-                hc_fg = (100, 255, 100)
-            elif hit_chance >= 40:
-                hc_fg = (255, 255, 100)
-            else:
-                hc_fg = (255, 100, 100)
-            console.print(x, y, f"   Hit chance: {hit_chance}%", fg=hc_fg)
+            if hit_chance >= 70: hc_fg = (100, 255, 100)
+            elif hit_chance >= 40: hc_fg = (255, 255, 100)
+            else: hc_fg = (255, 100, 100)
+            console.print(x, y, f"   Snap:  {hit_chance}%  (3s)", fg=hc_fg)
+            y += 1
+            if careful_chance >= 70: cc_fg = (100, 255, 100)
+            elif careful_chance >= 40: cc_fg = (255, 255, 100)
+            else: cc_fg = (255, 100, 100)
+            console.print(x, y, f"   Aimed: {careful_chance}% (10s)", fg=cc_fg)
         else:
             console.print(x, y, "   No weapon!", fg=(255, 80, 80))
         y += 2
 
-        # Weapon info
+        # Weapon
         console.print(x, y, "── Weapon ──────────────────", fg=(140, 140, 140))
         y += 1
         if weapon:
@@ -242,12 +381,12 @@ def enter_combat_mode(engine: "Engine", console, ctx) -> None:
                 ammo_fg = (100, 255, 100) if loaded > 0 else (255, 80, 80)
                 console.print(x, y, f"   Loaded: {loaded}/{cap}", fg=ammo_fg)
             else:
-                console.print(x, y, f"   Melee", fg=(180, 180, 180))
+                console.print(x, y, "   Melee", fg=(180, 180, 180))
         else:
             console.print(x, y, "   Unarmed", fg=(180, 100, 100))
         y += 2
 
-        # All hostiles list
+        # All hostiles
         console.print(x, y, "── Hostiles ────────────────", fg=(180, 60, 60))
         y += 1
         for i, (d, k, t) in enumerate(hostiles[:6]):
@@ -262,32 +401,29 @@ def enter_combat_mode(engine: "Engine", console, ctx) -> None:
             y += 1
 
         y += 1
-        # Quick keys
-        console.print(x, y,     "[F]ire  [R]eload  [TAB]target", fg=(120, 120, 120))
-        console.print(x, y + 1, "[1-5] Aim  [SPACE] Wait", fg=(120, 120, 120))
-        console.print(x, y + 2, "[V]iew target  [arrows] Move", fg=(120, 120, 120))
-        console.print(x, y + 3, "[ESC] Exit combat mode", fg=(120, 120, 120))
+        console.print(x, y,     "[F] Snap shot (3s)", fg=(120, 120, 120))
+        console.print(x, y + 1, "[G] Careful aim (10s, +25%)", fg=(120, 120, 120))
+        console.print(x, y + 2, "[R]eload  [TAB] target", fg=(120, 120, 120))
+        console.print(x, y + 3, "[1-5] Aim part  [SPACE] Wait", fg=(120, 120, 120))
+        console.print(x, y + 4, "[V]iew  [arrows] Move", fg=(120, 120, 120))
+        console.print(x, y + 5, "[ESC] Exit combat", fg=(120, 120, 120))
 
-        # ── Combat log at bottom ──────────────────────────────────────
+        # Combat log
         log_y = 44
         for i, (msg, sev) in enumerate(combat_messages[-4:]):
             fg = (255, 80, 80) if sev == "critical" else (200, 200, 200)
             console.print(1, log_y + i, msg[:78], fg=fg, bg=(0, 0, 0))
 
-        # ── Target highlight on map ───────────────────────────────────
+        # Target highlight
         tx = getattr(target, 'local_x', 0)
         ty = getattr(target, 'local_y', 0)
-        half_w = 40  # VIEWPORT_W // 2
-        half_h = 19  # VIEWPORT_H // 2
+        half_w, half_h = 40, 19
         sx = tx - (px - half_w)
-        sy = ty - (py - half_h) + 1  # +1 for hotbar
+        sy = ty - (py - half_h) + 1
         if 0 <= sx < 80 and 1 <= sy < 40:
-            # Draw red X on target
             console.print(sx, sy, "X", fg=(255, 40, 40), bg=(80, 10, 10))
-        # If target is under sidebar, show direction arrow at edge
         elif sx >= 80:
-            arrow_y = max(1, min(39, sy))
-            console.print(79, arrow_y, ">", fg=(255, 40, 40))
+            console.print(79, max(1, min(39, sy)), ">", fg=(255, 40, 40))
 
         ctx.present(console)
 
@@ -300,67 +436,45 @@ def enter_combat_mode(engine: "Engine", console, ctx) -> None:
                 K = tcod.event.KeySym
 
                 if sym == K.ESCAPE:
-                    return  # exit combat mode
+                    return
 
-                # Fire
+                # Snap shot (F) — fast, normal accuracy
                 if sym == K.f:
                     if not weapon:
                         add_msg("No weapon!", "advisory")
                         break
                     if weapon.weapon_type == "firearm":
-                        loaded = weapon.extra.get("loaded", 0)
-                        if loaded <= 0:
-                            add_msg(f"*click* — {weapon.name} isn't loaded. [R] to reload.", "advisory")
+                        if weapon.extra.get("loaded", 0) <= 0:
+                            add_msg(f"*click* — not loaded. [R] to reload.", "advisory")
                             break
-                    # Execute attack
-                    if kind == "npc":
-                        evt = player_attack_npc(engine.player, target, weapon,
-                                                distance=dist, aimed_part=aimed_part)
-                        add_msg(evt.message, "critical" if evt.killed else "normal")
-                        if evt.hit:
-                            skill = "firearms" if weapon.weapon_type == "firearm" else "survival"
-                            engine.player.gain_skill_xp(skill, 3.0 if evt.killed else 1.5)
-                            engine._splatter_blood(lmap, target.local_x, target.local_y,
-                                                   2 if evt.killed else 1)
-                            if evt.killed:
-                                engine._blood_pool(lmap, target.local_x, target.local_y, 2, True)
-                                engine.journal.log_enemy_killed(target.name)
-                                lmap.invalidate_terrain_cache()
-                            if evt.defender_fled:
-                                engine.journal.log_enemy_fled(target.name)
-                    else:
-                        # Animal attack
-                        sp = target.species
-                        roll = random.randint(1, 20)
-                        roll += engine.player.skills.get("firearms" if weapon.weapon_type == "firearm" else "survival", 0) // 2
-                        roll += engine.player.attributes.get("agility" if weapon.weapon_type == "firearm" else "strength", 10) // 3
-                        aim = AIMED_SHOTS[aimed_part]
-                        roll += aim[1]
-                        defense = {"small": 12, "medium": 9, "large": 6, "very_large": 5}.get(sp.size, 8)
-                        if weapon.weapon_type == "firearm" and dist > 40:
-                            roll -= (dist - 40) // 5
-                        if roll >= defense:
-                            dmg = max(1, int(random.randint(weapon.damage_min, weapon.damage_max) * aim[2]))
-                            if aim[3] == "head" and dmg >= 5 and random.random() < 0.6:
-                                dmg = max(dmg, int(target.health) + 10)
-                            target.take_damage(float(dmg))
-                            engine._splatter_blood(lmap, target.local_x, target.local_y,
-                                                   2 if target.state == "dead" else 1)
-                            if target.state == "dead":
-                                add_msg(f"The {sp.display_name} drops.", "normal")
-                                engine._blood_pool(lmap, target.local_x, target.local_y, 2, True)
-                                engine.journal.log_enemy_killed(sp.display_name)
-                            elif target.state == "downed":
-                                add_msg(f"The {sp.display_name} collapses.", "normal")
-                            else:
-                                add_msg(f"You hit the {sp.display_name}.", "normal")
-                        else:
-                            add_msg(f"The shot misses the {sp.display_name}.", "normal")
-                        engine.player.gain_skill_xp("firearms" if weapon.weapon_type == "firearm" else "survival", 2.0)
+                    _do_player_attack(engine, target, kind, weapon, aimed_part,
+                                      dist, 0, add_msg, lmap, rng)
+                    tick_time(ACTION_TIME["snap_shot"])
+                    break
 
-                    # Enemy turn after firing
-                    engine._npc_combat_tick()
-                    engine.time.advance_seconds(5)
+                # Careful aim (G) — slow, +5 roll bonus
+                if sym == K.g:
+                    if not weapon:
+                        add_msg("No weapon!", "advisory")
+                        break
+                    if weapon.weapon_type == "firearm":
+                        if weapon.extra.get("loaded", 0) <= 0:
+                            add_msg(f"*click* — not loaded. [R] to reload.", "advisory")
+                            break
+                    add_msg("You take careful aim...", "normal")
+                    tick_time(ACTION_TIME["careful_aim"] - ACTION_TIME["snap_shot"])
+                    # Re-check target still alive/present
+                    if kind == "npc" and (not target.alive or not target.present):
+                        add_msg("Target gone.", "advisory")
+                        break
+                    if kind == "animal" and not target.alive:
+                        add_msg("Target down.", "advisory")
+                        break
+                    dist = max(abs(getattr(target, 'local_x', 0) - engine.player.local_x),
+                               abs(getattr(target, 'local_y', 0) - engine.player.local_y))
+                    _do_player_attack(engine, target, kind, weapon, aimed_part,
+                                      dist, 5, add_msg, lmap, rng)
+                    tick_time(ACTION_TIME["snap_shot"])
                     break
 
                 # Reload
@@ -369,7 +483,7 @@ def enter_combat_mode(engine: "Engine", console, ctx) -> None:
                         loaded = weapon.extra.get("loaded", 0)
                         cap = weapon.extra.get("capacity", 1)
                         if loaded >= cap:
-                            add_msg("Already fully loaded.", "advisory")
+                            add_msg("Already loaded.", "advisory")
                         else:
                             ammo_type = weapon.extra.get("ammo_type", "")
                             ammo_item = None
@@ -386,9 +500,10 @@ def enter_combat_mode(engine: "Engine", console, ctx) -> None:
                                         engine.player.inventory.remove(ammo_item)
                                 else:
                                     engine.player.inventory.remove(ammo_item)
-                                add_msg(f"Loaded {rounds} round(s). ({weapon.extra['loaded']}/{cap})", "normal")
-                                engine._npc_combat_tick()
-                                engine.time.advance_seconds(weapon.extra.get("reload_time", 15))
+                                reload_t = weapon.extra.get("reload_time", 15)
+                                add_msg(f"Reloading... ({reload_t}s)", "normal")
+                                tick_time(reload_t)
+                                add_msg(f"Loaded {rounds}. ({weapon.extra['loaded']}/{cap})", "normal")
                             else:
                                 add_msg(f"No {ammo_type} ammo!", "advisory")
                     else:
@@ -403,47 +518,24 @@ def enter_combat_mode(engine: "Engine", console, ctx) -> None:
                     add_msg(f"Target: {nm} ({d} tiles)", "advisory")
                     break
 
-                # Aimed body part 1-5
+                # Aimed body part
                 if sym in (K.N1, K.N2, K.N3, K.N4, K.N5,
                            K.KP_1, K.KP_2, K.KP_3, K.KP_4, K.KP_5):
                     idx_map = {K.N1: 0, K.N2: 1, K.N3: 2, K.N4: 3, K.N5: 4,
                                K.KP_1: 0, K.KP_2: 1, K.KP_3: 2, K.KP_4: 3, K.KP_5: 4}
                     aimed_part = idx_map.get(sym, 0)
-                    aim_name = AIMED_SHOTS[aimed_part][0]
-                    add_msg(f"Aim: {aim_name}", "advisory")
+                    add_msg(f"Aim: {AIMED_SHOTS[aimed_part][0]}", "advisory")
                     break
 
-                # Wait/hold
+                # Wait
                 if sym == K.SPACE:
-                    add_msg("You hold position.", "normal")
-                    engine._npc_combat_tick()
-                    engine.time.advance_seconds(5)
+                    add_msg("You hold.", "normal")
+                    tick_time(ACTION_TIME["wait"])
                     break
 
-                # Free look — center viewport on target temporarily
+                # Free look
                 if sym == K.v:
-                    # Snap view to target for one frame
-                    old_x, old_y = engine.player.local_x, engine.player.local_y
-                    t_x = getattr(target, 'local_x', px)
-                    t_y = getattr(target, 'local_y', py)
-                    add_msg(f"Looking at target ({t_x},{t_y})...", "advisory")
-                    # Temporarily move camera by shifting player pos for render
-                    engine.player.local_x = t_x
-                    engine.player.local_y = t_y
-                    engine.renderer.render_all(
-                        lmap, engine.world, engine.player, engine.messages,
-                        state="local_map", locals_dict=engine.locals)
-                    engine.renderer.draw_npcs(_on_map, lmap, engine.player)
-                    engine.renderer.draw_wildlife(_animals, lmap, engine.player)
-                    console.print(40, 20, "@", fg=(100, 100, 255))  # player marker
-                    console.print(2, 0, "FREE LOOK — press any key", fg=(255, 255, 100), bg=(40, 40, 80))
-                    ctx.present(console)
-                    engine.player.local_x = old_x
-                    engine.player.local_y = old_y
-                    # Wait for any key
-                    for evt2 in tcod.event.wait():
-                        if isinstance(evt2, (tcod.event.KeyDown, tcod.event.Quit)):
-                            break
+                    _free_look(engine, console, ctx, target, lmap, _on_map, _animals)
                     break
 
                 # Movement
@@ -455,6 +547,84 @@ def enter_combat_mode(engine: "Engine", console, ctx) -> None:
                          K.KP_1: (-1, 1), K.KP_3: (1, 1)}
                 if sym in moves:
                     dx, dy = moves[sym]
-                    engine._do_move(dx, dy)
-                    # Combat tick happens in _do_move via normal flow
+                    nx = engine.player.local_x + dx
+                    ny = engine.player.local_y + dy
+                    if lmap.in_bounds(nx, ny) and lmap.is_passable(nx, ny):
+                        engine.player.local_x = nx
+                        engine.player.local_y = ny
+                        engine.recompute_fov()
+                        tick_time(ACTION_TIME["move"])
                     break
+
+
+def _do_player_attack(engine, target, kind, weapon, aimed_part, dist,
+                      accuracy_bonus, add_msg, lmap, rng):
+    """Execute a player attack (shared by snap and careful aim)."""
+    if kind == "npc":
+        evt = player_attack_npc(engine.player, target, weapon,
+                                distance=dist, aimed_part=aimed_part,
+                                accuracy_bonus=accuracy_bonus)
+        add_msg(evt.message, "critical" if evt.killed else "normal")
+        if evt.hit:
+            skill = "firearms" if weapon.weapon_type == "firearm" else "survival"
+            engine.player.gain_skill_xp(skill, 3.0 if evt.killed else 1.5)
+            engine._splatter_blood(lmap, target.local_x, target.local_y,
+                                   2 if evt.killed else 1)
+            if evt.killed:
+                engine._blood_pool(lmap, target.local_x, target.local_y, 2, True)
+                engine.journal.log_enemy_killed(target.name)
+                lmap.invalidate_terrain_cache()
+            if evt.defender_fled:
+                engine.journal.log_enemy_fled(target.name)
+    else:
+        sp = target.species
+        roll = rng.randint(1, 20)
+        roll += engine.player.skills.get("firearms" if weapon.weapon_type == "firearm" else "survival", 0) // 2
+        roll += engine.player.attributes.get("agility" if weapon.weapon_type == "firearm" else "strength", 10) // 3
+        roll += accuracy_bonus
+        aim = AIMED_SHOTS[aimed_part]
+        roll += aim[1]
+        defense = {"small": 12, "medium": 9, "large": 6, "very_large": 5}.get(sp.size, 8)
+        if weapon.weapon_type == "firearm":
+            if dist > 40:
+                roll -= (dist - 40) // 5
+            weapon.extra["loaded"] = weapon.extra.get("loaded", 1) - 1
+        if roll >= defense:
+            dmg = max(1, int(rng.randint(weapon.damage_min, weapon.damage_max) * aim[2]))
+            if aim[3] == "head" and dmg >= 5 and rng.random() < 0.6:
+                dmg = max(dmg, int(target.health) + 10)
+            target.take_damage(float(dmg))
+            engine._splatter_blood(lmap, target.local_x, target.local_y,
+                                   2 if target.state == "dead" else 1)
+            if target.state == "dead":
+                add_msg(f"The {sp.display_name} drops.", "normal")
+                engine._blood_pool(lmap, target.local_x, target.local_y, 2, True)
+                engine.journal.log_enemy_killed(sp.display_name)
+            elif target.state == "downed":
+                add_msg(f"The {sp.display_name} collapses.", "normal")
+            else:
+                add_msg(f"You hit the {sp.display_name}.", "normal")
+        else:
+            add_msg(f"The shot misses the {sp.display_name}.", "normal")
+        engine.player.gain_skill_xp(
+            "firearms" if weapon.weapon_type == "firearm" else "survival", 2.0)
+
+
+def _free_look(engine, console, ctx, target, lmap, on_map, animals):
+    """Snap camera to target position temporarily."""
+    px, py = engine.player.local_x, engine.player.local_y
+    tx = getattr(target, 'local_x', px)
+    ty = getattr(target, 'local_y', py)
+    engine.player.local_x, engine.player.local_y = tx, ty
+    engine.renderer.render_all(
+        lmap, engine.world, engine.player, engine.messages,
+        state="local_map", locals_dict=engine.locals)
+    engine.renderer.draw_npcs(on_map, lmap, engine.player)
+    engine.renderer.draw_wildlife(animals, lmap, engine.player)
+    console.print(40, 20, "@", fg=(100, 100, 255))
+    console.print(2, 0, "FREE LOOK — press any key", fg=(255, 255, 100), bg=(40, 40, 80))
+    ctx.present(console)
+    engine.player.local_x, engine.player.local_y = px, py
+    for evt in tcod.event.wait():
+        if isinstance(evt, (tcod.event.KeyDown, tcod.event.Quit)):
+            break

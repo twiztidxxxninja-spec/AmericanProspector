@@ -3573,6 +3573,16 @@ class Engine:
                             return
                     self.add_message(f"You ready the {wname}.", "normal")
 
+        # ── Aimed shot selection (firearms and melee) ─────────────────────
+        aimed_part = 0
+        if weapon:
+            from src.combat import AIMED_SHOTS
+            aim_labels = [a[0] for a in AIMED_SHOTS]
+            aim_idx = pick_from_list(self._console, self._ctx, "Aim where?", aim_labels)
+            if aim_idx is None:
+                return
+            aimed_part = aim_idx
+
         # ── NPC target ────────────────────────────────────────────────────
         if kind == "npc":
             target = target_obj
@@ -3588,7 +3598,8 @@ class Engine:
             # Ranged: apply distance penalty to hit
             if is_ranged and dist > 5:
                 self.add_message(f"(Range: {dist} tiles — accuracy reduced)", "advisory")
-            event  = player_attack_npc(self.player, target, weapon, distance=dist)
+            event = player_attack_npc(self.player, target, weapon,
+                                      distance=dist, aimed_part=aimed_part)
             self.add_message(event.message, "normal")
 
             if event.hit:
@@ -3635,21 +3646,31 @@ class Engine:
             animal = target_obj
             sp     = animal.species
 
+            # Aimed shot modifiers
+            from src.combat import AIMED_SHOTS
+            aim = AIMED_SHOTS[aimed_part] if 0 <= aimed_part < len(AIMED_SHOTS) else AIMED_SHOTS[0]
+            aim_label, aim_penalty, aim_dmg_mult, aim_special = aim
+
             # Hit roll: firearms skill vs animal's dodge (agility-proxy = size)
             size_defense = {"small": 12, "medium": 9, "large": 6, "very_large": 5}
             defense   = size_defense.get(sp.size, 8)
             skill_val = self.player.skills.get("firearms" if (weapon and weapon.weapon_type == "firearm") else "survival", 0)
             attr_val  = self.player.attributes.get("agility" if (weapon and weapon.weapon_type == "firearm") else "strength", 10)
-            roll      = _rnd.randint(1, 20) + skill_val // 2 + attr_val // 3
+            roll      = _rnd.randint(1, 20) + skill_val // 2 + attr_val // 3 + aim_penalty
 
             if roll < defense:
-                self.add_message(f"You miss the {sp.display_name}.", "normal")
+                aim_str = f" (aimed: {aim_label})" if aimed_part > 0 else ""
+                self.add_message(f"You miss the {sp.display_name}.{aim_str}", "normal")
             else:
-                # Damage
+                # Damage with aimed shot multiplier
                 if weapon:
-                    dmg = _rnd.randint(weapon.damage_min, weapon.damage_max)
+                    dmg = max(1, int(_rnd.randint(weapon.damage_min, weapon.damage_max) * aim_dmg_mult))
                 else:
-                    dmg = _rnd.randint(1, 4)
+                    dmg = max(1, int(_rnd.randint(1, 4) * aim_dmg_mult))
+
+                # Headshot instant kill chance on animals too
+                if aim_special == "head" and dmg >= 5 and _rnd.random() < 0.6:
+                    dmg = max(dmg, int(animal.health) + 10)
 
                 animal.take_damage(float(dmg))
                 skill_name = "firearms" if (weapon and weapon.weapon_type == "firearm") else "survival"

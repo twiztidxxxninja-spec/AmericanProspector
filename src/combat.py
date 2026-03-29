@@ -48,10 +48,22 @@ class CombatEvent:
 
 # ── Player attacks NPC ─────────────────────────────────────────────────────
 
+# Aimed shot body part targets — (label, hit_penalty, damage_mult, special)
+AIMED_SHOTS = [
+    ("Center mass (normal)",  0, 1.0, None),
+    ("Head — lethal",        -6, 2.0, "head"),
+    ("Legs — slow them",     -3, 0.7, "legs"),
+    ("Arms — disarm",        -4, 0.6, "arms"),
+    ("Torso — heavy bleed",  -2, 1.2, "torso"),
+]
+
+
 def player_attack_npc(player: "Player", npc: "NPC",
                       weapon: Optional["Item"] = None,
-                      distance: int = 1) -> CombatEvent:
-    """Resolve one attack from player onto npc. Mutates npc state."""
+                      distance: int = 1,
+                      aimed_part: int = 0) -> CombatEvent:
+    """Resolve one attack from player onto npc. Mutates npc state.
+    aimed_part: index into AIMED_SHOTS (0 = center mass / no aim)."""
 
     # --- Weapon selection ---
     if weapon and weapon.weapon_type == "firearm":
@@ -120,15 +132,33 @@ def player_attack_npc(player: "Player", npc: "NPC",
         # Melee / unarmed — heavy penalty beyond adjacent
         roll -= (distance - 1) * 3
 
+    # Aimed shot penalty
+    aim = AIMED_SHOTS[aimed_part] if 0 <= aimed_part < len(AIMED_SHOTS) else AIMED_SHOTS[0]
+    aim_label, aim_penalty, aim_dmg_mult, aim_special = aim
+    roll += aim_penalty  # negative = harder to hit
+
     if roll < npc_defense:
+        miss_extra = f" (aimed: {aim_label})" if aimed_part > 0 else ""
         return CombatEvent(
             attacker=player.name, defender=npc.name,
             weapon_name=weapon_name, hit=False, damage=0,
-            message=_miss_msg(player.name, npc.name, weapon_name),
+            message=_miss_msg(player.name, npc.name, weapon_name) + miss_extra,
         )
 
     # --- Damage ---
-    dmg = max(1, random.randint(dmg_lo, dmg_hi) + str_bonus)
+    dmg = max(1, int((random.randint(dmg_lo, dmg_hi) + str_bonus) * aim_dmg_mult))
+
+    # Aimed shot specials
+    if aim_special == "head" and dmg >= 5:
+        # Headshot: high chance of instant kill
+        if random.random() < 0.6:
+            dmg = max(dmg, int(npc.health) + 10)  # lethal
+    elif aim_special == "legs":
+        # Leg shot: halve NPC movement (via combat_state)
+        npc.attributes["agility"] = max(1, npc.attributes.get("agility", 10) - 4)
+    elif aim_special == "arms":
+        # Arm shot: reduce NPC damage capability
+        npc.attributes["strength"] = max(1, npc.attributes.get("strength", 10) - 4)
 
     # Apply wound through the wound system (creates DetailedWound if available)
     wound = npc.wounds.apply_hit(dmg, _weapon_damage_type(weapon_name))

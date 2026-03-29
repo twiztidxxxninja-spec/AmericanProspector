@@ -124,6 +124,8 @@ class Engine:
         self.gossip          = GossipSystem()
         self.bg_sim          = BackgroundSimulator()
         self.writing         = WritingManager()
+        from src.trapping import TrapManager
+        self.trap_mgr        = TrapManager()
         self.music           = MusicManager("music")
 
         # Start on local map at Sacramento (center patch of world tile)
@@ -665,6 +667,14 @@ class Engine:
                 # Fluid simulation — run every 10+ minutes of game time
                 if lmap.fluid_system and minutes >= 10:
                     lmap.fluid_system.simulate_step()
+                # Trap check (every 4+ hours of game time)
+                import random as _trap_rng
+                region = lmap._region_name if lmap else ""
+                trap_msgs = self.trap_mgr.tick(
+                    self.time.total_seconds, region, self.time.season,
+                    _trap_rng.Random())
+                for tm in trap_msgs:
+                    self.add_message(tm, "advisory")
                 # Fire spread — tick every minute
                 if hasattr(lmap, '_fire') and lmap._fire and lmap._fire.active:
                     for _ in range(max(1, minutes)):
@@ -2477,6 +2487,21 @@ class Engine:
                     actions.append("Gamble (cards)")
                     break
 
+        # Trapping — show if player has traps or has set traps nearby
+        has_traps = any("trap" in getattr(i, "tool_tags", [])
+                        for i in self.player.inventory)
+        if has_traps:
+            actions.append("Set trap")
+        nearby_traps = self.trap_mgr.traps_at(
+            self.player.world_x, self.player.world_y,
+            self.player.area_x, self.player.area_y)
+        if nearby_traps:
+            caught = sum(1 for t in nearby_traps if t.caught_species)
+            if caught:
+                actions.append(f"Check traps ({caught} caught!)")
+            else:
+                actions.append("Check traps")
+
         # Crafting — always available if player has any raw materials
         raw_mats = ("raw_hide", "animal_bones", "tallow", "sinew", "antlers",
                     "bird_feathers", "log", "plank", "rope_10ft")
@@ -2528,6 +2553,127 @@ class Engine:
                 LocalTerrain.PIT, LocalTerrain.SPOIL_PILE)
 
         # ── Gambling ──────────────────────────────────────────────────────
+        # ── Set trap ──────────────────────────────────────────────────────
+        if "set trap" in a or "set snare" in a or "place trap" in a or \
+           "set deadfall" in a or "set steel" in a or "set bear" in a:
+            from src.menus import pick_from_list, pick_direction_menu
+            from src.trapping import TrapManager, TRAP_SPECIES
+            # Find traps in inventory
+            trap_items = [i for i in self.player.inventory
+                          if "trap" in getattr(i, "tool_tags", [])]
+            if not trap_items:
+                self.add_message("You don't have any traps.", "advisory")
+                return
+            labels = [f"{t.name} ({t.weight:.0f}lb)" for t in trap_items]
+            tidx = pick_from_list(self._console, self._ctx, "Set which trap?", labels)
+            if tidx is None:
+                return
+            trap_item = trap_items[tidx]
+            # Pick direction
+            direction = pick_direction_menu(self._console, self._ctx,
+                "Place trap in which direction?")
+            if direction is None:
+                return
+            dx, dy = direction
+            tx, ty = px + dx, py + dy
+            if not lmap.in_bounds(tx, ty) or not lmap.is_passable(tx, ty):
+                self.add_message("Can't place a trap there.", "advisory")
+                return
+            # Optional bait
+            bait_items = [i for i in self.player.inventory
+                          if i.is_food() or i.id == "castoreum"]
+            bait = ""
+            if bait_items:
+                bait_labels = ["No bait"] + [i.name for i in bait_items]
+                bidx = pick_from_list(self._console, self._ctx, "Add bait?", bait_labels)
+                if bidx and bidx > 0:
+                    bait_item = bait_items[bidx - 1]
+                    bait = bait_item.name
+                    if bait_item.stackable and bait_item.quantity > 1:
+                        bait_item.quantity -= 1
+                    else:
+                        self.player.inventory.remove(bait_item)
+            # Trapping skill check for set quality
+            import random as _trap_rng
+            skill = self.player.skills.get("trapping", 0)
+            set_quality = min(10, skill + _trap_rng.randint(-2, 2))
+            # Place the trap
+            self.player.inventory.remove(trap_item)
+            self.trap_mgr.place_trap(
+                trap_item.id, tx, ty,
+                self.player.world_x, self.player.world_y,
+                self.player.area_x, self.player.area_y,
+                bait, max(0, set_quality), self.time.total_seconds)
+            bait_msg = f" Baited with {bait}." if bait else ""
+            self.add_message(
+                f"You carefully set the {trap_item.name}.{bait_msg} "
+                f"Check back in 8+ hours.", "normal")
+            self.advance_time(15)
+            self.player.gain_skill_xp("trapping", 3.0)
+            return
+
+        # ── Check traps ──────────────────────────────────────────────────
+        if "check trap" in a or "check snare" in a:
+            from src.trapping import SPECIES_PELT, calculate_pelt_quality, grade_name
+            from src.menus import pick_from_list
+            nearby = self.trap_mgr.traps_at(
+                self.player.world_x, self.player.world_y,
+                self.player.area_x, self.player.area_y)
+            if not nearby:
+                self.add_message("No traps set in this area.", "advisory")
+                return
+            labels = []
+            for t in nearby:
+                if t.caught_species:
+                    labels.append(f"Trap #{t.id}: CAUGHT {t.caught_species}!")
+                elif t.sprung:
+                    labels.append(f"Trap #{t.id}: sprung empty")
+                else:
+                    labels.append(f"Trap #{t.id}: set ({t.trap_type})")
+            tidx = pick_from_list(self._console, self._ctx, "Check which trap?", labels)
+            if tidx is None:
+                return
+            trap = nearby[tidx]
+            if trap.caught_species:
+                hours_in = (self.time.total_seconds - trap.caught_time) / 3600
+                self.add_message(
+                    f"Your {trap.trap_type} caught a {trap.caught_species}! "
+                    f"In trap for {hours_in:.0f} hours.", "normal")
+                # Skin it
+                import random as _sk_rng
+                has_sk = any("skin" in getattr(i, "tool_tags", [])
+                             for i in self.player.inventory)
+                quality = calculate_pelt_quality(
+                    self.time.season, hours_in,
+                    self.player.skills.get("trapping", 0),
+                    "trap_kill", has_sk, _sk_rng.Random())
+                gname = grade_name(quality)
+                pelt_id = SPECIES_PELT.get(trap.caught_species, "")
+                if pelt_id:
+                    from src.items import make_item
+                    from src.trapping import grade_multiplier
+                    pelt = make_item(pelt_id)
+                    pelt.name = f"{gname} {pelt.name}"
+                    pelt.base_value *= grade_multiplier(quality)
+                    self.player.inventory.append(pelt)
+                    self.add_message(
+                        f"You skin it: {pelt.name} (${pelt.base_value:.2f})",
+                        "normal")
+                    self.player.gain_skill_xp("trapping", 5.0)
+                    self.player.gain_skill_xp("furriery", 2.0)
+                # Reset trap
+                trap.caught_species = ""
+                trap.caught_time = 0
+                trap.sprung = False
+                self.advance_time(15)
+            elif trap.sprung:
+                self.add_message("Trap sprung but empty. Resetting.", "normal")
+                trap.sprung = False
+                self.advance_time(5)
+            else:
+                self.add_message("Trap is still set. Nothing yet.", "normal")
+            return
+
         # ── Crafting ──────────────────────────────────────────────────────
         if "craft" in a or "make" in a and any(w in a for w in
                 ("knife", "arrow", "bow", "leather", "pouch", "plank",

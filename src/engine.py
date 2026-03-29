@@ -3793,22 +3793,28 @@ class Engine:
         Surrendered and neutral NPCs do nothing.
         """
         import random
-        from src.combat import npc_attack_player, incap_message
+        from src.combat import npc_attack_player, incap_message, combat_taunt
         lmap = self.current_local
         for npc in self._tile_npcs():
             if not npc.alive:
                 continue
             # Badly wounded NPCs emit incapacitation flavor
             if npc.health < 25 and npc.health > 0 and npc.combat_state != "dead":
-                if random.random() < 0.4:  # 40% chance per tick
+                if random.random() < 0.4:
                     self.add_message(incap_message(npc.name), "normal")
                     self._splatter_blood(lmap, npc.local_x, npc.local_y, 1)
             if npc.combat_state == "hostile":
+                # Combat taunt (30% chance per tick)
+                if random.random() < 0.3:
+                    hp_pct = npc.health / max(npc.wounds.max_blood, 1)
+                    taunt = combat_taunt(npc.name, hp_pct, True)
+                    if taunt:
+                        self.add_message(taunt, "normal")
+                # Attack
                 event = npc_attack_player(npc, self.player)
                 self.add_message(event.message,
                                  "critical" if event.hit else "normal")
                 if event.hit:
-                    # Blood on player's tile
                     self._splatter_blood(lmap,
                         self.player.local_x, self.player.local_y, 1)
                 if event.killed:
@@ -4234,7 +4240,6 @@ class Engine:
                         f"{npc_at.display_name()} ({npc_at.occupation}, {rel}). "
                         f"Press [T] to talk.",
                         "normal")
-                    self.advance_time(1)
                 return
 
             # Check edge-based walls (construction system)

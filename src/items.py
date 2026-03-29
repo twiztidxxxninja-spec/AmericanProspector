@@ -96,27 +96,28 @@ ITEM_TEMPLATES: Dict[str, dict] = {
         "category": "tool", "tool_tags": ["dig", "break_rock"],
         "description": "A heavy iron pickaxe for breaking rock and moving earth.",
         "base_value": 2.00, "quality": "standard",
-        "damage_min": 3, "damage_max": 8, "weapon_type": "melee",
+        "damage_min": 15, "damage_max": 35, "weapon_type": "melee",  # heavy iron spike
     },
     "shovel": {
         "id": "shovel", "name": "Shovel", "weight": 4.0,
         "category": "tool", "tool_tags": ["dig", "move_earth"],
         "description": "A long-handled iron shovel.",
         "base_value": 1.50, "quality": "standard",
+        "damage_min": 8, "damage_max": 20, "weapon_type": "melee",  # heavy flat blade
     },
     "hand_axe": {
         "id": "hand_axe", "name": "Hand Axe", "weight": 3.0,
         "category": "tool", "tool_tags": ["chop", "cut"],
         "description": "A short-handled axe for felling trees and splitting wood.",
         "base_value": 1.25, "quality": "standard",
-        "damage_min": 4, "damage_max": 10, "weapon_type": "melee",
+        "damage_min": 12, "damage_max": 30, "weapon_type": "melee",  # chopping blade
     },
     "hunting_knife": {
         "id": "hunting_knife", "name": "Hunting Knife", "weight": 0.5,
         "category": "tool", "tool_tags": ["cut", "butcher", "skin"],
         "description": "A heavy-bladed knife for field dressing game.",
         "base_value": 0.75, "quality": "standard",
-        "damage_min": 2, "damage_max": 6, "weapon_type": "melee",
+        "damage_min": 8, "damage_max": 18, "weapon_type": "melee",  # stab wound
     },
     "flint_steel": {
         "id": "flint_steel", "name": "Flint & Steel", "weight": 0.1,
@@ -405,7 +406,7 @@ ITEM_TEMPLATES: Dict[str, dict] = {
         "description": "A .50 caliber percussion rifle. Single shot; 30 second reload. "
                        "Requires both hands to fire accurately.",
         "base_value": 15.00, "weapon_type": "firearm",
-        "damage_min": 15, "damage_max": 30,
+        "damage_min": 35, "damage_max": 70,  # .50 cal ball — devastating
         "extra": {"loaded": False, "ammo_type": "rifle_ball", "reload_time": 30,
                   "two_handed": True, "capacity": 1},
     },
@@ -414,7 +415,7 @@ ITEM_TEMPLATES: Dict[str, dict] = {
         "category": "weapon",
         "description": "A .36 caliber Colt Navy revolver. Six shots.",
         "base_value": 25.00, "weapon_type": "firearm",
-        "damage_min": 8, "damage_max": 18,
+        "damage_min": 20, "damage_max": 40,  # .36 cal — lethal at close range
         "extra": {"loaded": 0, "ammo_type": "revolver_ball", "reload_time": 60,
                   "two_handed": False, "capacity": 6},
     },
@@ -423,7 +424,7 @@ ITEM_TEMPLATES: Dict[str, dict] = {
         "category": "weapon",
         "description": "A 12-gauge side-by-side. Devastating at close range. Two shots.",
         "base_value": 20.00, "weapon_type": "firearm",
-        "damage_min": 18, "damage_max": 35,
+        "damage_min": 40, "damage_max": 80,  # buckshot — kills at close range
         "extra": {"loaded": 0, "ammo_type": "shotgun_shell", "reload_time": 20,
                   "two_handed": True, "capacity": 2},
     },

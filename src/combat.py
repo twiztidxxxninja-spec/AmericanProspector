@@ -162,7 +162,15 @@ def player_attack_npc(player: "Player", npc: "NPC",
 
     # Apply wound through the wound system (creates DetailedWound if available)
     wound = npc.wounds.apply_hit(dmg, _weapon_damage_type(weapon_name))
-    npc.health = max(0.0, npc.health - dmg)
+    # Body part HP caps — extremities can only absorb so much before the
+    # damage "overflows" to the body. Excess becomes bleed damage, not HP loss.
+    # A hand can't absorb a .50 cal — it's destroyed, but you're still alive.
+    # The bleeding from the stump is what kills you.
+    from src.health_system import PART_HP
+    part_hit = wound.part if hasattr(wound, 'part') else ""
+    part_cap = PART_HP.get(part_hit, 100)
+    hp_dmg = min(dmg, part_cap)
+    npc.health = max(0.0, npc.health - hp_dmg)
     _check_npc_morale(npc)
 
     killed      = npc.combat_state == "dead"
@@ -475,3 +483,56 @@ INCAP_FLAVOR = [
 def incap_message(name: str) -> str:
     """Random incapacitation flavor text for a badly wounded character."""
     return name + random.choice(INCAP_FLAVOR)
+
+
+# ── Combat taunts (1849 period-appropriate) ───────────────────────────────
+
+COMBAT_TAUNTS_HOSTILE = [
+    "\"I'll gut you like a fish!\"",
+    "\"You picked the wrong man to rob!\"",
+    "\"Come closer, I dare you!\"",
+    "\"You'll die out here and nobody'll find the body!\"",
+    "\"I've killed better men than you!\"",
+    "\"Say your prayers!\"",
+    "\"You son of a bitch!\"",
+    "\"That gold is mine!\"",
+    "\"I'll put you in the ground!\"",
+    "\"You goddamn thief!\"",
+    "\"Stand and fight, coward!\"",
+    "\"I'll send you straight to hell!\"",
+    "\"You ain't walking away from this!\"",
+    "\"Draw, you yellow-bellied bastard!\"",
+    "\"I'll hang your scalp on my belt!\"",
+]
+
+COMBAT_TAUNTS_WOUNDED = [
+    "\"Is that all you got?!\"",
+    "\"I ain't done yet!\"",
+    "\"You'll have to do better than that!\"",
+    "\"I've had worse from my wife!\"",
+    "\"Flesh wound!\"",
+    "\"Come on then! Finish it!\"",
+    "\"God damn you...\"",
+    "\"I'll take you with me!\"",
+]
+
+COMBAT_TAUNTS_SCARED = [
+    "\"Wait — wait! I didn't mean it!\"",
+    "\"Don't shoot! Please!\"",
+    "\"Take the gold, just let me go!\"",
+    "\"I got children!\"",
+    "\"Hold on now, let's talk about this!\"",
+    "\"I surrender! I surrender!\"",
+    "\"Mercy! For God's sake!\"",
+]
+
+
+def combat_taunt(name: str, health_pct: float, is_hostile: bool) -> str:
+    """Return a combat taunt from an NPC. health_pct = current/max (0-1)."""
+    if health_pct < 0.25 and random.random() < 0.5:
+        return f"{name} shouts: {random.choice(COMBAT_TAUNTS_SCARED)}"
+    elif health_pct < 0.5:
+        return f"{name} snarls: {random.choice(COMBAT_TAUNTS_WOUNDED)}"
+    elif is_hostile:
+        return f"{name} shouts: {random.choice(COMBAT_TAUNTS_HOSTILE)}"
+    return ""

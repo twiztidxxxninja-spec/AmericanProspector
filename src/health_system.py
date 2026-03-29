@@ -107,6 +107,27 @@ PART_DATA: Dict[str, dict] = {
                      "impair": "right lower leg damaged — limping"},
 }
 
+# Body part HP caps — max direct HP damage a hit to this part can cause.
+# Damage beyond the cap still creates the wound and bleeding but doesn't
+# reduce the character's main HP pool. A .50 cal to the hand destroys the
+# hand (full bleed) but only does 15 HP of direct shock damage.
+PART_HP = {
+    BP.HEAD:        100,  # headshots are lethal
+    BP.NECK:        100,  # neck wounds are lethal
+    BP.CHEST:       100,  # center mass, full damage
+    BP.ABDOMEN:     80,   # gut shots are very dangerous
+    BP.L_UPPER_ARM: 30,   # arm can't kill you directly
+    BP.R_UPPER_ARM: 30,
+    BP.L_FOREARM:   20,
+    BP.R_FOREARM:   20,
+    BP.L_HAND:      15,   # hand wound = shock + bleed, not lethal HP damage
+    BP.R_HAND:      15,
+    BP.L_THIGH:     40,   # femoral artery bleed is the killer, not direct HP
+    BP.R_THIGH:     40,
+    BP.L_LOWER_LEG: 25,
+    BP.R_LOWER_LEG: 25,
+}
+
 # Adjacent parts for aim scatter
 SCATTER_MAP: Dict[str, List[str]] = {
     BP.HEAD:        [BP.NECK],

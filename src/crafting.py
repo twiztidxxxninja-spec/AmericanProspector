@@ -289,7 +289,8 @@ def execute_craft(recipe: Recipe, player) -> Tuple[bool, str]:
     if not ok:
         return False, f"Can't craft: need {reason}."
 
-    # Consume materials
+    # Consume materials — track source names for prefixing output
+    source_names = {}  # mat_id → display name of consumed item
     for mat_id, qty_needed in recipe.materials:
         remaining = qty_needed
         for item in list(player.inventory):
@@ -297,6 +298,9 @@ def execute_craft(recipe: Recipe, player) -> Tuple[bool, str]:
                 break
             if item.id != mat_id:
                 continue
+            # Remember the name (e.g. "Mule Deer Large Hide" for raw_hide)
+            if mat_id not in source_names:
+                source_names[mat_id] = item.name
             avail = getattr(item, "quantity", 1)
             if getattr(item, "stackable", False) and avail > remaining:
                 item.quantity -= remaining
@@ -324,6 +328,17 @@ def execute_craft(recipe: Recipe, player) -> Tuple[bool, str]:
         item = Item(**{k: v for k, v in d.items() if k in Item.__dataclass_fields__})
     else:
         return False, "Recipe error."
+
+    # Prefix with animal source name if applicable
+    # e.g. "Mule Deer Large Hide" → extract "Mule Deer" → "Mule Deer Tanned Leather"
+    hide_name = source_names.get("raw_hide", "") or source_names.get("leather", "")
+    if hide_name:
+        # Extract animal prefix: everything before "Hide", "Leather", "Large", "Medium", "Small"
+        import re
+        prefix = re.split(r'\b(Hide|Leather|Large|Medium|Small|Raw|Tanned)\b',
+                          hide_name, maxsplit=1)[0].strip()
+        if prefix and prefix.lower() not in item.name.lower():
+            item.name = f"{prefix} {item.name}"
 
     player.inventory.append(item)
     player.gain_skill_xp(recipe.skill, 3.0 + recipe.difficulty * 0.5)

@@ -412,13 +412,21 @@ class BusinessEntity:
     # ── Revenue / Expense calculation ──────────────────────────────────
 
     def _calc_revenue(self) -> float:
-        """Calculate today's gross revenue."""
+        """Calculate today's gross revenue from two sources:
+        1. Abstract base revenue (services — saloon drinks, hotel rooms, etc.)
+        2. Inventory sales (NPC customers buy actual items from stock)"""
+        # ── Abstract service revenue ──────────────────────────────
         rev = self.base_revenue
 
         # Employee contribution
         for emp in self.employees:
             rev += self.rev_per_employee * emp.productivity
 
+        # ── Inventory-driven revenue (NPC customers) ──────────────
+        customer_rev = self._process_customers()
+        rev += customer_rev
+
+        # ── Modifiers ─────────────────────────────────────────────
         # Reputation bonus (0-100 → 0.5x to 2.0x)
         rep_mult = 0.5 + (self.reputation / 100.0) * 1.5
         rev *= rep_mult
@@ -442,6 +450,56 @@ class BusinessEntity:
         rev *= random.uniform(0.85, 1.15)
 
         return round(max(0, rev), 2)
+
+    def _process_customers(self) -> float:
+        """Simulate NPC customers buying from inventory.
+        Returns revenue from actual item sales."""
+        if not self.inventory:
+            return 0.0
+
+        # Customer count based on settlement type (proxy for population)
+        base_customers = {
+            "mining_camp_small": 2, "mining_camp_medium": 5,
+            "boomtown": 12, "small_town": 8,
+            "trading_post": 4, "city": 25,
+        }.get(self.settlement_type, 5)
+
+        # Need a clerk/seller employee to actually make sales
+        has_seller = any(e.role in ("clerk", "manager", "specialist")
+                         for e in self.employees)
+        if not has_seller and not self.manager_npc_id:
+            # No one at the counter — drastically fewer sales
+            base_customers = max(1, base_customers // 5)
+
+        # Reputation affects foot traffic
+        traffic_mult = 0.3 + (self.reputation / 100.0) * 1.4
+        customers = max(1, int(base_customers * traffic_mult))
+
+        revenue = 0.0
+        rng = random.Random()
+
+        for _ in range(customers):
+            if not self.inventory:
+                break
+            # Each customer has a 40% chance of buying something
+            if rng.random() < 0.4:
+                # Pick a random item from inventory
+                idx = rng.randint(0, len(self.inventory) - 1)
+                item = self.inventory[idx]
+                # Sell at marked-up price (1.3-2.0x base value)
+                markup = 1.3 + (self.reputation / 200.0)
+                sell_price = item.base_value * markup
+                revenue += sell_price
+                # Remove from inventory
+                if getattr(item, 'stackable', False) and getattr(item, 'quantity', 1) > 1:
+                    item.quantity -= 1
+                else:
+                    self.inventory.pop(idx)
+                # Track stock value change
+                self.stock_value = sum(getattr(i, 'base_value', 0) * getattr(i, 'quantity', 1)
+                                       for i in self.inventory)
+
+        return round(revenue, 2)
 
     def _calc_expenses(self) -> float:
         """Calculate today's total expenses."""
@@ -861,6 +919,32 @@ class BusinessManager:
                 text = biz.generate_weekly_report(current_day)
                 reports.append((biz.name, text))
         return reports
+
+    def assign_npc_to_business(self, biz_id: str, npc_id: str, name: str,
+                              role: str = "clerk", skill_level: int = 3,
+                              wage: float = 1.0) -> bool:
+        """Bridge: add an NPC (hired via companion system) as business employee."""
+        biz = self.businesses.get(biz_id)
+        if not biz:
+            return False
+        # Don't double-add
+        if any(e.npc_id == npc_id for e in biz.employees):
+            return True
+        emp = Employee(npc_id=npc_id, name=name, role=role,
+                       skill_level=skill_level, wage_daily=wage)
+        biz.employees.append(emp)
+        return True
+
+    def set_manager(self, biz_id: str, npc_id: str) -> bool:
+        """Assign an existing employee as the business manager."""
+        biz = self.businesses.get(biz_id)
+        if not biz:
+            return False
+        biz.manager_npc_id = npc_id
+        for emp in biz.employees:
+            if emp.npc_id == npc_id:
+                emp.role = "manager"
+        return True
 
     def total_daily_income(self) -> float:
         return sum(b.net_daily for b in self.businesses.values() if b.active)

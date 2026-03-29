@@ -187,6 +187,7 @@ class Engine:
         self.trade        = TradeEngine(self.llm)
         self.item_factory = ItemFactory(self.llm)
         self.business_mgr = BusinessManager(self.llm)
+        self.player._biz_mgr = self.business_mgr  # for trade price recording
         self.construction = ConstructionManager(self.llm)
 
         # Load the starting rifle

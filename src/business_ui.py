@@ -274,7 +274,32 @@ def _show_ledger(engine, console, ctx, biz):
         elif tab == 5:  # Market
             console.print(X + 2, cy, "Known market prices:", fg=(180, 180, 180), bg=BG)
             cy += 1
-            console.print(X + 2, cy, "(Market data system coming soon)", fg=(120, 120, 120), bg=BG)
+            if biz.known_prices:
+                # Header
+                locations = set()
+                for prices in biz.known_prices.values():
+                    locations.update(prices.keys())
+                loc_list = sorted(locations)[:4]
+                header = f"{'Item':20s} " + " ".join(f"{l[:8]:>8s}" for l in loc_list)
+                console.print(X + 2, cy, header, fg=(160, 160, 160), bg=BG)
+                cy += 1
+                for item_id, prices in list(biz.known_prices.items())[:10]:
+                    from src.items import ITEM_TEMPLATES
+                    name = ITEM_TEMPLATES.get(item_id, {}).get("name", item_id)[:20]
+                    price_strs = []
+                    for loc in loc_list:
+                        p = prices.get(loc)
+                        price_strs.append(f"${p:.2f}" if p else "  ???")
+                    line = f"{name:20s} " + " ".join(f"{s:>8s}" for s in price_strs)
+                    console.print(X + 2, cy, line[:W - 4], fg=(200, 200, 200), bg=BG)
+                    cy += 1
+            else:
+                console.print(X + 2, cy,
+                    "No price data yet. Travel, send scouts, or read newspapers.",
+                    fg=(120, 120, 120), bg=BG)
+            cy += 1
+            console.print(X + 2, cy, "Prices learned from: travel, scout reports, rumors",
+                          fg=(100, 100, 100), bg=BG)
 
         # Footer
         console.print(X + 2, Y + H - 2,

@@ -18,8 +18,12 @@ def open_trade_ui(console, ctx, player: "Player", npc: "NPC",
                   stock, trade_engine=None, region: str = "",
                   settlement_type: str = "small_town",
                   merchant_type: str = "general_store") -> list:
-    """Full-screen trade interface. Returns list of log messages."""
+    """Full-screen trade interface. Returns list of log messages.
+    Also records prices to player's business known_prices."""
     from src.items import Item, make_item
+
+    # Record prices for business market knowledge
+    _record_prices_for_businesses(player, stock, region)
 
     W = 78
     H = 40
@@ -271,3 +275,23 @@ def open_trade_ui(console, ctx, player: "Player", npc: "NPC",
                         messages.append(
                             f"Sold {pi['name']} for ${price:.2f}")
                     break
+
+
+def _record_prices_for_businesses(player, stock, region):
+    """Record merchant prices to all player businesses' known_prices."""
+    try:
+        # Access business_mgr through a global/module pattern won't work,
+        # so we store on the player as a lightweight hook
+        if not hasattr(player, '_biz_mgr'):
+            return
+        mgr = player._biz_mgr
+        if not mgr or not mgr.businesses:
+            return
+        location = region or "unknown"
+        for entry in stock.items:
+            for biz in mgr.businesses.values():
+                if entry.item_id not in biz.known_prices:
+                    biz.known_prices[entry.item_id] = {}
+                biz.known_prices[entry.item_id][location] = entry.base_price
+    except Exception:
+        pass

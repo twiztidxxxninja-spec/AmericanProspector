@@ -1010,13 +1010,21 @@ class TownGenerator:
                     _set(tx + 2, ty, LocalTerrain.CHAIR)
                     _set(tx, ty + 1, LocalTerrain.CHAIR)
                     _set(tx + 1, ty + 1, LocalTerrain.CHAIR)
+            # Gambling table in back corner (green felt $)
+            _set(bx + bw - 3, by + 3, LocalTerrain.GAMBLING_TABLE)
+            _set(bx + bw - 2, by + 3, LocalTerrain.GAMBLING_TABLE)
+            _set(bx + bw - 3, by + 4, LocalTerrain.CHAIR)
+            _set(bx + bw - 2, by + 4, LocalTerrain.CHAIR)
+            _set(bx + bw - 4, by + 3, LocalTerrain.CHAIR)
+            _set(bx + bw - 1, by + 3, LocalTerrain.CHAIR)
             # Barrels in corners
             _set(bx + bw - 2, by + bh - 2, LocalTerrain.BARREL_TILE)
             _set(bx + bw - 3, by + bh - 2, LocalTerrain.BARREL_TILE)
             # Items
             _place_item(bx + 2, by + 1, "whiskey", 20)
             _place_item(bx + 4, by + 1, "whiskey", 20)
-            _place_item(bx + 3, by + 4, "playing_cards")
+            _place_item(bx + bw - 3, by + 3, "playing_cards")
+            _place_item(bx + bw - 2, by + 3, "dice_set")
             _place_item(bx + 7, by + 6, "tobacco", 5)
 
         # ── Hotel ─────────────────────────────────────────────────

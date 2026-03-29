@@ -55,6 +55,7 @@ class LocalTerrain:
     CELL_BARS     = 50  # jail cell bars — blocks, see-through (reuse stairs range)
     DESK          = 51  # writing desk — blocks
     BARREL_TILE   = 52  # storage barrel — blocks
+    GAMBLING_TABLE= 53  # card/faro table — blocks, interactive
     # Worked ground — visual feedback from mining/panning
     WORKED_GRAVEL = 30  # panned gravel bar — disturbed, darker
     WORKED_DIRT   = 31  # shoveled ground — loose earth
@@ -110,6 +111,7 @@ LOCAL_GLYPH = {
     LocalTerrain.CELL_BARS:     ("|", (140, 140, 140), (55, 55, 55)),  # iron bars
     LocalTerrain.DESK:          ("D", (150, 115,  65), (52, 40, 20)),
     LocalTerrain.BARREL_TILE:   ("o", (130, 100,  55), (48, 35, 16)),
+    LocalTerrain.GAMBLING_TABLE:("$", ( 60, 140,  60), (20, 50, 20)),  # green felt
     # Worked ground
     LocalTerrain.WORKED_GRAVEL: (":", (120, 100,  70), (40, 35, 20)),  # darker, disturbed gravel
     LocalTerrain.WORKED_DIRT:   ("~", ( 90,  75,  45), (30, 25, 12)),  # loose churned earth
@@ -162,6 +164,7 @@ LOCAL_PASSABLE = {
     LocalTerrain.CELL_BARS:     False,  # iron bars block
     LocalTerrain.DESK:          False,  # solid furniture
     LocalTerrain.BARREL_TILE:   False,  # heavy barrel
+    LocalTerrain.GAMBLING_TABLE:False,  # card table
     LocalTerrain.WORKED_GRAVEL: True,
     LocalTerrain.WORKED_DIRT:   True,
     LocalTerrain.SHALLOW_PIT:   True,
@@ -214,6 +217,7 @@ LOCAL_TRANSPARENT = {
     LocalTerrain.CELL_BARS:     True,   # can see through bars
     LocalTerrain.DESK:          True,
     LocalTerrain.BARREL_TILE:   True,
+    LocalTerrain.GAMBLING_TABLE:True,
     LocalTerrain.WORKED_GRAVEL: True,
     LocalTerrain.WORKED_DIRT:   True,
     LocalTerrain.SHALLOW_PIT:   True,

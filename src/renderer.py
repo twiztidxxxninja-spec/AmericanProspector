@@ -901,6 +901,7 @@ class Renderer:
                     LocalTerrain.CELL_BARS: "Cell Bars",
                     LocalTerrain.DESK: "Desk",
                     LocalTerrain.BARREL_TILE: "Barrel",
+                    LocalTerrain.GAMBLING_TABLE: "Gambling Table",
                 }
                 tname = _TERRAIN_NAMES.get(tile.terrain, "")
                 if tname:

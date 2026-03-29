@@ -2516,6 +2516,19 @@ class Engine:
                     actions.append("Gamble (cards)")
                     break
 
+        # Near a gambling table — can always gamble there
+        near_gambling = False
+        for dy in range(-2, 3):
+            for dx in range(-2, 3):
+                nx, ny = px + dx, py + dy
+                if lmap.in_bounds(nx, ny) and lmap.tiles[ny][nx].terrain == LocalTerrain.GAMBLING_TABLE:
+                    near_gambling = True
+                    break
+            if near_gambling:
+                break
+        if near_gambling and "Gamble (cards)" not in actions:
+            actions.append("Gamble (cards)")
+
         # Trapping — show if player has traps or has set traps nearby
         has_traps = any("trap" in getattr(i, "tool_tags", [])
                         for i in self.player.inventory)

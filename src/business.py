@@ -501,6 +501,16 @@ class BusinessEntity:
                         break
             bonus += consumed * rev_per_unit
 
+        # Gambling revenue — if business has playing cards or dice
+        has_cards = any(i.id in ("playing_cards", "dice_set", "marked_cards",
+                                 "gambling_table", "faro_layout")
+                        for i in self.inventory)
+        if has_cards and bp_key in ("saloon", "dancehall", "brothel", "hotel"):
+            # House take from NPC gambling (~$0.50-2.00 per gambler)
+            gamblers = max(1, customers // 3)
+            house_take = gamblers * random.uniform(0.50, 2.00)
+            bonus += house_take
+
         return round(bonus, 2)
 
     def _process_customers(self) -> float:

@@ -17,7 +17,7 @@ from src.local_map import LocalTerrain
 # Lower = catches faster. 0 = not flammable.
 IGNITE_TICKS: Dict[int, int] = {
     LocalTerrain.BRUSH:       2,    # dry brush — catches almost instantly
-    LocalTerrain.GRASS:       3,    # dry grass — fast
+    LocalTerrain.GRASS:       12,   # green grass — slow to catch, natural firebreak
     LocalTerrain.DOWNED_TREE: 4,    # fallen timber — catches quick
     LocalTerrain.WORKED_DIRT: 0,    # dirt doesn't burn
     LocalTerrain.PINE:        8,    # standing pine — resinous, catches eventually
@@ -46,7 +46,7 @@ IGNITE_TICKS: Dict[int, int] = {
 # How long a tile burns before turning to ash (ticks)
 BURN_DURATION: Dict[int, int] = {
     LocalTerrain.BRUSH:       5,
-    LocalTerrain.GRASS:       3,
+    LocalTerrain.GRASS:       2,    # burns fast once it catches (short dry fuel)
     LocalTerrain.DOWNED_TREE: 15,
     LocalTerrain.PINE:        20,
     LocalTerrain.OAK:         25,

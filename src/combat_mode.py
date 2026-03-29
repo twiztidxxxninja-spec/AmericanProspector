@@ -257,7 +257,8 @@ def _npc_execute(engine, npc, action, player, lmap, add_msg, rng):
     if action in ("shoot", "careful_aim", "melee"):
         # Animate NPC shot toward player
         if action in ("shoot", "careful_aim"):
-            _play_sound("bang")
+            # NPCs with bows don't make bang sounds
+            _play_sound("bang")  # TODO: check NPC weapon for bow
             half_w, half_h = 40, 19
             cam_x = player.local_x - half_w
             cam_y = player.local_y - half_h
@@ -821,11 +822,14 @@ def enter_combat_mode(engine: "Engine", console, ctx) -> None:
 def _do_player_attack(engine, target, kind, weapon, aimed_part, dist,
                       accuracy_bonus, add_msg, lmap, rng):
     """Execute a player attack (shared by snap and careful aim)."""
-    # Bullet animation for firearms
+    # Projectile animation for ranged weapons
     is_firearm = weapon and weapon.weapon_type == "firearm"
     is_shotgun = is_firearm and weapon and "shotgun" in weapon.name.lower()
+    is_bow = is_firearm and weapon and "bow" in weapon.name.lower()
     if is_firearm:
-        _play_sound("bang")
+        if not is_bow:
+            _play_sound("bang")
+        # Bows are silent — no sound
         half_w = 40
         half_h = 19
         cam_x = engine.player.local_x - half_w
@@ -993,11 +997,34 @@ def _animate_bullet(console, ctx, px, py, tx, ty, cam_x, cam_y,
     import time, math
 
     is_shotgun = weapon and "shotgun" in weapon.name.lower()
+    is_bow = weapon and "bow" in weapon.name.lower()
 
     dx = tx - px
     dy = ty - py
     steps = max(abs(dx), abs(dy))
     if steps == 0:
+        return
+
+    if is_bow:
+        # Arrow: slower flight, consistent arrow glyph by direction
+        if abs(dx) > abs(dy) * 2:
+            glyph = ">" if dx > 0 else "<"
+        elif abs(dy) > abs(dx) * 2:
+            glyph = "v" if dy > 0 else "^"
+        elif (dx > 0) == (dy > 0):
+            glyph = "\\"
+        else:
+            glyph = "/"
+        for i in range(1, steps + 1):
+            frac = i / steps
+            bx = int(px + dx * frac)
+            by = int(py + dy * frac)
+            sx = bx - cam_x
+            sy = by - cam_y + 1
+            if 0 <= sx < 80 and 1 <= sy < 40:
+                console.print(sx, sy, glyph, fg=(180, 140, 80), bg=(30, 20, 10))
+                ctx.present(console)
+                time.sleep(0.035)  # slower than bullets
         return
 
     if is_shotgun:

@@ -759,6 +759,54 @@ ITEM_TEMPLATES: Dict[str, dict] = {
                        "Weaker than hemp rope but gets the job done.",
         "base_value": 0.05, "stackable": True,
     },
+    # ── Pelts (raw — spoils in 3 days unless stretched) ─────────────────
+    "beaver_pelt":    {"id": "beaver_pelt",    "name": "Beaver Pelt",    "weight": 2.0, "category": "material", "base_value": 4.00, "perishable": True, "days_until_spoil": 3, "description": "Raw beaver pelt. Stretch to preserve."},
+    "fox_pelt":       {"id": "fox_pelt",       "name": "Fox Pelt",       "weight": 1.0, "category": "material", "base_value": 2.00, "perishable": True, "days_until_spoil": 3, "description": "Raw fox fur. Red or gray."},
+    "wolf_pelt":      {"id": "wolf_pelt",      "name": "Wolf Pelt",      "weight": 4.0, "category": "material", "base_value": 5.00, "perishable": True, "days_until_spoil": 3, "description": "Raw wolf pelt. Large, thick fur."},
+    "coyote_pelt":    {"id": "coyote_pelt",    "name": "Coyote Pelt",    "weight": 1.5, "category": "material", "base_value": 1.00, "perishable": True, "days_until_spoil": 3, "description": "Raw coyote fur."},
+    "raccoon_pelt":   {"id": "raccoon_pelt",   "name": "Raccoon Pelt",   "weight": 1.0, "category": "material", "base_value": 1.00, "perishable": True, "days_until_spoil": 3, "description": "Raw raccoon fur."},
+    "bobcat_pelt":    {"id": "bobcat_pelt",    "name": "Bobcat Pelt",    "weight": 1.5, "category": "material", "base_value": 3.00, "perishable": True, "days_until_spoil": 3, "description": "Raw bobcat fur. Spotted."},
+    "otter_pelt":     {"id": "otter_pelt",     "name": "Otter Pelt",     "weight": 1.5, "category": "material", "base_value": 4.00, "perishable": True, "days_until_spoil": 3, "description": "Raw river otter pelt. Waterproof."},
+    "mink_pelt":      {"id": "mink_pelt",      "name": "Mink Pelt",      "weight": 0.3, "category": "material", "base_value": 3.00, "perishable": True, "days_until_spoil": 3, "description": "Raw mink fur. Small but premium."},
+    "marten_pelt":    {"id": "marten_pelt",    "name": "Marten Pelt",    "weight": 0.5, "category": "material", "base_value": 3.50, "perishable": True, "days_until_spoil": 3, "description": "Raw pine marten fur."},
+    "fisher_pelt":    {"id": "fisher_pelt",    "name": "Fisher Pelt",    "weight": 2.0, "category": "material", "base_value": 5.00, "perishable": True, "days_until_spoil": 3, "description": "Raw fisher fur. Rare, valuable."},
+    "wolverine_pelt": {"id": "wolverine_pelt", "name": "Wolverine Pelt", "weight": 2.5, "category": "material", "base_value": 6.00, "perishable": True, "days_until_spoil": 3, "description": "Raw wolverine fur. Frost-resistant."},
+    "lynx_pelt":      {"id": "lynx_pelt",      "name": "Lynx Pelt",      "weight": 2.0, "category": "material", "base_value": 4.00, "perishable": True, "days_until_spoil": 3, "description": "Raw lynx fur. Spotted."},
+    "muskrat_pelt":   {"id": "muskrat_pelt",   "name": "Muskrat Pelt",   "weight": 0.3, "category": "material", "base_value": 0.75, "perishable": True, "days_until_spoil": 3, "description": "Raw muskrat fur. Common."},
+    "skunk_pelt":     {"id": "skunk_pelt",     "name": "Skunk Pelt",     "weight": 0.5, "category": "material", "base_value": 0.50, "perishable": True, "days_until_spoil": 3, "description": "Raw skunk fur. Smells terrible."},
+    "bear_pelt":      {"id": "bear_pelt",      "name": "Bear Pelt",      "weight": 8.0, "category": "material", "base_value": 5.00, "perishable": True, "days_until_spoil": 3, "description": "Raw bear hide with fur."},
+    "buffalo_robe":   {"id": "buffalo_robe",   "name": "Buffalo Robe",   "weight": 15.0,"category": "material", "base_value": 12.00,"perishable": True, "days_until_spoil": 3, "description": "Raw buffalo hide. Massive."},
+    "deer_pelt":      {"id": "deer_pelt",      "name": "Deer Pelt",      "weight": 3.0, "category": "material", "base_value": 2.00, "perishable": True, "days_until_spoil": 3, "description": "Raw deer hide with fur."},
+    "elk_pelt":       {"id": "elk_pelt",       "name": "Elk Pelt",       "weight": 6.0, "category": "material", "base_value": 4.00, "perishable": True, "days_until_spoil": 3, "description": "Raw elk hide."},
+    "cougar_pelt":    {"id": "cougar_pelt",    "name": "Cougar Pelt",    "weight": 4.0, "category": "material", "base_value": 6.00, "perishable": True, "days_until_spoil": 3, "description": "Raw mountain lion pelt."},
+
+    # ── Trapping Tools ────────────────────────────────────────────────────
+    "deadfall_trap": {
+        "id": "deadfall_trap", "name": "Deadfall Trap", "weight": 3.0,
+        "category": "tool", "base_value": 0.50, "tool_tags": ["trap"],
+        "description": "A weighted log trap. Kills medium game instantly.",
+    },
+    "steel_trap": {
+        "id": "steel_trap", "name": "Steel Trap", "weight": 4.0,
+        "category": "tool", "base_value": 3.00, "tool_tags": ["trap"],
+        "description": "A steel jaw trap. Catches medium and large furbearers.",
+    },
+    "skinning_knife": {
+        "id": "skinning_knife", "name": "Skinning Knife", "weight": 0.3,
+        "category": "tool", "base_value": 2.00, "weapon_type": "melee",
+        "damage_min": 3, "damage_max": 8,
+        "tool_tags": ["cut", "skin", "butcher"],
+        "description": "A thin, curved blade for removing pelts cleanly. "
+                       "+1 pelt quality grade vs regular knife.",
+    },
+    "pelt_frame": {
+        "id": "pelt_frame", "name": "Pelt Stretching Frame", "weight": 5.0,
+        "category": "tool", "base_value": 1.00,
+        "tool_tags": ["stretch"],
+        "description": "A wooden frame for drying pelts. Place on the ground. "
+                       "Load a raw pelt and wait 24 hours.",
+    },
+
     "pencil": {
         "id": "pencil", "name": "Pencil", "weight": 0.05,
         "category": "tool",

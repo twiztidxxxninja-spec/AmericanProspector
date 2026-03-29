@@ -313,6 +313,23 @@ RECIPES: List[Recipe] = [
         output_id="bear_trap",
         category="trapping",
     ),
+    # ── Trapping gear ─────────────────────────────────────────────
+    Recipe(
+        id="deadfall", name="Deadfall Trap",
+        description="A weighted log trap. Kills medium game cleanly.",
+        materials=[("log", 1), ("cordage", 1)],
+        tool_required="cut", skill="trapping", difficulty=6, time_minutes=30,
+        output_id="deadfall_trap",
+        category="trapping",
+    ),
+    Recipe(
+        id="pelt_frame", name="Pelt Stretching Frame",
+        description="For drying raw pelts. Place on ground, load pelt, wait 24h.",
+        materials=[("log", 2), ("cordage", 1)],
+        tool_required="cut", skill="furriery", difficulty=5, time_minutes=30,
+        output_id="pelt_frame",
+        category="trapping",
+    ),
 ]
 
 # Index by category

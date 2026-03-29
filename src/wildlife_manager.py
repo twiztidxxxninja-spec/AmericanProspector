@@ -151,6 +151,17 @@ SPECIES_BODY_PLAN = {
     WildlifeType.BALD_EAGLE:        "bird",
     WildlifeType.CALIFORNIA_CONDOR: "bird",
     WildlifeType.WILD_TURKEY:       "bird",
+    # Fur-bearers
+    WildlifeType.RIVER_OTTER:      "small_quadruped",
+    WildlifeType.MINK:             "small_quadruped",
+    WildlifeType.PINE_MARTEN:      "small_quadruped",
+    WildlifeType.FISHER:           "small_quadruped",
+    WildlifeType.WOLVERINE:        "quadruped",
+    WildlifeType.BADGER:           "small_quadruped",
+    WildlifeType.SKUNK:            "small_quadruped",
+    WildlifeType.MUSKRAT:          "small_quadruped",
+    WildlifeType.OPOSSUM:          "small_quadruped",
+    WildlifeType.LYNX:             "quadruped",
 }
 
 

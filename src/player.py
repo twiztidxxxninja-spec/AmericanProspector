@@ -57,7 +57,7 @@ ALL_SKILLS = [
     "geology", "placer", "hardRock", "assaying", "oilSensing",
     "coalMining", "survival", "tracking", "firstAid", "trading",
     "law", "engineering", "chemistry", "firearms", "driving",
-    "farming", "literacy",
+    "farming", "literacy", "trapping", "furriery",
 ]
 
 

@@ -36,6 +36,18 @@ class WildlifeType(Enum):
     JACKRABBIT = "jackrabbit"
     GROUND_SQUIRREL = "ground_squirrel"
 
+    # === FUR-BEARERS (trapping targets) ===
+    RIVER_OTTER = "river_otter"
+    MINK = "mink"
+    PINE_MARTEN = "pine_marten"
+    FISHER = "fisher"
+    WOLVERINE = "wolverine"
+    BADGER = "badger"
+    SKUNK = "skunk"
+    MUSKRAT = "muskrat"
+    OPOSSUM = "opossum"
+    LYNX = "lynx"
+
     # === REPTILES & BIRDS ===
     RATTLESNAKE = "rattlesnake"
     BALD_EAGLE = "bald_eagle"
@@ -271,6 +283,108 @@ WILDLIFE_DB = {
         base_spawn_chance=0.20,
         meat_yield_lb=10.0, hide_value=0.25,
         notes="Good eating. Found in flocks near oak woodland."
+    ),
+
+    # === FUR-BEARERS ===
+    WildlifeType.RIVER_OTTER: WildlifeSpecies(
+        id="river_otter", display_name="River Otter",
+        danger_level=0, size="medium",
+        primary_habitats=["rivers", "streams", "coast"],
+        core_regions=["Pacific Northwest", "Sierra Nevada", "Appalachians",
+                      "Alaska Interior", "Rocky Mountains"],
+        base_spawn_chance=0.10,
+        meat_yield_lb=15.0, hide_value=6.00,
+        notes="Playful, fast swimmer. Prized waterproof fur."
+    ),
+    WildlifeType.MINK: WildlifeSpecies(
+        id="mink", display_name="Mink",
+        danger_level=0, size="small",
+        primary_habitats=["rivers", "streams", "brush"],
+        core_regions=["Pacific Northwest", "Appalachians", "Great Lakes",
+                      "Rocky Mountains", "Sierra Nevada"],
+        base_spawn_chance=0.08,
+        meat_yield_lb=2.0, hide_value=4.00,
+        notes="Small, fierce. Premium dark fur."
+    ),
+    WildlifeType.PINE_MARTEN: WildlifeSpecies(
+        id="pine_marten", display_name="Pine Marten",
+        danger_level=0, size="small",
+        primary_habitats=["mountains", "forest", "dense forest"],
+        core_regions=["Rocky Mountains", "Pacific Northwest",
+                      "Sierra Nevada", "Alaska Interior"],
+        base_spawn_chance=0.07,
+        meat_yield_lb=3.0, hide_value=5.00,
+        notes="Arboreal. Soft, thick fur. Elusive."
+    ),
+    WildlifeType.FISHER: WildlifeSpecies(
+        id="fisher", display_name="Fisher",
+        danger_level=0, size="medium",
+        primary_habitats=["dense forest", "forest", "mountains"],
+        core_regions=["Pacific Northwest", "Appalachians",
+                      "Rocky Mountains", "Sierra Nevada"],
+        base_spawn_chance=0.05,
+        meat_yield_lb=8.0, hide_value=7.00,
+        notes="Large weasel. Rare. Extremely valuable fur."
+    ),
+    WildlifeType.WOLVERINE: WildlifeSpecies(
+        id="wolverine", display_name="Wolverine",
+        danger_level=2, size="medium",
+        primary_habitats=["mountains", "tundra", "dense forest"],
+        core_regions=["Rocky Mountains", "Alaska Interior",
+                      "Montana Goldfields", "Pacific Northwest"],
+        base_spawn_chance=0.03,
+        meat_yield_lb=20.0, hide_value=8.00,
+        notes="Fearless, powerful. Will fight anything. Premium fur."
+    ),
+    WildlifeType.BADGER: WildlifeSpecies(
+        id="badger", display_name="Badger",
+        danger_level=1, size="medium",
+        primary_habitats=["prairie", "scrub", "open terrain"],
+        core_regions=["Great Plains", "Central Plains", "Rocky Mountains",
+                      "Nevada Great Basin", "Sierra Nevada Foothills"],
+        base_spawn_chance=0.10,
+        meat_yield_lb=12.0, hide_value=2.00,
+        notes="Aggressive when cornered. Tough hide."
+    ),
+    WildlifeType.SKUNK: WildlifeSpecies(
+        id="skunk", display_name="Striped Skunk",
+        danger_level=0, size="small",
+        primary_habitats=["brush", "forest", "open terrain"],
+        core_regions=["California", "Great Plains", "Appalachians",
+                      "Pacific Northwest", "Rocky Mountains"],
+        base_spawn_chance=0.15,
+        meat_yield_lb=3.0, hide_value=1.00,
+        notes="Unmistakable smell. Low-value fur but easy to trap."
+    ),
+    WildlifeType.MUSKRAT: WildlifeSpecies(
+        id="muskrat", display_name="Muskrat",
+        danger_level=0, size="small",
+        primary_habitats=["rivers", "streams", "brush"],
+        core_regions=["Appalachians", "Great Plains", "Pacific Northwest",
+                      "Great Lakes", "Rocky Mountains"],
+        base_spawn_chance=0.18,
+        meat_yield_lb=2.0, hide_value=1.50,
+        notes="Common in marshes. Bread-and-butter trapping."
+    ),
+    WildlifeType.OPOSSUM: WildlifeSpecies(
+        id="opossum", display_name="Opossum",
+        danger_level=0, size="small",
+        primary_habitats=["forest", "brush", "open terrain"],
+        core_regions=["Appalachians", "Gulf Coast", "California Coast Ranges",
+                      "Central Plains"],
+        base_spawn_chance=0.15,
+        meat_yield_lb=4.0, hide_value=0.50,
+        notes="Plays dead. Low-value fur."
+    ),
+    WildlifeType.LYNX: WildlifeSpecies(
+        id="lynx", display_name="Canada Lynx",
+        danger_level=1, size="medium",
+        primary_habitats=["forest", "mountains", "dense forest"],
+        core_regions=["Rocky Mountains", "Alaska Interior",
+                      "Montana Goldfields", "Pacific Northwest"],
+        base_spawn_chance=0.05,
+        meat_yield_lb=18.0, hide_value=6.00,
+        notes="Elusive cat. Valuable spotted fur. Hunts snowshoe hare."
     ),
 }
 

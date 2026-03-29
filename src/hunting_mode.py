@@ -77,8 +77,8 @@ def _hunting_loop(engine: "Engine", console, ctx) -> None:
         # Sort by distance
         visible = []
         for a in all_animals:
-            if a.state in ("dead", "butchered"):
-                continue
+            if a.state == "butchered":
+                continue  # fully processed, nothing left
             dist = max(abs(a.local_x - px), abs(a.local_y - py))
             if dist <= 60:  # within FOV
                 visible.append((dist, a))
@@ -214,8 +214,8 @@ def _hunting_loop(engine: "Engine", console, ctx) -> None:
         # Controls
         y = 42
         console.print(x, y,     "[F] Fire  [TAB] Cycle target", fg=(120, 120, 120))
-        console.print(x, y + 1, "[SPACE] Wait  [arrows] Sneak", fg=(120, 120, 120))
-        console.print(x, y + 2, "[ESC] Stop hunting", fg=(120, 120, 120))
+        console.print(x, y + 1, "[R]eload  [SPACE] Wait", fg=(120, 120, 120))
+        console.print(x, y + 2, "[arrows] Sneak  [ESC] Stop", fg=(120, 120, 120))
 
         ctx.present(console)
 
@@ -328,6 +328,40 @@ def _hunting_loop(engine: "Engine", console, ctx) -> None:
                         wind_name = WIND_DIRS[wind_idx]
                         turns_since_wind = 0
                     engine.add_message("You wait quietly, watching...", "normal")
+                    break
+
+                # Reload
+                if sym == K.r:
+                    if weapon and weapon.weapon_type == "firearm":
+                        loaded = weapon.extra.get("loaded", 0)
+                        cap = weapon.extra.get("capacity", 1)
+                        if loaded >= cap:
+                            engine.add_message("Already loaded.", "advisory")
+                        else:
+                            ammo_type = weapon.extra.get("ammo_type", "")
+                            ammo_item = None
+                            for it in player.inventory:
+                                if it.id == ammo_type and getattr(it, 'quantity', 0) > 0:
+                                    ammo_item = it
+                                    break
+                            if ammo_item:
+                                rounds = min(cap - loaded, ammo_item.quantity)
+                                weapon.extra["loaded"] = loaded + rounds
+                                if ammo_item.stackable:
+                                    ammo_item.quantity -= rounds
+                                    if ammo_item.quantity <= 0:
+                                        player.inventory.remove(ammo_item)
+                                else:
+                                    player.inventory.remove(ammo_item)
+                                engine.add_message(
+                                    f"Loaded {rounds}. ({weapon.extra['loaded']}/{cap})",
+                                    "normal")
+                                engine.time.advance_seconds(
+                                    weapon.extra.get("reload_time", 15))
+                            else:
+                                engine.add_message(f"No {ammo_type} ammo.", "advisory")
+                    else:
+                        engine.add_message("No firearm to reload.", "advisory")
                     break
 
                 # Sneak movement

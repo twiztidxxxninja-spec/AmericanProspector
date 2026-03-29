@@ -300,7 +300,9 @@ class WildlifeManager:
 
     def get_animals(self, world_x: int, world_y: int,
                     area_x: int = 7, area_y: int = 7) -> List[WildlifeInstance]:
-        return [a for a in self.active.get((world_x, world_y, area_x, area_y), []) if a.alive]
+        """Return all animals except fully butchered ones (dead bodies remain visible)."""
+        return [a for a in self.active.get((world_x, world_y, area_x, area_y), [])
+                if a.state != "butchered"]
 
     def get_at(self, world_x: int, world_y: int,
                area_x: int = 7, area_y: int = 7,

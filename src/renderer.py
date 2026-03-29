@@ -891,6 +891,16 @@ class Renderer:
                     LocalTerrain.SHALLOW_PIT: "Shallow Pit",
                     LocalTerrain.DEEP_PIT: "Deep Pit",
                     LocalTerrain.TAILINGS: "Tailings",
+                    LocalTerrain.TABLE: "Table",
+                    LocalTerrain.CHAIR: "Chair",
+                    LocalTerrain.BED: "Bed",
+                    LocalTerrain.STOVE: "Stove",
+                    LocalTerrain.BAR_COUNTER: "Bar Counter",
+                    LocalTerrain.ANVIL_TILE: "Anvil",
+                    LocalTerrain.SHELF: "Shelf",
+                    LocalTerrain.CELL_BARS: "Cell Bars",
+                    LocalTerrain.DESK: "Desk",
+                    LocalTerrain.BARREL_TILE: "Barrel",
                 }
                 tname = _TERRAIN_NAMES.get(tile.terrain, "")
                 if tname:

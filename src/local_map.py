@@ -44,6 +44,17 @@ class LocalTerrain:
     MAGNOLIA    = 22  # Southern Magnolia, Sweetgum, Sassafras, Pawpaw, Persimmon
     # Downed tree — felled but not yet processed
     DOWNED_TREE   = 29  # fallen trunk on the ground, chop for logs
+    # Building furniture
+    TABLE         = 43  # wooden table — blocks movement
+    CHAIR         = 44  # chair — passable, sit for rest
+    BED           = 45  # bed — sleep here
+    STOVE         = 46  # iron stove — warmth, cooking, blocks
+    BAR_COUNTER   = 47  # saloon bar — blocks
+    ANVIL_TILE    = 48  # blacksmith anvil — blocks
+    SHELF         = 49  # storage shelf — blocks
+    CELL_BARS     = 50  # jail cell bars — blocks, see-through (reuse stairs range)
+    DESK          = 51  # writing desk — blocks
+    BARREL_TILE   = 52  # storage barrel — blocks
     # Worked ground — visual feedback from mining/panning
     WORKED_GRAVEL = 30  # panned gravel bar — disturbed, darker
     WORKED_DIRT   = 31  # shoveled ground — loose earth
@@ -88,6 +99,17 @@ LOCAL_GLYPH = {
     LocalTerrain.MAGNOLIA:   ("T", ( 45, 110,  60),  (12, 36,  16)), # warm medium green, glossy
     # Downed tree
     LocalTerrain.DOWNED_TREE:   ("=", ( 90,  70,  40), (30, 22, 10)),  # fallen trunk
+    # Furniture
+    LocalTerrain.TABLE:         ("T", (160, 120,  70), (55, 40, 20)),
+    LocalTerrain.CHAIR:         ("h", (140, 105,  60), (50, 38, 18)),
+    LocalTerrain.BED:           ("=", (120, 100, 140), (45, 38, 55)),  # blue-ish
+    LocalTerrain.STOVE:         ("*", (180,  80,  40), (70, 30, 12)),  # red-hot
+    LocalTerrain.BAR_COUNTER:   ("=", (140, 100,  50), (55, 38, 18)),
+    LocalTerrain.ANVIL_TILE:    ("A", (150, 150, 155), (60, 60, 62)),  # iron grey
+    LocalTerrain.SHELF:         ("[", (130, 100,  55), (48, 35, 16)),
+    LocalTerrain.CELL_BARS:     ("|", (140, 140, 140), (55, 55, 55)),  # iron bars
+    LocalTerrain.DESK:          ("D", (150, 115,  65), (52, 40, 20)),
+    LocalTerrain.BARREL_TILE:   ("o", (130, 100,  55), (48, 35, 16)),
     # Worked ground
     LocalTerrain.WORKED_GRAVEL: (":", (120, 100,  70), (40, 35, 20)),  # darker, disturbed gravel
     LocalTerrain.WORKED_DIRT:   ("~", ( 90,  75,  45), (30, 25, 12)),  # loose churned earth
@@ -129,7 +151,17 @@ LOCAL_PASSABLE = {
     LocalTerrain.HICKORY:    True,
     LocalTerrain.CYPRESS:    True,
     LocalTerrain.MAGNOLIA:   True,
-    LocalTerrain.DOWNED_TREE:   True,   # can step over
+    LocalTerrain.DOWNED_TREE:   True,
+    LocalTerrain.TABLE:         False,  # can't walk through a table
+    LocalTerrain.CHAIR:         True,   # can sit/step past
+    LocalTerrain.BED:           False,  # can't walk on bed
+    LocalTerrain.STOVE:         False,  # hot iron, blocks
+    LocalTerrain.BAR_COUNTER:   False,  # solid counter
+    LocalTerrain.ANVIL_TILE:    False,  # heavy iron
+    LocalTerrain.SHELF:         False,  # floor to ceiling
+    LocalTerrain.CELL_BARS:     False,  # iron bars block
+    LocalTerrain.DESK:          False,  # solid furniture
+    LocalTerrain.BARREL_TILE:   False,  # heavy barrel
     LocalTerrain.WORKED_GRAVEL: True,
     LocalTerrain.WORKED_DIRT:   True,
     LocalTerrain.SHALLOW_PIT:   True,
@@ -172,6 +204,16 @@ LOCAL_TRANSPARENT = {
     LocalTerrain.CYPRESS:    True,
     LocalTerrain.MAGNOLIA:   True,
     LocalTerrain.DOWNED_TREE:   True,
+    LocalTerrain.TABLE:         True,   # can see over/around
+    LocalTerrain.CHAIR:         True,
+    LocalTerrain.BED:           True,
+    LocalTerrain.STOVE:         True,
+    LocalTerrain.BAR_COUNTER:   True,   # can see over the bar
+    LocalTerrain.ANVIL_TILE:    True,
+    LocalTerrain.SHELF:         False,  # floor-to-ceiling shelves block LOS
+    LocalTerrain.CELL_BARS:     True,   # can see through bars
+    LocalTerrain.DESK:          True,
+    LocalTerrain.BARREL_TILE:   True,
     LocalTerrain.WORKED_GRAVEL: True,
     LocalTerrain.WORKED_DIRT:   True,
     LocalTerrain.SHALLOW_PIT:   True,

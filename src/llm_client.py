@@ -178,16 +178,18 @@ class LLMClient:
 
         # NPC identity block
         messages.append({
-            "role": "user",
+            "role": "system",
             "content": (
-                f"NPC CONTEXT:\n{npc_context}\n\n"
-                f"You are playing {npc_name}. Respond ONLY as {npc_name}. "
-                f"NEVER speak as, for, or about the player's actions or feelings. "
-                f"NEVER say what the player does, thinks, or feels. "
-                f"Only describe {npc_name}'s words, actions, and reactions. "
-                f"Keep your reply under 3 sentences. Use *asterisks* for actions, "
-                f"\"quotes\" for dialogue."
+                f"You are {npc_name}. Write {npc_name}'s reply in a conversation. "
+                f"Do NOT write in first person. Do NOT speak as 'I'. "
+                f"Write in third person: what {npc_name} says and does. "
+                f"Example: *{npc_name} scratches his chin.* \"{npc_name}'s dialogue here.\" "
+                f"Keep replies under 3 sentences."
             ),
+        })
+        messages.append({
+            "role": "user",
+            "content": f"NPC BACKGROUND:\n{npc_context}",
         })
 
         # Inject up to 6 prior exchanges

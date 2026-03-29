@@ -384,7 +384,7 @@ class Renderer:
         cam_y = player.local_y - VIEWPORT_H // 2
 
         for npc in npcs:
-            if not npc.present or not npc.alive:
+            if not npc.present:
                 continue
             # Only show NPCs at the player's z-level
             if getattr(npc, "local_z", 0) != player.local_z:
@@ -418,7 +418,11 @@ class Renderer:
                 else:
                     fg_color = (220, 110, 60)  # orange-red — unfriendly
 
-            self.con.print(sx, sy + 1, "@", fg=fg_color, bg=bg)
+            # Dead NPCs show as % (corpse)
+            if not npc.alive or npc.combat_state == "dead":
+                self.con.print(sx, sy + 1, "%", fg=(120, 60, 60), bg=bg)
+            else:
+                self.con.print(sx, sy + 1, "@", fg=fg_color, bg=bg)
 
             # Name label when player is adjacent (within 2 tiles)
             dist = max(abs(npc.local_x - player.local_x),

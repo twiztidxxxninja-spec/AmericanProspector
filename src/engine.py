@@ -4613,7 +4613,7 @@ class Engine:
             if npc:
                 npc.health = 0
                 npc.alive = False
-                npc.present = False
+                npc.present = True   # body stays for looting
                 npc.combat_state = "dead"
                 self.add_message(f"{name} is dead.", "critical")
 
@@ -5189,6 +5189,9 @@ class Engine:
             self._console = console
             self._ctx     = ctx
 
+            # Start background music — plays during character creation
+            self.music.play_shuffle()
+
             # Character creation — runs before the game loop
             from src.char_create import run_character_creation
             cc = run_character_creation(console, ctx)
@@ -5197,9 +5200,6 @@ class Engine:
             self._apply_character(cc)
 
             self.recompute_fov()
-
-            # Start background music
-            self.music.play_shuffle()
 
             # Flush stale events and ensure keyboard focus
             for _ in tcod.event.get():

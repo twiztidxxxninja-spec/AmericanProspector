@@ -458,8 +458,8 @@ def enter_combat_mode(engine: "Engine", console, ctx) -> None:
             y += 1
 
         y += 1
-        console.print(x, y,     "[F] Snap shot (3s)", fg=(120, 120, 120))
-        console.print(x, y + 1, "[G] Careful aim (10s, +25%)", fg=(120, 120, 120))
+        console.print(x, y,     "[F] Snap shot  [G] Careful aim", fg=(120, 120, 120))
+        console.print(x, y + 1, "[X] Melee attack (adjacent)", fg=(120, 120, 120))
         console.print(x, y + 2, "[R]eload  [TAB] target", fg=(120, 120, 120))
         console.print(x, y + 3, "[1-5] Aim part  [SPACE] Wait", fg=(120, 120, 120))
         console.print(x, y + 4, "[T]hrow item  [W] Swap weapon", fg=(120, 120, 120))
@@ -494,6 +494,58 @@ def enter_combat_mode(engine: "Engine", console, ctx) -> None:
 
                 if sym in (K.ESCAPE, K.k):
                     return
+
+                # Melee attack (X) — move to target if within 3, attack adjacent
+                if sym == K.x:
+                    if dist <= 1:
+                        # Adjacent — attack directly
+                        melee_w = None
+                        for i in engine.player.inventory:
+                            if i.weapon_type == "melee" and (
+                                i.name == engine.player.right_hand or
+                                i.name == engine.player.left_hand):
+                                melee_w = i
+                                break
+                        if not melee_w:
+                            for i in engine.player.inventory:
+                                if i.weapon_type == "melee":
+                                    melee_w = i
+                                    engine.player.right_hand = i.name
+                                    break
+                        _do_player_attack(engine, target, kind, melee_w, aimed_part,
+                                          1, 0, add_msg, lmap, rng)
+                        tick_time(ACTION_TIME["melee"])
+                    elif dist <= 3:
+                        # Close — rush toward target then attack
+                        tx = getattr(target, 'local_x', px)
+                        ty = getattr(target, 'local_y', py)
+                        steps = dist - 1
+                        for _ in range(steps):
+                            dx = 1 if tx > engine.player.local_x else (-1 if tx < engine.player.local_x else 0)
+                            dy = 1 if ty > engine.player.local_y else (-1 if ty < engine.player.local_y else 0)
+                            nx = engine.player.local_x + dx
+                            ny = engine.player.local_y + dy
+                            if lmap.in_bounds(nx, ny) and lmap.is_passable(nx, ny):
+                                engine.player.local_x = nx
+                                engine.player.local_y = ny
+                                cur_z = engine.player.local_z
+                                target_z = int(lmap.surface_z[ny][nx])
+                                if abs(target_z - cur_z) < 2:
+                                    engine.player.local_z = target_z
+                        add_msg("You rush forward!")
+                        melee_w = None
+                        for i in engine.player.inventory:
+                            if i.weapon_type == "melee" and (
+                                i.name == engine.player.right_hand or
+                                i.name == engine.player.left_hand):
+                                melee_w = i
+                                break
+                        _do_player_attack(engine, target, kind, melee_w, aimed_part,
+                                          1, 0, add_msg, lmap, rng)
+                        tick_time(ACTION_TIME["melee"] + steps * ACTION_TIME["move"])
+                    else:
+                        add_msg("Too far for melee. Get closer or use [F] to shoot.", "advisory")
+                    break
 
                 # Snap shot (F) — fast, normal accuracy
                 if sym == K.f:

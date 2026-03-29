@@ -59,9 +59,11 @@ class Renderer:
             self._draw_local_map(local_map, player, locals_dict or {}, gold_overlay=gold_overlay)
             self._draw_minimap(world_map, player)
         elif state == GameState.AREA_MAP:
-            self._draw_world_zoomed(world_map, player, tile_size=4)
+            self._draw_world_zoomed(world_map, player, tile_size=4,
+                                     locals_dict=locals_dict or {})
         elif state == GameState.COUNTY_MAP:
-            self._draw_world_at_stride(world_map, player, stride=1)
+            self._draw_world_at_stride(world_map, player, stride=1,
+                                        locals_dict=locals_dict or {})
         elif state == GameState.STATE_MAP:
             self._draw_world_at_stride(world_map, player, stride=5)
         elif state == GameState.COUNTRY_MAP:
@@ -420,8 +422,11 @@ class Renderer:
 
     # ── World Map — zoomed in (Area view, tile_size screen tiles per world tile) ──
 
-    def _draw_world_zoomed(self, world_map: WorldMap, player: Player, tile_size: int = 4):
+    def _draw_world_zoomed(self, world_map: WorldMap, player: Player,
+                           tile_size: int = 4, locals_dict: dict = None):
         """Each world tile rendered as tile_size×tile_size screen tiles."""
+        if locals_dict is None:
+            locals_dict = {}
         # How many world tiles fit on screen
         wt_cols = MAP_WIDTH  // tile_size
         wt_rows = MAP_HEIGHT // tile_size
@@ -463,6 +468,24 @@ class Renderer:
                         else:
                             self.con.print(sx+dx, sy+dy, glyph, fg=dfg, bg=dbg)
 
+        # Overlay player structures on visited patches
+        from src.construction import PlacedEquipment
+        for key, lmap in locals_dict.items():
+            wx, wy = key[0], key[1]
+            if not world_map.in_bounds(wx, wy):
+                continue
+            has_struct = any(isinstance(s, PlacedEquipment) and s.progress >= 100
+                            for s in lmap.structures.values())
+            if not has_struct:
+                continue
+            # Draw structure marker at this world tile
+            bx = (wx - vx) * tile_size
+            by = (wy - vy) * tile_size + 1
+            # Place marker at corner of the tile block (not center — that's for towns)
+            mx, my = bx, by
+            if 0 <= mx < MAP_WIDTH and 1 <= my < MAP_HEIGHT + 1:
+                self.con.print(mx, my, "+", fg=(200, 160, 80), bg=BLACK)
+
         # Player marker — center of their world tile block
         px = (player.world_x - vx) * tile_size + tile_size // 2
         py = (player.world_y - vy) * tile_size + tile_size // 2 + 1
@@ -471,7 +494,8 @@ class Renderer:
 
     # ── World Map — strided (County / State / Country views) ───────────────
 
-    def _draw_world_at_stride(self, world_map: WorldMap, player: Player, stride: int = 1):
+    def _draw_world_at_stride(self, world_map: WorldMap, player: Player,
+                              stride: int = 1, locals_dict: dict = None):
         """
         stride=1: each screen tile = 1 world tile (County — scrollable, centered on player)
         stride=5: each screen tile = 5×5 world tiles sampled (State)
@@ -485,6 +509,19 @@ class Renderer:
                 for sx in range(MAP_WIDTH):
                     wx, wy = vx + sx, vy + sy
                     self._draw_world_tile(world_map, wx, wy, sx, sy + 1, player)
+            # Player structure markers on county map
+            if locals_dict:
+                from src.construction import PlacedEquipment
+                for key, lmap in locals_dict.items():
+                    wx, wy = key[0], key[1]
+                    has_struct = any(isinstance(s, PlacedEquipment) and s.progress >= 100
+                                    for s in lmap.structures.values())
+                    if not has_struct:
+                        continue
+                    sx = wx - vx
+                    sy = wy - vy + 1
+                    if 0 <= sx < MAP_WIDTH and 1 <= sy < MAP_HEIGHT + 1:
+                        self.con.print(sx, sy, "+", fg=(200, 160, 80), bg=BLACK)
             # Player marker
             self.con.print(MAP_WIDTH // 2, MAP_HEIGHT // 2 + 1, "@", fg=WHITE, bg=BLACK)
         else:

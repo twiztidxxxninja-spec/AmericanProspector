@@ -371,11 +371,24 @@ def _deserialize_item(d: dict):
 def _serialize_local(lmap) -> dict:
     tiles = []
     for row in lmap.tiles:
-        tiles.append([{
-            "terrain":  t.terrain,
-            "explored": t.explored,
-            "gold_grade": t.gold_grade,
-        } for t in row])
+        row_data = []
+        for t in row:
+            td = {
+                "terrain":  t.terrain,
+                "explored": t.explored,
+                "gold_grade": t.gold_grade,
+            }
+            # Only save non-default values to keep file size down
+            if t.dig_depth:
+                td["dig_depth"] = t.dig_depth
+            if t.panned:
+                td["panned"] = True
+            if t.mineral_hint:
+                td["mineral_hint"] = t.mineral_hint
+            if t.ground_items:
+                td["ground_items"] = [_serialize_item(i) for i in t.ground_items]
+            row_data.append(td)
+        tiles.append(row_data)
     result = {"tiles": tiles}
 
     # Z-level elevation
@@ -441,9 +454,15 @@ def _deserialize_local(lmap, data: dict):
     for y, row in enumerate(data.get("tiles", [])):
         for x, td in enumerate(row):
             if y < lmap.height and x < lmap.width:
-                lmap.tiles[y][x].terrain   = td.get("terrain", 0)
-                lmap.tiles[y][x].explored  = td.get("explored", False)
-                lmap.tiles[y][x].gold_grade = td.get("gold_grade", 0.0)
+                tile = lmap.tiles[y][x]
+                tile.terrain      = td.get("terrain", 0)
+                tile.explored     = td.get("explored", False)
+                tile.gold_grade   = td.get("gold_grade", 0.0)
+                tile.dig_depth    = td.get("dig_depth", 0)
+                tile.panned       = td.get("panned", False)
+                tile.mineral_hint = td.get("mineral_hint", "")
+                if "ground_items" in td:
+                    tile.ground_items = [_deserialize_item(i) for i in td["ground_items"]]
 
     # Restore z-level elevation
     if "surface_z" in data:

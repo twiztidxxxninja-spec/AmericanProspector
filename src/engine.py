@@ -1101,6 +1101,12 @@ class Engine:
         if sym == K.t:
             self._open_talk()
             return True
+        # Trapping mode  Y
+        if sym == K.y:
+            if self.state == GameState.LOCAL_MAP:
+                from src.trapping_mode import enter_trapping_mode
+                enter_trapping_mode(self, self._console, self._ctx)
+            return True
         # Hunting mode  H
         if sym == K.h:
             if self.state == GameState.LOCAL_MAP:
@@ -2127,6 +2133,12 @@ class Engine:
                 ("  ENTER = clean out (recover all gold)", WHITE),
                 ("", GREY),
                 ("HUNTING MODE [H]", CYAN),
+                ("  Stalk, track, aim, fire at wildlife", WHITE),
+                ("", GREY),
+                ("TRAPPING MODE [Y]", CYAN),
+                ("  S=set trap, C=check, R=reset, P=pickup", WHITE),
+                ("  TAB=cycle traps, F=craft, arrows=move", WHITE),
+                ("  Shows animal signs overlay (tracking skill)", WHITE),
                 ("  Arrows = sneak (quiet, slower)", WHITE),
                 ("  F = fire at target", WHITE),
                 ("  TAB = cycle between animals", WHITE),

@@ -1699,6 +1699,40 @@ class Engine:
                 f"You're overloaded! ({self.player.carried_weight:.0f}/{self.player.carry_capacity:.0f} lb)",
                 "advisory")
 
+    def _open_crafting(self):
+        """Crafting menu — make items from raw materials."""
+        from src.menus import pick_from_list
+        from src.crafting import RECIPES, RECIPE_CATEGORIES, can_craft, execute_craft
+
+        # Group recipes by category, show craftability
+        cat_names = list(RECIPE_CATEGORIES.keys())
+        cat_idx = pick_from_list(self._console, self._ctx, "Craft — Category",
+                                  [c.capitalize() for c in cat_names])
+        if cat_idx is None:
+            return
+        category = cat_names[cat_idx]
+        recipes = RECIPE_CATEGORIES[category]
+
+        # Show recipes with availability
+        labels = []
+        for r in recipes:
+            ok, reason = can_craft(r, self.player.inventory)
+            mats = ", ".join(f"{q}x {mid}" for mid, q in r.materials)
+            status = "" if ok else f" [NEED: {reason}]"
+            labels.append(f"{r.name} ({mats}){status}")
+
+        ridx = pick_from_list(self._console, self._ctx, f"Craft — {category.capitalize()}", labels)
+        if ridx is None:
+            return
+        recipe = recipes[ridx]
+
+        ok, msg = execute_craft(recipe, self.player)
+        self.add_message(msg, "normal" if ok else "advisory")
+        if ok:
+            self.advance_time(recipe.time_minutes)
+        else:
+            self.advance_time(5)  # wasted attempt
+
     def _open_throw(self):
         """[V] — select an item to throw, then select a target."""
         from src.menus import pick_from_list
@@ -2443,6 +2477,12 @@ class Engine:
                     actions.append("Gamble (cards)")
                     break
 
+        # Crafting — always available if player has any raw materials
+        raw_mats = ("raw_hide", "animal_bones", "tallow", "sinew", "antlers",
+                    "bird_feathers", "log", "plank", "rope_10ft")
+        if any(i.id in raw_mats for i in self.player.inventory):
+            actions.append("Craft")
+
         # Dead animals nearby?
         animals = self.wildlife_mgr.get_animals(
             self.player.world_x, self.player.world_y,
@@ -2488,6 +2528,13 @@ class Engine:
                 LocalTerrain.PIT, LocalTerrain.SPOIL_PILE)
 
         # ── Gambling ──────────────────────────────────────────────────────
+        # ── Crafting ──────────────────────────────────────────────────────
+        if "craft" in a or "make" in a and any(w in a for w in
+                ("knife", "arrow", "bow", "leather", "pouch", "plank",
+                 "torch", "candle", "snare", "club", "bowl", "moccasin")):
+            self._open_crafting()
+            return
+
         if any(w in a for w in ("gamble", "poker", "cards", "faro", "blackjack",
                                 "twenty-one", "play cards", "card game")):
             from src.gambling_mode import enter_gambling_mode

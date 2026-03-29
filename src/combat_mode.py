@@ -103,21 +103,36 @@ def _get_all_hostiles(engine):
     return targets
 
 
-def _best_weapon(player):
+def _best_weapon(player, auto_equip=True):
+    """Find best weapon, preferring what's in hand. Auto-equips if needed."""
+    # First check what's already in hand
+    for i in player.inventory:
+        if i.name == player.right_hand or i.name == player.left_hand:
+            if i.weapon_type == "firearm" and i.extra.get("loaded", 0) > 0:
+                return i
+            if i.weapon_type == "melee":
+                return i
+
+    # Nothing useful in hand — find best from inventory
     firearms = [i for i in player.inventory
                 if i.weapon_type == "firearm" and i.extra.get("loaded", 0) > 0]
-    if firearms:
-        for f in firearms:
-            if f.name == player.right_hand or f.name == player.left_hand:
-                return f
-        return firearms[0]
     melee = [i for i in player.inventory if i.weapon_type == "melee"]
-    if melee:
-        for m in melee:
-            if m.name == player.right_hand or m.name == player.left_hand:
-                return m
-        return melee[0]
-    return None
+    weapon = None
+    if firearms:
+        weapon = firearms[0]
+    elif melee:
+        weapon = melee[0]
+
+    # Auto-equip to hand
+    if weapon and auto_equip:
+        if not player.right_hand:
+            player.right_hand = weapon.name
+        elif not player.left_hand:
+            player.left_hand = weapon.name
+        else:
+            # Both hands full — swap right hand
+            player.right_hand = weapon.name
+    return weapon
 
 
 def _calc_hit_chance(player, target, weapon, dist, aimed_part, accuracy_bonus=0):
@@ -447,8 +462,8 @@ def enter_combat_mode(engine: "Engine", console, ctx) -> None:
         console.print(x, y + 1, "[G] Careful aim (10s, +25%)", fg=(120, 120, 120))
         console.print(x, y + 2, "[R]eload  [TAB] target", fg=(120, 120, 120))
         console.print(x, y + 3, "[1-5] Aim part  [SPACE] Wait", fg=(120, 120, 120))
-        console.print(x, y + 4, "[V]iew  [arrows] Move", fg=(120, 120, 120))
-        console.print(x, y + 5, "[ESC] Exit combat", fg=(120, 120, 120))
+        console.print(x, y + 4, "[W] Swap weapon  [V]iew target", fg=(120, 120, 120))
+        console.print(x, y + 5, "[arrows] Move  [ESC] Exit", fg=(120, 120, 120))
 
         # Combat log
         log_y = 44
@@ -573,6 +588,31 @@ def enter_combat_mode(engine: "Engine", console, ctx) -> None:
                 if sym == K.SPACE:
                     add_msg("You hold.", "normal")
                     tick_time(ACTION_TIME["wait"])
+                    break
+
+                # Swap weapon
+                if sym == K.w:
+                    from src.menus import pick_from_list
+                    weapons = [i for i in engine.player.inventory if i.is_weapon()]
+                    if not weapons:
+                        add_msg("No weapons in inventory.", "advisory")
+                        break
+                    labels = []
+                    for w in weapons:
+                        eq = ""
+                        if w.name == engine.player.right_hand:
+                            eq = " [R.Hand]"
+                        elif w.name == engine.player.left_hand:
+                            eq = " [L.Hand]"
+                        ammo = ""
+                        if w.weapon_type == "firearm":
+                            ammo = f" ({w.extra.get('loaded', 0)}/{w.extra.get('capacity', 1)})"
+                        labels.append(f"{w.name}{ammo}{eq}")
+                    idx = pick_from_list(console, ctx, "Equip which weapon?", labels)
+                    if idx is not None and idx < len(weapons):
+                        chosen = weapons[idx]
+                        engine.player.right_hand = chosen.name
+                        add_msg(f"You ready the {chosen.name}.", "normal")
                     break
 
                 # Free look

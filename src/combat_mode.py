@@ -255,6 +255,16 @@ def _npc_execute(engine, npc, action, player, lmap, add_msg, rng):
         return
 
     if action in ("shoot", "careful_aim", "melee"):
+        # Animate NPC shot toward player
+        if action in ("shoot", "careful_aim"):
+            _play_sound("bang")
+            half_w, half_h = 40, 19
+            cam_x = player.local_x - half_w
+            cam_y = player.local_y - half_h
+            _animate_bullet(engine._console, engine._ctx,
+                            npc.local_x, npc.local_y,
+                            player.local_x, player.local_y,
+                            cam_x, cam_y)
         # Calculate player's cover from NPC's perspective
         p_cover = lmap.cover_between(
             npc.local_x, npc.local_y,
@@ -262,6 +272,17 @@ def _npc_execute(engine, npc, action, player, lmap, add_msg, rng):
         event = npc_attack_player(npc, player, player_cover=p_cover)
         sev = "critical" if event.hit else "normal"
         add_msg(event.message, sev)
+        if action in ("shoot", "careful_aim"):
+            _play_sound("hit" if event.hit else "miss")
+            # NPC stray bullets on miss
+            if not event.hit:
+                import random as _sr
+                if _sr.random() < 0.4:  # 40% chance stray hits something
+                    _check_stray_bullet(engine, lmap,
+                        npc.local_x, npc.local_y,
+                        player.local_x, player.local_y,
+                        15, add_msg,
+                        console=engine._console, ctx=engine._ctx)
         if event.hit:
             engine._splatter_blood(lmap, player.local_x, player.local_y, 1)
         if event.killed:
@@ -831,7 +852,8 @@ def _do_player_attack(engine, target, kind, weapon, aimed_part, dist,
             dmg = weapon.damage_max if weapon else 10
             _check_stray_bullet(engine, lmap,
                 engine.player.local_x, engine.player.local_y,
-                target.local_x, target.local_y, dmg, add_msg)
+                target.local_x, target.local_y, dmg, add_msg,
+                console=engine._console, ctx=engine._ctx)
         if evt.hit:
             skill = "firearms" if weapon.weapon_type == "firearm" else "survival"
             engine.player.gain_skill_xp(skill, 3.0 if evt.killed else 1.5)
@@ -936,22 +958,42 @@ def _animate_bullet(console, ctx, px, py, tx, ty, cam_x, cam_y):
             time.sleep(0.02)
 
 
-def _check_stray_bullet(engine, lmap, px, py, tx, ty, dmg, add_msg):
-    """Trace bullet path past target, check for collateral hits."""
-    # Direction from player to target, continue 20 tiles
+def _check_stray_bullet(engine, lmap, px, py, tx, ty, dmg, add_msg,
+                        console=None, ctx=None):
+    """Trace bullet path past target with scatter angle, check for collateral."""
+    import math
     dx = tx - px
     dy = ty - py
     length = max(abs(dx), abs(dy))
     if length == 0:
         return
-    ndx = dx / length
-    ndy = dy / length
 
-    for step in range(1, 20):
+    # Add scatter angle — wider miss = bigger angle (up to ±15 degrees)
+    base_angle = math.atan2(dy, dx)
+    scatter = random.uniform(-0.26, 0.26)  # ±15 degrees in radians
+    angle = base_angle + scatter
+    ndx = math.cos(angle)
+    ndy = math.sin(angle)
+
+    # Animate the stray bullet path
+    half_w, half_h = 40, 19
+    cam_x = engine.player.local_x - half_w
+    cam_y = engine.player.local_y - half_h
+
+    for step in range(1, 25):
         bx = int(tx + ndx * step)
         by = int(ty + ndy * step)
         if not lmap.in_bounds(bx, by):
             break
+        # Animate stray bullet
+        if console and ctx:
+            sx = bx - cam_x
+            sy = by - cam_y + 1
+            if 0 <= sx < 80 and 1 <= sy < 40:
+                import time
+                console.print(sx, sy, ".", fg=(255, 180, 60), bg=(40, 20, 5))
+                ctx.present(console)
+                time.sleep(0.015)
         # Hit terrain that blocks?
         from src.local_map import LocalTerrain
         t = lmap.tiles[by][bx].terrain

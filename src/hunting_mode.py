@@ -371,9 +371,15 @@ def _hunting_loop(engine: "Engine", console, ctx) -> None:
                     dx, dy = moves[sym]
                     nx, ny = px + dx, py + dy
                     if lmap.in_bounds(nx, ny) and lmap.is_passable(nx, ny):
+                        # Z-level transition
+                        cur_z = player.local_z
+                        target_z = int(lmap.surface_z[ny][nx])
+                        if abs(target_z - cur_z) >= 2:
+                            break  # cliff — blocked
                         player.move(dx, dy)
-                        # Sneaking takes extra time but is quieter
-                        engine.time.advance_seconds(5)  # slower than normal walk (3s)
+                        if target_z != cur_z:
+                            player.local_z = target_z
+                        engine.time.advance_seconds(5)
                         engine.recompute_fov()
 
                         # Reduced detection while sneaking — temporarily halve alert distances

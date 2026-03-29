@@ -632,8 +632,14 @@ def enter_combat_mode(engine: "Engine", console, ctx) -> None:
                     nx = engine.player.local_x + dx
                     ny = engine.player.local_y + dy
                     if lmap.in_bounds(nx, ny) and lmap.is_passable(nx, ny):
+                        cur_z = engine.player.local_z
+                        target_z = int(lmap.surface_z[ny][nx])
+                        if abs(target_z - cur_z) >= 2:
+                            break  # cliff
                         engine.player.local_x = nx
                         engine.player.local_y = ny
+                        if target_z != cur_z:
+                            engine.player.local_z = target_z
                         engine.recompute_fov()
                         tick_time(ACTION_TIME["move"])
                     break

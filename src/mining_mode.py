@@ -200,9 +200,14 @@ def _pan_mode(engine: "Engine", console, ctx) -> None:
                     nx = engine.player.local_x + dx
                     ny = engine.player.local_y + dy
                     if lmap.in_bounds(nx, ny) and lmap.is_passable(nx, ny):
-                        engine.player.move(dx, dy)
-                        engine.time.advance_seconds(3)
-                        engine.recompute_fov()
+                        cur_z = engine.player.local_z
+                        target_z = int(lmap.surface_z[ny][nx])
+                        if abs(target_z - cur_z) < 2:
+                            engine.player.move(dx, dy)
+                            if target_z != cur_z:
+                                engine.player.local_z = target_z
+                            engine.time.advance_seconds(3)
+                            engine.recompute_fov()
                     break
 
 
@@ -390,7 +395,13 @@ def _sluice_mode(engine: "Engine", console, ctx, sluice) -> None:
                     nx = engine.player.local_x + dx
                     ny = engine.player.local_y + dy
                     if lmap.in_bounds(nx, ny) and lmap.is_passable(nx, ny):
+                        cur_z = engine.player.local_z
+                        target_z = int(lmap.surface_z[ny][nx])
+                        if abs(target_z - cur_z) >= 2:
+                            break  # cliff
                         engine.player.move(dx, dy)
+                        if target_z != cur_z:
+                            engine.player.local_z = target_z
                         engine.time.advance_seconds(3)
                         engine.recompute_fov()
                     break

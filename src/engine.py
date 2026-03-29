@@ -531,6 +531,43 @@ class Engine:
             new_vis.add((tx, ty))
         lmap._visible_tiles = new_vis
 
+        # Mark adjacent patch tiles as explored when viewport extends beyond edge.
+        # Only process the out-of-bounds strips (not the entire FOV area).
+        from src.constants import AREAS_PER_WORLD, PATCH_SIZE
+        half_w = 40  # VIEWPORT_W // 2
+        half_h = 19  # VIEWPORT_H // 2
+        cam_x = px - half_w
+        cam_y = py - half_h
+        wx, wy = self.player.world_x, self.player.world_y
+        ax, ay = self.player.area_x, self.player.area_y
+        for vsy in range(half_h * 2):
+            for vsx in range(half_w * 2):
+                atx, aty = cam_x + vsx, cam_y + vsy
+                if lmap.in_bounds(atx, aty):
+                    continue  # on current patch
+                # Resolve to adjacent patch coords
+                _ax, _ay, _wx, _wy = ax, ay, wx, wy
+                _tx, _ty = atx, aty
+                if _tx < 0:
+                    _ax -= 1; _tx += PATCH_SIZE
+                elif _tx >= PATCH_SIZE:
+                    _ax += 1; _tx -= PATCH_SIZE
+                if _ty < 0:
+                    _ay -= 1; _ty += PATCH_SIZE
+                elif _ty >= PATCH_SIZE:
+                    _ay += 1; _ty -= PATCH_SIZE
+                if _ax < 0:
+                    _wx -= 1; _ax += AREAS_PER_WORLD
+                elif _ax >= AREAS_PER_WORLD:
+                    _wx += 1; _ax -= AREAS_PER_WORLD
+                if _ay < 0:
+                    _wy -= 1; _ay += AREAS_PER_WORLD
+                elif _ay >= AREAS_PER_WORLD:
+                    _wy += 1; _ay -= AREAS_PER_WORLD
+                adj_lmap = self.locals.get((_wx, _wy, _ax, _ay))
+                if adj_lmap and adj_lmap.in_bounds(_tx, _ty):
+                    adj_lmap.tiles[_ty][_tx].explored = True
+
     def _edge_wall_blocks_los(self, wg, px: int, py: int,
                                 tx: int, ty: int) -> bool:
         """

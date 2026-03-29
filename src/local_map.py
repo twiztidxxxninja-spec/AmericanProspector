@@ -106,7 +106,7 @@ LOCAL_PASSABLE = {
     LocalTerrain.GRASS:      True,
     LocalTerrain.FOREST:     True,
     LocalTerrain.ROCK:       False,
-    LocalTerrain.WATER:      False,
+    LocalTerrain.WATER:      True,   # wadeable at 5ft scale (streams, not rivers)
     LocalTerrain.GRAVEL_BAR: True,
     LocalTerrain.BEDROCK:    True,
     LocalTerrain.MUD:        True,

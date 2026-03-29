@@ -153,9 +153,23 @@ class Renderer:
             for sx in range(VIEWPORT_W):
                 tx, ty = cam_x + sx, cam_y + sy
 
-                # Out of bounds check
+                # Out of bounds — fetch from adjacent patch
                 if not local_map.in_bounds(tx, ty):
-                    self.con.print(sx, sy + 1, " ", fg=BLACK, bg=(5, 5, 15))
+                    adj = self._adj_tile(local_map, locals_dict,
+                                         wx, wy, ax, ay, tx, ty)
+                    if adj and (adj.visible or adj.explored):
+                        glyph, fg, bg = LOCAL_GLYPH.get(adj.terrain, ("?", WHITE, BLACK))
+                        if adj.explored and not adj.visible:
+                            fg = tuple(max(0, c // 4) for c in fg)
+                            bg = tuple(max(0, c // 4) for c in bg)
+                        blood = getattr(adj, "blood", 0)
+                        if blood == 1:
+                            bg = (max(bg[0], 60), bg[1] // 2, bg[2] // 2)
+                        elif blood >= 2:
+                            bg = (max(bg[0], 90), min(bg[1], 10), min(bg[2], 10))
+                        self.con.print(sx, sy + 1, glyph, fg=fg, bg=bg)
+                    else:
+                        self.con.print(sx, sy + 1, " ", fg=BLACK, bg=(5, 5, 15))
                     continue
 
                 sz = int(local_map.surface_z[ty][tx])

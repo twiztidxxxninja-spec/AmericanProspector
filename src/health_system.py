@@ -471,10 +471,12 @@ def create_wound(damage: float, damage_type: str = DmgType.BLUNT,
     if not dirty and rng.random() < 0.15:
         dirty = True   # 15% chance any wound gets contaminated
 
-    # Lodged object
+    # Lodged object — bullets have ~60% chance, arrows ~80%, shot ~40%
     lodged = ""
-    if wpn.get("lodged"):
-        if sev != Sev.LIGHT:  # light hits = graze, no lodging
+    if wpn.get("lodged") and sev != Sev.LIGHT:
+        lodge_chance = {"bullet": 0.60, "arrowhead": 0.80, "shot": 0.40
+                        }.get(wpn["lodged"], 0.50)
+        if rng.random() < lodge_chance:
             lodged = wpn["lodged"]
 
     # Bone fracture

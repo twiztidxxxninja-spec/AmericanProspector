@@ -1520,6 +1520,28 @@ class Engine:
             self.add_message(
                 f"You search {npc.name}'s body: {', '.join(loot_msgs)}.",
                 "normal")
+            # Recover lodged objects from wounds
+            if hasattr(npc, 'wounds') and npc.wounds:
+                for w in npc.wounds.wounds:
+                    if w.lodged:
+                        lodged_items = {
+                            "bullet": ("rifle_ball", "Lead Ball"),
+                            "shot": ("shotgun_shell", "Shotgun Pellets"),
+                            "arrowhead": ("arrow", "Arrowhead"),
+                            "knife": ("hunting_knife", "Lodged Blade"),
+                        }
+                        item_id, item_name = lodged_items.get(
+                            w.lodged, ("", w.lodged))
+                        if item_id:
+                            try:
+                                recovered = make_item(item_id)
+                                self.player.inventory.append(recovered)
+                                self.add_message(
+                                    f"You dig out a {w.lodged} from the body.",
+                                    "normal")
+                            except Exception:
+                                pass
+                        w.lodged = ""
             self.advance_time(3)
 
             # Crime if witnessed
@@ -2602,6 +2624,50 @@ class Engine:
             else:
                 self.add_message("No open wounds to bandage.", "advisory")
                 self.advance_time(2)
+            return
+
+        # ── Extract lodged object ─────────────────────────────────────────
+        if "extract" in a or "remove bullet" in a or "dig out" in a or "pull out" in a:
+            lodged_wounds = [w for w in self.player.wounds.wounds if w.lodged]
+            if not lodged_wounds:
+                self.add_message("No lodged objects in your wounds.", "advisory")
+                return
+            from src.menus import pick_from_list
+            labels = [f"{w.lodged} in {w.part} ({w.severity})" for w in lodged_wounds]
+            idx = pick_from_list(self._console, self._ctx, "Extract what?", labels)
+            if idx is None:
+                return
+            wound = lodged_wounds[idx]
+            # Skill check: firstAid
+            import random as _ext_rng
+            skill = self.player.skills.get("firstAid", 0)
+            roll = _ext_rng.randint(1, 20) + skill // 2
+            self.advance_time(15)
+            if roll >= 10:
+                from src.items import make_item
+                lodged_items = {
+                    "bullet": "rifle_ball", "shot": "shotgun_shell",
+                    "arrowhead": "arrow",
+                }
+                item_id = lodged_items.get(wound.lodged, "")
+                if item_id:
+                    try:
+                        self.player.inventory.append(make_item(item_id))
+                    except Exception:
+                        pass
+                self.add_message(
+                    f"You extract the {wound.lodged} from your {wound.part}. "
+                    f"Painful but it's out.", "normal")
+                wound.lodged = ""
+                wound.bleed_rate *= 1.3  # extraction reopens bleeding
+                self.player.gain_skill_xp("firstAid", 5.0)
+            else:
+                self.player.survival.health -= 3
+                self.add_message(
+                    f"You dig for the {wound.lodged} but can't get it. "
+                    f"The wound bleeds more.", "critical")
+                wound.bleed_rate *= 1.5
+                self.player.gain_skill_xp("firstAid", 2.0)
             return
 
         # ── Check wounds ─────────────────────────────────────────────────

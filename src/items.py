@@ -458,6 +458,23 @@ ITEM_TEMPLATES: Dict[str, dict] = {
         "damage_min": 5, "damage_max": 12, "tool_tags": ["cut"],
     },
 
+    # ── Bows & Arrows ─────────────────────────────────────────────────────
+    "hunting_bow": {
+        "id": "hunting_bow", "name": "Hunting Bow", "weight": 1.5,
+        "category": "weapon",
+        "description": "A simple wooden bow. Silent and deadly at short range.",
+        "base_value": 3.00, "weapon_type": "firearm",  # uses ranged mechanics
+        "damage_min": 12, "damage_max": 25,
+        "extra": {"loaded": 0, "ammo_type": "arrow", "reload_time": 5,
+                  "two_handed": True, "capacity": 1},
+    },
+    "arrow": {
+        "id": "arrow", "name": "Arrow", "weight": 0.05,
+        "category": "material",
+        "description": "A wooden shaft with a stone or iron point. Silent killer.",
+        "base_value": 0.10, "stackable": True,
+    },
+
     # ── Gambling Items ─────────────────────────────────────────────────────
     "playing_cards": {
         "id": "playing_cards", "name": "Playing Cards", "weight": 0.2,

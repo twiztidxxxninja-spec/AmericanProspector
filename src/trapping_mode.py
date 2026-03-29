@@ -37,6 +37,7 @@ def enter_trapping_mode(engine: "Engine", console, ctx) -> None:
     rng = random.Random()
     messages = []
     selected_trap = 0
+    auto_bait = False  # B toggles — auto-uses best bait when setting traps
 
     def add_msg(text, sev="normal"):
         messages.append((text, sev))
@@ -216,9 +217,14 @@ def enter_trapping_mode(engine: "Engine", console, ctx) -> None:
         y += 2
 
         # Controls
-        console.print(x, y,     "[S]et trap  [C]heck  [R]eset", fg=(120, 120, 120))
-        console.print(x, y + 1, "[P]ickup  [F] Craft  [TAB] Cycle", fg=(120, 120, 120))
-        console.print(x, y + 2, "[arrows] Move  [ESC/Y] Exit", fg=(120, 120, 120))
+        # Auto-bait status
+        ab_fg = (100, 200, 100) if auto_bait else (120, 120, 120)
+        console.print(x, y, f"Auto-bait: {'ON' if auto_bait else 'OFF'}  [B] toggle",
+                      fg=ab_fg)
+        y += 1
+        console.print(x, y,     "[S]et  [C]heck  [R]eset  [P]ickup", fg=(120, 120, 120))
+        console.print(x, y + 1, "[F]Craft  [TAB]Cycle  [arrows]Move", fg=(120, 120, 120))
+        console.print(x, y + 2, "[ESC/Y] Exit trapping mode", fg=(120, 120, 120))
 
         # Messages
         log_y = 44
@@ -238,6 +244,12 @@ def enter_trapping_mode(engine: "Engine", console, ctx) -> None:
 
                 if sym in (K.ESCAPE, K.y):
                     return
+
+                # Toggle auto-bait
+                if sym == K.b:
+                    auto_bait = not auto_bait
+                    add_msg(f"Auto-bait: {'ON — best bait used automatically' if auto_bait else 'OFF — choose bait manually'}")
+                    break
 
                 # Set trap
                 if sym == K.s:
@@ -260,11 +272,25 @@ def enter_trapping_mode(engine: "Engine", console, ctx) -> None:
                     if not lmap.in_bounds(tx, ty) or not lmap.is_passable(tx, ty):
                         add_msg("Can't place there.", "advisory")
                         break
-                    # Bait
+                    # Bait — auto or manual
                     bait_items = [i for i in player.inventory
                                   if i.is_food() or i.id == "castoreum"]
                     bait = ""
-                    if bait_items:
+                    if auto_bait and bait_items:
+                        # Auto-pick best bait: castoreum first, then any meat
+                        best = None
+                        for bi in bait_items:
+                            if bi.id == "castoreum":
+                                best = bi
+                                break
+                        if not best:
+                            best = bait_items[0]
+                        bait = best.name
+                        if best.stackable and best.quantity > 1:
+                            best.quantity -= 1
+                        else:
+                            player.inventory.remove(best)
+                    elif bait_items and not auto_bait:
                         bait_labels = ["No bait"] + [i.name for i in bait_items]
                         bidx = pick_from_list(console, ctx, "Bait?", bait_labels)
                         if bidx and bidx > 0:

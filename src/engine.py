@@ -1635,7 +1635,7 @@ class Engine:
                 base_value=0.0,
                 description="Human flesh. Most people would find this abhorrent."))
         if idx >= 1:
-            yields.append(Item(id="raw_hide", name=f"Human Skin",
+            yields.append(Item(id="raw_hide", name=f"{npc.name} Hide",
                 weight=5.0, category="material", base_value=0.0,
                 description="Tanned human skin. Deeply disturbing to possess."))
             yields.append(Item(id="animal_bones", name=f"Human Bones",

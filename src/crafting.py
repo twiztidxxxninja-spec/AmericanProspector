@@ -335,7 +335,7 @@ def execute_craft(recipe: Recipe, player) -> Tuple[bool, str]:
     if hide_name:
         # Extract animal prefix: everything before "Hide", "Leather", "Large", "Medium", "Small"
         import re
-        prefix = re.split(r'\b(Hide|Leather|Large|Medium|Small|Raw|Tanned)\b',
+        prefix = re.split(r'\b(Hide|Skin|Leather|Large|Medium|Small|Raw|Tanned)\b',
                           hide_name, maxsplit=1)[0].strip()
         if prefix and prefix.lower() not in item.name.lower():
             item.name = f"{prefix} {item.name}"

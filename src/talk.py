@@ -176,6 +176,9 @@ def _npc_response(npc: "NPC", topic: str, player: "Player") -> str:
     if topic == "recruit_employee":
         return "__RECRUIT_EMPLOYEE__"
 
+    if topic == "buy_lot":
+        return "__BUY_LOT__"
+
     if topic == "ask_gold":
         if "placer" in npc.knowledge or "geology" in npc.knowledge:
             npc.adjust_relationship(2)
@@ -193,6 +196,110 @@ def _npc_response(npc: "NPC", topic: str, player: "Player") -> str:
     # Free text fallback (pre-LLM placeholder)
     return (f"*{npc.name} considers your words.* "
             f"\"Hmm. I don't rightly know what to make of that.\"")
+
+
+def _handle_buy_lot(con, ctx, npc, player, kwargs) -> str:
+    """Show available lots and let the player buy one, receiving a land deed."""
+    from src.menus import draw_box
+    import tcod.event
+
+    # Get settlement layout from kwargs or engine state
+    settlement_layout = kwargs.get("settlement_layout")
+    if not settlement_layout:
+        return f'*{npc.name} frowns.* "No lots surveyed in this area yet."'
+
+    # Filter to available (unowned) lots
+    lots = [lot for lot in settlement_layout.available_lots if not lot.owner]
+    if not lots:
+        return f'*{npc.name} shakes his head.* "All lots in town are spoken for."'
+
+    WHITE = (255, 255, 255)
+    GREY  = (140, 140, 140)
+    CYAN  = (0, 200, 200)
+    YELLOW = (255, 255, 0)
+    GREEN = (0, 200, 0)
+    BG    = (10, 10, 30)
+    BG2   = (30, 30, 60)
+
+    selected = 0
+    X, Y, W, H = 4, 2, 52, 30
+    town_name = settlement_layout.settlement_name or "this town"
+
+    while True:
+        draw_box(con, X, Y, W, H, f"Available Lots — {town_name}")
+        con.print(X + 2, Y + 1,
+                  f"Your cash: ${player.cash:.2f}", fg=YELLOW, bg=BG)
+        con.print(X + 2, Y + 2,
+                  f"{len(lots)} lot{'s' if len(lots) != 1 else ''} available",
+                  fg=GREY, bg=BG)
+
+        # Column headers
+        con.print(X + 2, Y + 4, " #  Size       Price    Location", fg=GREY, bg=BG)
+        con.draw_rect(X + 1, Y + 5, W - 2, 1, ord("─"), fg=GREY, bg=BG)
+
+        # List lots
+        vis_start = max(0, selected - 18)
+        for i in range(vis_start, min(len(lots), vis_start + 20)):
+            lot = lots[i]
+            is_sel = (i == selected)
+            fg = CYAN if is_sel else WHITE
+            bg = BG2 if is_sel else BG
+            prefix = ">" if is_sel else " "
+            dist_cx = abs(lot.x + lot.w // 2 - settlement_layout.center_x)
+            dist_cy = abs(lot.y + lot.h // 2 - settlement_layout.center_y)
+            loc_str = "central" if dist_cx < 15 and dist_cy < 15 else "outer"
+            line = (f"{prefix}{i + 1:2d}  {lot.w}x{lot.h} tiles  "
+                    f"${lot.price:6.0f}    {loc_str}")
+            con.print(X + 2, Y + 6 + (i - vis_start), line[:W - 4],
+                      fg=fg, bg=bg)
+
+        # Footer
+        con.draw_rect(X + 1, Y + H - 3, W - 2, 1, ord("─"), fg=GREY, bg=BG)
+        con.print(X + 2, Y + H - 2,
+                  "↑↓ select   Enter buy   Esc cancel", fg=GREY, bg=BG)
+        ctx.present(con)
+
+        for event in tcod.event.wait():
+            if isinstance(event, tcod.event.Quit):
+                return ""
+            if isinstance(event, tcod.event.KeyDown):
+                sym = event.sym
+                K = tcod.event.KeySym
+                if sym == K.ESCAPE:
+                    return f'"No problem. Come back when you\'re ready."'
+                elif sym in (K.UP, K.KP_8):
+                    selected = max(0, selected - 1)
+                elif sym in (K.DOWN, K.KP_2):
+                    selected = min(len(lots) - 1, selected + 1)
+                elif sym in (K.RETURN, K.KP_ENTER):
+                    lot = lots[selected]
+                    if player.cash < lot.price:
+                        # Can't afford — show message and stay in menu
+                        con.print(X + 2, Y + H - 4,
+                                  f"You can't afford ${lot.price:.0f}!",
+                                  fg=(255, 80, 80), bg=BG)
+                        ctx.present(con)
+                        tcod.event.wait()  # wait for any key
+                        break
+                    # Purchase the lot
+                    player.cash -= lot.price
+                    lot.owner = getattr(player, "name", "player")
+                    # Create land deed item
+                    from src.items import make_item
+                    deed = make_item("land_deed")
+                    deed.name = f"Land Deed — {town_name} Lot #{selected + 1}"
+                    deed.base_value = lot.price
+                    if hasattr(deed, "extra") and deed.extra:
+                        deed.extra["lot_wx"] = getattr(player, "world_x", 0)
+                        deed.extra["lot_wy"] = getattr(player, "world_y", 0)
+                        deed.extra["lot_x"] = lot.x
+                        deed.extra["lot_y"] = lot.y
+                        deed.extra["lot_w"] = lot.w
+                        deed.extra["lot_h"] = lot.h
+                    player.inventory.append(deed)
+                    return (f'*{npc.name} fills out the paperwork and hands you '
+                            f'a deed.* "Congratulations. Lot #{selected + 1}, '
+                            f'{lot.w}x{lot.h} tiles, is yours. ${lot.price:.0f}."')
 
 
 def _handle_rumor(npc: "NPC", player: "Player",
@@ -394,6 +501,10 @@ def talk_menu(con: tcod.console.Console, ctx,
         PRESET_TOPICS.append((
             f"Sell gold dust ({player.gold_oz:.3f} oz ≈ ${dust_value:.2f})",
             "sell_gold"))
+
+    # Land Agent — buy a lot
+    if npc.occupation == "Land Agent":
+        PRESET_TOPICS.append(("Buy a town lot", "buy_lot"))
 
     # Companion system
     from src.companions import CompanionManager
@@ -757,6 +868,9 @@ def talk_menu(con: tcod.console.Console, ctx,
                                     f'I can do that. When do I start?"')
                         else:
                             resp = ""
+                    elif resp == "__BUY_LOT__":
+                        resp = _handle_buy_lot(
+                            con, ctx, npc, player, kwargs)
 
                     if resp:
                         log.append(resp)

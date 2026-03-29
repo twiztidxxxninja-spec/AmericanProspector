@@ -365,10 +365,30 @@ class PlacedBuilding:
 # ============================================================================
 
 @dataclass
+class TownLot:
+    """An available lot that can be purchased in a town."""
+    x: int              # top-left local map coordinate
+    y: int
+    w: int              # dimensions in tiles
+    h: int
+    price: float = 50.0 # base price in dollars
+    owner: str = ""     # empty = available, player name = owned
+
+    def to_dict(self) -> Dict:
+        return {"x": self.x, "y": self.y, "w": self.w, "h": self.h,
+                "price": self.price, "owner": self.owner}
+
+    @classmethod
+    def from_dict(cls, d: Dict) -> "TownLot":
+        return cls(**d)
+
+
+@dataclass
 class SettlementLayout:
     """Complete layout of a settlement — result of generation."""
     buildings: List[PlacedBuilding] = field(default_factory=list)
     road_tiles: List[Tuple[int, int]] = field(default_factory=list)
+    available_lots: List[TownLot] = field(default_factory=list)
     settlement_type: str = ""
     settlement_name: str = ""
     center_x: int = 192
@@ -390,6 +410,7 @@ class SettlementLayout:
                 for b in self.buildings
             ],
             "road_tiles": self.road_tiles,
+            "available_lots": [lot.to_dict() for lot in self.available_lots],
             "settlement_type": self.settlement_type,
             "settlement_name": self.settlement_name,
             "center_x": self.center_x,
@@ -406,6 +427,8 @@ class SettlementLayout:
         layout.road_tiles = [tuple(t) for t in d.get("road_tiles", [])]
         for bd in d.get("buildings", []):
             layout.buildings.append(PlacedBuilding(**bd))
+        for ld in d.get("available_lots", []):
+            layout.available_lots.append(TownLot.from_dict(ld))
         return layout
 
 
@@ -658,6 +681,22 @@ class TownGenerator:
                 if lm.in_bounds(alley_x, ay):
                     layout.road_tiles.append((alley_x, ay))
 
+        # Generate available lots along the street (boomtown = cheap lots)
+        LOT_W, LOT_H = 10, 8
+        for lx in range(cx - half, cx + half - LOT_W, LOT_W + 1):
+            for side_y in (cy - 3 - LOT_H - 2, cy + 4):
+                overlap = False
+                for px, py, pw, ph in placed_rects:
+                    if not (lx + LOT_W <= px - 1 or px + pw + 1 <= lx or
+                            side_y + LOT_H <= py - 1 or py + ph + 1 <= side_y):
+                        overlap = True
+                        break
+                if not overlap and lm.in_bounds(lx, side_y) and \
+                        lm.in_bounds(lx + LOT_W - 1, side_y + LOT_H - 1):
+                    layout.available_lots.append(
+                        TownLot(x=lx, y=side_y, w=LOT_W, h=LOT_H,
+                                price=25.0))
+
     def _layout_grid(self, lm, layout: SettlementLayout,
                       to_place: List[str], sett: dict) -> None:
         """
@@ -737,6 +776,49 @@ class TownGenerator:
                     else:
                         cursor_x += 1
                     bldg_idx += 1
+
+        # Generate available lots from empty space in each block
+        self._generate_lots(layout, placed_rects, start_x, start_y,
+                            ew, ns, block_w, block_h, layout.settlement_type)
+
+    def _generate_lots(self, layout: SettlementLayout,
+                       placed_rects: List[Tuple[int, int, int, int]],
+                       start_x: int, start_y: int,
+                       ew: int, ns: int,
+                       block_w: int, block_h: int,
+                       settlement_type: str) -> None:
+        """Find empty rectangular areas in grid blocks and register as lots."""
+        LOT_W, LOT_H = 10, 8  # standard lot size in tiles
+        # Lot pricing by settlement type
+        base_price = 50.0 if settlement_type == "small_town" else 150.0
+
+        for bi in range(ew):
+            for bj in range(ns):
+                if bi == ew // 2 and bj == ns // 2:
+                    continue  # skip town square
+
+                blk_x = start_x + bj * (block_w + 1) + 1
+                blk_y = start_y + bi * (block_h + 1) + 1
+
+                # Scan for non-overlapping lot-sized rectangles
+                for ly in range(blk_y, blk_y + block_h - LOT_H + 1, LOT_H):
+                    for lx in range(blk_x, blk_x + block_w - LOT_W + 1, LOT_W):
+                        # Check no overlap with placed buildings
+                        overlap = False
+                        for px, py, pw, ph in placed_rects:
+                            if not (lx + LOT_W <= px or px + pw <= lx or
+                                    ly + LOT_H <= py or py + ph <= ly):
+                                overlap = True
+                                break
+                        if not overlap:
+                            # Price modifier: closer to center = more expensive
+                            cx, cy = layout.center_x, layout.center_y
+                            dist = abs(lx + LOT_W // 2 - cx) + abs(ly + LOT_H // 2 - cy)
+                            price_mult = max(0.5, 2.0 - dist / 30.0)
+                            price = round(base_price * price_mult, 0)
+                            layout.available_lots.append(
+                                TownLot(x=lx, y=ly, w=LOT_W, h=LOT_H,
+                                        price=price))
 
     def _layout_compound(self, lm, layout: SettlementLayout,
                           to_place: List[str], sett: dict) -> None:

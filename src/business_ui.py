@@ -74,6 +74,20 @@ def _start_business_flow(engine, console, ctx):
         from src.town_gen import classify_settlement
         stype = classify_settlement(loc.location_type, loc.population)
 
+    # In established towns/cities, require a land deed
+    if stype in ("small_town", "city"):
+        has_deed = any(
+            i.id == "land_deed"
+            and getattr(i, "extra", {}).get("lot_wx") == wx
+            and getattr(i, "extra", {}).get("lot_wy") == wy
+            for i in engine.player.inventory
+        )
+        if not has_deed:
+            engine.add_message(
+                "You need a land deed to start a business in this town. "
+                "Visit the Land Office to buy a lot.", "warning")
+            return
+
     if idx == 7:
         # Custom — type description
         engine.add_message("Type your business idea:", "advisory")

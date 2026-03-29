@@ -1206,6 +1206,22 @@ class Engine:
         if self.state != GameState.LOCAL_MAP:
             self.add_message("Building only on the local map.", "normal")
             return
+        # Check if player needs a land deed to build here
+        lmap = self.locals.get(self._area_key())
+        if lmap and hasattr(lmap, 'town_layout') and lmap.town_layout:
+            stype = lmap.town_layout.settlement_type
+            if stype in ("small_town", "city"):
+                has_deed = any(
+                    i.id == "land_deed"
+                    and getattr(i, "extra", {}).get("lot_wx") == self.player.world_x
+                    and getattr(i, "extra", {}).get("lot_wy") == self.player.world_y
+                    for i in self.player.inventory
+                )
+                if not has_deed:
+                    self.add_message(
+                        "You need a land deed to build in this town. "
+                        "Visit the Land Office.", "warning")
+                    return
         from src.ui_build import open_build
         result = open_build(self._console, self._ctx, self.player,
                              local_map=self.current_local,
@@ -2013,6 +2029,8 @@ class Engine:
             self.add_message("There's no one nearby to talk to.", "normal")
             return
         from src.talk import talk_menu
+        lmap = self.locals.get(self._area_key())
+        s_layout = getattr(lmap, 'town_layout', None) if lmap else None
         log = talk_menu(
             self._console, self._ctx, npc, self.player,
             llm=self.llm,
@@ -2026,6 +2044,7 @@ class Engine:
             year=self.time.year,
             writing=self.writing,
             trade_engine=self.trade,
+            settlement_layout=s_layout,
         )
         for line in log[-4:]:   # last 4 exchanges into message log
             self.add_message(line, "normal")

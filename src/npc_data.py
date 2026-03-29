@@ -268,7 +268,7 @@ PROF_WEIGHTS_M: Dict[str, Dict[str, int]] = {
         "Newspaper Editor": 1, "Assayer": 2, "Telegraph Operator": 1,
         "Prospector": 6, "Miner": 5, "Gambler": 4, "Barber": 3,
         "Cook": 3, "Freighter": 3, "Scout": 2, "Drifter": 3,
-        "Chinese Laborer": 4,
+        "Chinese Laborer": 4, "Land Agent": 1,
     },
     "trading_post": {
         "Merchant": 25, "Teamster": 12, "Scout": 10, "Hunter": 10,
@@ -284,6 +284,7 @@ PROF_WEIGHTS_M: Dict[str, Dict[str, int]] = {
         "Cook": 3, "Freighter": 3, "Scout": 1, "Drifter": 2,
         "Trapper": 2, "Baker": 2, "Butcher": 2, "Tailor": 2,
         "Apothecary": 1, "Cobbler": 1, "Undertaker": 1,
+        "Land Agent": 2,
     },
 }
 
@@ -400,6 +401,7 @@ PROF_SKILLS: Dict[str, Dict[str, int]] = {
     "Newspaper Editor":   {"literacy": 4, "law": 2},
     "Telegraph Operator": {"literacy": 2, "engineering": 1},
     "Express Rider":      {"driving": 3, "firearms": 3, "survival": 3},
+    "Land Agent":         {"law": 4, "trading": 3},
 }
 
 PROF_KNOWLEDGE: Dict[str, Dict[str, int]] = {
@@ -424,6 +426,7 @@ PROF_KNOWLEDGE: Dict[str, Dict[str, int]] = {
     "Preacher":     {"literacy": 2},
     "Teamster":     {"horse handling": 3, "navigation": 1},
     "Chinese Laborer": {"placer": 2, "cooking": 2},
+    "Land Agent":      {"law": 4, "trading": 2, "surveying": 3},
 }
 
 # Personal background knowledge — random extras added during generation

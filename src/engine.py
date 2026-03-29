@@ -2039,6 +2039,12 @@ class Engine:
                        if n.alive and max(abs(n.local_x - px), abs(n.local_y - py)) <= 6]
         if nearby_npcs:
             actions.append("Talk to nearby person")
+            # Check if any nearby NPC is at a gambling location
+            for n in nearby_npcs:
+                if any(w in getattr(n, 'occupation', '').lower()
+                       for w in ('bartender', 'gambler')):
+                    actions.append("Gamble (cards)")
+                    break
 
         # Dead animals nearby?
         animals = self.wildlife_mgr.get_animals(
@@ -2083,6 +2089,13 @@ class Engine:
         SOFT = (LocalTerrain.GROUND, LocalTerrain.GRASS, LocalTerrain.MUD,
                 LocalTerrain.GRAVEL_BAR, LocalTerrain.SAND, LocalTerrain.BEDROCK,
                 LocalTerrain.PIT, LocalTerrain.SPOIL_PILE)
+
+        # ── Gambling ──────────────────────────────────────────────────────
+        if any(w in a for w in ("gamble", "poker", "cards", "faro", "blackjack",
+                                "twenty-one", "play cards", "card game")):
+            from src.gambling_mode import enter_gambling_mode
+            enter_gambling_mode(self, self._console, self._ctx)
+            return
 
         # ── Hidden action: scalp (not in any menu, must be typed) ─────────
         if "scalp" in a:

@@ -131,7 +131,8 @@ class Engine:
         start_lmap = self._ensure_local(
             self.player.world_x, self.player.world_y,
             self.player.area_x, self.player.area_y)
-        # Set player z to solid ground at spawn position
+        # Move player near water — find closest stream/creek to center
+        self._snap_player_near_water(start_lmap)
         self.player.local_z = start_lmap.ground_z(
             self.player.local_x, self.player.local_y)
 
@@ -297,6 +298,37 @@ class Engine:
         return self._ensure_local(
             self.player.world_x, self.player.world_y,
             self.player.area_x, self.player.area_y)
+
+    # ── Spawn positioning ──────────────────────────────────────────────
+
+    def _snap_player_near_water(self, lmap):
+        """Move player to the nearest passable tile adjacent to water."""
+        from src.local_map import LocalTerrain, LOCAL_PASSABLE
+        px, py = self.player.local_x, self.player.local_y
+        best_d = 9999
+        best_x, best_y = px, py
+        # Search outward from center for water, pick adjacent passable tile
+        for y in range(lmap.height):
+            for x in range(lmap.width):
+                if lmap.tiles[y][x].terrain != LocalTerrain.WATER:
+                    continue
+                d = abs(x - px) + abs(y - py)
+                if d >= best_d:
+                    continue
+                # Find a passable neighbor of this water tile
+                for dy in range(-1, 2):
+                    for dx in range(-1, 2):
+                        nx, ny = x + dx, y + dy
+                        if not lmap.in_bounds(nx, ny):
+                            continue
+                        t = lmap.tiles[ny][nx].terrain
+                        if LOCAL_PASSABLE.get(t, False) and t != LocalTerrain.WATER:
+                            nd = abs(nx - px) + abs(ny - py)
+                            if nd < best_d:
+                                best_d = nd
+                                best_x, best_y = nx, ny
+        self.player.local_x = best_x
+        self.player.local_y = best_y
 
     # ── LOD: Progressive detail / eyesight ──────────────────────────────
 
@@ -4197,6 +4229,7 @@ class Engine:
         # Generate local map for the real start and its neighbors
         start_lmap = self._ensure_local(self.player.world_x, self.player.world_y,
                                         self.player.area_x, self.player.area_y)
+        self._snap_player_near_water(start_lmap)
         self.player.local_z = start_lmap.ground_z(
             self.player.local_x, self.player.local_y)
         self._preload_neighbors()

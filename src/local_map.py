@@ -326,31 +326,34 @@ class LocalMap:
             else:
                 self._gen_plains(rng)
 
-        # Stream count/twist by region (used in Phase 2 regardless of generator)
+        # Stream count/twist by region — streams are common in most terrain.
+        # At 5ft/tile scale, a 384-tile patch is only 0.36 miles. Creeks and
+        # springs are everywhere in the American landscape — most patches
+        # should have at least one water feature.
         if "Sierra Nevada" in region_name or "California" in region_name:
-            stream_count, stream_twist = 2, 0.85
+            stream_count, stream_twist = 3, 0.85
         elif "Great Plains" in region_name or "Prairie" in region_name:
-            stream_count = 1 if rng.random() < 0.45 else 0
+            stream_count = rng.choice([1, 1, 2])
             stream_twist = 0.35
         elif "Alaska" in region_name:
-            stream_count, stream_twist = 1, 0.6
+            stream_count, stream_twist = 2, 0.6
         elif "Pacific Northwest" in region_name or "British Columbia" in region_name:
-            stream_count, stream_twist = 2, 0.8
+            stream_count, stream_twist = 3, 0.8
         elif "Appalachian" in region_name:
-            stream_count, stream_twist = 1, 0.65
+            stream_count, stream_twist = 2, 0.65
         elif "Gulf Coast" in region_name:
-            stream_count, stream_twist = 2, 0.7
+            stream_count, stream_twist = 3, 0.7
         elif world_terrain == Terrain.MOUNTAINS:
-            stream_count = 1 if rng.random() < 0.7 else 0
+            stream_count = rng.choice([1, 2, 2])
             stream_twist = 0.4
         elif world_terrain == Terrain.FOREST:
-            stream_count = 1 if rng.random() < 0.6 else 0
+            stream_count = rng.choice([1, 1, 2])
             stream_twist = 0.5
         elif world_terrain == Terrain.DESERT:
-            stream_count = 1 if rng.random() < 0.3 else 0
+            stream_count = 1 if rng.random() < 0.5 else 0
             stream_twist = 0.3
         else:
-            stream_count = 1 if rng.random() < 0.45 else 0
+            stream_count = rng.choice([1, 1, 2])
             stream_twist = 0.35
 
         # ── Phase 2: Streams (StreamGenerator) ────────────────────────────

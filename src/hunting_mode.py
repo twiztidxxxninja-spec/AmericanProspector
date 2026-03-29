@@ -227,7 +227,7 @@ def _hunting_loop(engine: "Engine", console, ctx) -> None:
                 sym = event.sym
                 K = tcod.event.KeySym
 
-                if sym == K.ESCAPE:
+                if sym in (K.ESCAPE, K.h):
                     if kills > 0:
                         engine.add_message(
                             f"You end the hunt. {kills} kill(s). [P] to butcher downed animals.",

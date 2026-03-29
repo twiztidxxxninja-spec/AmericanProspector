@@ -492,7 +492,7 @@ def enter_combat_mode(engine: "Engine", console, ctx) -> None:
                 sym = event.sym
                 K = tcod.event.KeySym
 
-                if sym == K.ESCAPE:
+                if sym in (K.ESCAPE, K.k):
                     return
 
                 # Snap shot (F) — fast, normal accuracy

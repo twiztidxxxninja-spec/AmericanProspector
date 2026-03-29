@@ -117,7 +117,7 @@ def _pan_mode(engine: "Engine", console, ctx) -> None:
                 raise SystemExit()
             if isinstance(event, tcod.event.KeyDown):
                 sym = event.sym
-                if sym == tcod.event.KeySym.ESCAPE:
+                if sym in (tcod.event.KeySym.ESCAPE, tcod.event.KeySym.m):
                     if total_gold > 0:
                         engine.add_message(
                             f"You stop panning. Session total: {pan_count} pans, "
@@ -256,7 +256,7 @@ def _sluice_mode(engine: "Engine", console, ctx, sluice) -> None:
                 raise SystemExit()
             if isinstance(event, tcod.event.KeyDown):
                 sym = event.sym
-                if sym == tcod.event.KeySym.ESCAPE:
+                if sym in (tcod.event.KeySym.ESCAPE, tcod.event.KeySym.m):
                     if accumulated_oz > 0:
                         engine.add_message(
                             f"You leave {accumulated_oz:.4f} oz worth of material "

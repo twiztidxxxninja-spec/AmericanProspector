@@ -351,7 +351,7 @@ def _check_npc_morale(npc: "NPC"):
     if npc.health <= 0:
         npc.health   = 0
         npc.alive    = False
-        npc.present  = False
+        npc.present  = True   # keep present so body can be butchered/looted
         npc.combat_state = "dead"
         return
 

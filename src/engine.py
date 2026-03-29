@@ -791,12 +791,15 @@ class Engine:
 
     # ── Input handling ────────────────────────────────────────────────────
 
+    _last_keydown_handled = False
+
     def handle_event(self, event: tcod.event.Event) -> bool:
         """Returns False to quit."""
         if isinstance(event, tcod.event.Quit):
             return False
 
         if isinstance(event, tcod.event.KeyDown):
+            self._last_keydown_handled = True
             try:
                 return self._handle_key(event)
             except Exception as _exc:
@@ -808,8 +811,13 @@ class Engine:
                 return True
 
         # Handle TextInput as key presses — SDL3 on Windows sends
-        # letter keys as TextInput, not KeyDown, when text input is active
+        # letter keys as TextInput, not KeyDown, when text input is active.
+        # Skip if KeyDown already handled this key (prevents double-toggle).
         if isinstance(event, tcod.event.TextInput):
+            if self._last_keydown_handled:
+                self._last_keydown_handled = False
+                return True
+            self._last_keydown_handled = False
             with open("keylog.txt", "a") as _kf:
                 _kf.write(f"TEXTINPUT: text={repr(event.text)}\n")
                 _kf.flush()
@@ -1245,13 +1253,17 @@ class Engine:
                 and getattr(a, "local_z", 0) == self.player.local_z):
                 targets.append(("animal", a, f"{a.species.display_name} (animal)"))
 
-        # Dead or surrendered NPCs
+        # Dead, surrendered, or incapacitated NPCs
         for npc in self._tile_npcs():
-            if (npc.combat_state in ("dead", "surrendered")
-                and max(abs(npc.local_x - self.player.local_x),
-                        abs(npc.local_y - self.player.local_y)) <= 1):
+            dist = max(abs(npc.local_x - self.player.local_x),
+                       abs(npc.local_y - self.player.local_y))
+            if dist > 2:
+                continue
+            if npc.combat_state in ("dead", "surrendered"):
                 state = "dead" if npc.combat_state == "dead" else "surrendered"
                 targets.append(("npc", npc, f"{npc.display_name()} ({state})"))
+            elif npc.health < 25 and npc.alive:
+                targets.append(("npc", npc, f"{npc.display_name()} (incapacitated)"))
 
         # Ground items on current tile
         tile = lmap.tile_at(self.player.local_x, self.player.local_y)
@@ -1664,6 +1676,8 @@ class Engine:
         best_dist = TALK_RANGE + 1
         for n in self._tile_npcs():
             if not n.alive or not n.present:
+                continue
+            if n.combat_state == "dead":
                 continue
             if getattr(n, 'local_z', 0) != self.player.local_z:
                 continue

@@ -2086,20 +2086,27 @@ class Engine:
 
         # ── Hidden action: scalp (not in any menu, must be typed) ─────────
         if "scalp" in a:
-            # Find a dead/downed NPC or animal nearby
+            # Find a dead or incapacitated NPC or animal nearby
             px, py = self.player.local_x, self.player.local_y
             victim = None
             victim_name = ""
             for n in self._tile_npcs():
-                if n.combat_state == "dead" and max(abs(n.local_x - px), abs(n.local_y - py)) <= 2:
+                if n.combat_state in ("dead", "surrendered") and max(abs(n.local_x - px), abs(n.local_y - py)) <= 2:
                     victim = n
                     victim_name = n.name
                     break
+            # Also check downed NPCs (health < 25, not fleeing)
+            if not victim:
+                for n in self._tile_npcs():
+                    if n.health < 25 and n.alive and max(abs(n.local_x - px), abs(n.local_y - py)) <= 2:
+                        victim = n
+                        victim_name = n.name
+                        break
             if not victim:
                 for a_obj in self.wildlife_mgr.get_animals(
                         self.player.world_x, self.player.world_y,
                         self.player.area_x, self.player.area_y):
-                    if a_obj.state == "dead" and max(abs(a_obj.local_x - px), abs(a_obj.local_y - py)) <= 2:
+                    if a_obj.state in ("dead", "downed") and max(abs(a_obj.local_x - px), abs(a_obj.local_y - py)) <= 2:
                         victim = a_obj
                         victim_name = a_obj.species.display_name
                         break

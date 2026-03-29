@@ -823,6 +823,7 @@ def _do_player_attack(engine, target, kind, weapon, aimed_part, dist,
     """Execute a player attack (shared by snap and careful aim)."""
     # Bullet animation for firearms
     is_firearm = weapon and weapon.weapon_type == "firearm"
+    is_shotgun = is_firearm and weapon and "shotgun" in weapon.name.lower()
     if is_firearm:
         _play_sound("bang")
         half_w = 40
@@ -832,7 +833,54 @@ def _do_player_attack(engine, target, kind, weapon, aimed_part, dist,
         _animate_bullet(engine._console, engine._ctx,
                         engine.player.local_x, engine.player.local_y,
                         getattr(target, 'local_x', 0), getattr(target, 'local_y', 0),
-                        cam_x, cam_y)
+                        cam_x, cam_y, weapon=weapon)
+
+    # Shotgun pellet mechanics
+    if is_shotgun:
+        import math
+        from src.health_system import BP, ALL_BODY_PARTS
+        num_pellets = 8
+        if dist <= 4:
+            # Close range: all pellets hit same area — devastating
+            add_msg(f"Full blast at close range.")
+        elif dist <= 15:
+            # Medium range: pellets hit different body parts
+            hit_parts = random.choices(ALL_BODY_PARTS, k=min(num_pellets, 4))
+            part_counts = {}
+            for p in hit_parts:
+                part_counts[p] = part_counts.get(p, 0) + 1
+            from src.health_system import PART_DATA
+            hit_desc = ", ".join(f"{PART_DATA[p]['label']}x{c}" if c > 1
+                                 else PART_DATA[p]['label']
+                                 for p, c in part_counts.items())
+            add_msg(f"Pellets scatter: {hit_desc}.")
+        else:
+            # Long range: pellets spread wide, only 1-2 hit
+            add_msg(f"At this range the shot pattern is wide. Weak hits.")
+
+        # Cone collateral — check for other targets in the spread
+        if dist > 4:
+            tx = getattr(target, 'local_x', 0)
+            ty = getattr(target, 'local_y', 0)
+            base_angle = math.atan2(ty - engine.player.local_y,
+                                    tx - engine.player.local_x)
+            for n in engine._tile_npcs():
+                if n is target or not n.alive:
+                    continue
+                ndx = n.local_x - engine.player.local_x
+                ndy = n.local_y - engine.player.local_y
+                n_angle = math.atan2(ndy, ndx)
+                angle_diff = abs(n_angle - base_angle)
+                if angle_diff > math.pi:
+                    angle_diff = 2 * math.pi - angle_diff
+                n_dist = max(abs(ndx), abs(ndy))
+                if angle_diff < 0.25 and n_dist <= dist + 5:
+                    pellet_dmg = max(1, weapon.damage_max // 4)
+                    n.health -= pellet_dmg
+                    from src.combat import _check_npc_morale
+                    _check_npc_morale(n)
+                    engine._splatter_blood(lmap, n.local_x, n.local_y, 1)
+                    add_msg(f"Stray pellets hit {n.display_name()}!")
 
     if kind == "npc":
         # Calculate cover between player and target
@@ -938,24 +986,77 @@ def _play_sound(sound_type: str):
         pass
 
 
-def _animate_bullet(console, ctx, px, py, tx, ty, cam_x, cam_y):
-    """Draw a bullet traveling from (px,py) to (tx,ty) on screen."""
-    import time
+def _animate_bullet(console, ctx, px, py, tx, ty, cam_x, cam_y,
+                    weapon=None):
+    """Draw a projectile traveling from (px,py) to (tx,ty) on screen.
+    Shotguns fire a spreading cone of pellets."""
+    import time, math
+
+    is_shotgun = weapon and "shotgun" in weapon.name.lower()
+
     dx = tx - px
     dy = ty - py
     steps = max(abs(dx), abs(dy))
     if steps == 0:
         return
-    for i in range(1, steps + 1):
-        frac = i / steps
-        bx = int(px + dx * frac)
-        by = int(py + dy * frac)
-        sx = bx - cam_x
-        sy = by - cam_y + 1  # +1 for hotbar
-        if 0 <= sx < 80 and 1 <= sy < 40:
-            console.print(sx, sy, "*", fg=(255, 255, 200), bg=(80, 40, 10))
+
+    if is_shotgun:
+        # Shotgun: single slug for first 4 tiles, then pellets spread
+        spread_start = 4  # tiles before shot pattern opens up
+        base_angle = math.atan2(dy, dx)
+        # Direction glyph for the slug phase
+        if abs(dx) > abs(dy) * 2:
+            slug_glyph = "-"
+        elif abs(dy) > abs(dx) * 2:
+            slug_glyph = "|"
+        elif (dx > 0) == (dy > 0):
+            slug_glyph = "\\"
+        else:
+            slug_glyph = "/"
+
+        for i in range(1, steps + 1):
+            if i <= spread_start:
+                # Tight group — render as single projectile
+                bx = int(px + math.cos(base_angle) * i)
+                by = int(py + math.sin(base_angle) * i)
+                sx = bx - cam_x
+                sy = by - cam_y + 1
+                if 0 <= sx < 80 and 1 <= sy < 40:
+                    console.print(sx, sy, slug_glyph, fg=(255, 255, 200), bg=(80, 40, 10))
+            else:
+                # Spread — 5 pellets fanning out
+                pellet_angles = [base_angle + a for a in (-0.12, -0.06, 0, 0.06, 0.12)]
+                for pa in pellet_angles:
+                    bx = int(px + math.cos(pa) * i)
+                    by = int(py + math.sin(pa) * i)
+                    sx = bx - cam_x
+                    sy = by - cam_y + 1
+                    if 0 <= sx < 80 and 1 <= sy < 40:
+                        console.print(sx, sy, ".", fg=(255, 200, 100), bg=(60, 30, 5))
             ctx.present(console)
             time.sleep(0.02)
+    else:
+        # Single projectile — consistent bullet glyph
+        # Direction determines glyph: - horizontal, | vertical, / \ diagonal
+        if abs(dx) > abs(dy) * 2:
+            glyph = "-"
+        elif abs(dy) > abs(dx) * 2:
+            glyph = "|"
+        elif (dx > 0) == (dy > 0):
+            glyph = "\\"
+        else:
+            glyph = "/"
+
+        for i in range(1, steps + 1):
+            frac = i / steps
+            bx = int(px + dx * frac)
+            by = int(py + dy * frac)
+            sx = bx - cam_x
+            sy = by - cam_y + 1
+            if 0 <= sx < 80 and 1 <= sy < 40:
+                console.print(sx, sy, glyph, fg=(255, 255, 200), bg=(80, 40, 10))
+                ctx.present(console)
+                time.sleep(0.02)
 
 
 def _check_stray_bullet(engine, lmap, px, py, tx, ty, dmg, add_msg,
@@ -985,13 +1086,21 @@ def _check_stray_bullet(engine, lmap, px, py, tx, ty, dmg, add_msg,
         by = int(ty + ndy * step)
         if not lmap.in_bounds(bx, by):
             break
-        # Animate stray bullet
+        # Animate stray bullet with direction-consistent glyph
         if console and ctx:
             sx = bx - cam_x
             sy = by - cam_y + 1
             if 0 <= sx < 80 and 1 <= sy < 40:
                 import time
-                console.print(sx, sy, ".", fg=(255, 180, 60), bg=(40, 20, 5))
+                if abs(ndx) > abs(ndy) * 2:
+                    g = "-"
+                elif abs(ndy) > abs(ndx) * 2:
+                    g = "|"
+                elif (ndx > 0) == (ndy > 0):
+                    g = "\\"
+                else:
+                    g = "/"
+                console.print(sx, sy, g, fg=(255, 180, 60), bg=(40, 20, 5))
                 ctx.present(console)
                 time.sleep(0.015)
         # Hit terrain that blocks?

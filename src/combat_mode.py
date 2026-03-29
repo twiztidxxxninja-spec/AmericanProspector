@@ -462,8 +462,8 @@ def enter_combat_mode(engine: "Engine", console, ctx) -> None:
         console.print(x, y + 1, "[G] Careful aim (10s, +25%)", fg=(120, 120, 120))
         console.print(x, y + 2, "[R]eload  [TAB] target", fg=(120, 120, 120))
         console.print(x, y + 3, "[1-5] Aim part  [SPACE] Wait", fg=(120, 120, 120))
-        console.print(x, y + 4, "[W] Swap weapon  [V]iew target", fg=(120, 120, 120))
-        console.print(x, y + 5, "[arrows] Move  [ESC] Exit", fg=(120, 120, 120))
+        console.print(x, y + 4, "[T]hrow item  [W] Swap weapon", fg=(120, 120, 120))
+        console.print(x, y + 5, "[V]iew  [arrows] Move  [ESC] Exit", fg=(120, 120, 120))
 
         # Combat log
         log_y = 44
@@ -588,6 +588,67 @@ def enter_combat_mode(engine: "Engine", console, ctx) -> None:
                 if sym == K.SPACE:
                     add_msg("You hold.", "normal")
                     tick_time(ACTION_TIME["wait"])
+                    break
+
+                # Throw item at target
+                if sym == K.t:
+                    from src.menus import pick_from_list
+                    throwables = [i for i in engine.player.inventory
+                                  if getattr(i, "weight", 0) > 0]
+                    if not throwables:
+                        add_msg("Nothing to throw.", "advisory")
+                        break
+                    labels = [f"{i.name} ({i.weight:.1f} lb)" for i in throwables]
+                    idx = pick_from_list(console, ctx, "Throw what?", labels)
+                    if idx is None:
+                        break
+                    item = throwables[idx]
+                    engine.player.inventory.remove(item)
+
+                    try:
+                        from src.wounds import throw_damage, throw_hit_chance
+                        dmg, dtype = throw_damage(item)
+                    except ImportError:
+                        import random as _tr
+                        dmg = max(1, int(item.weight * 2))
+                        dtype = "blunt"
+
+                    # Hit check: agility + strength vs distance
+                    hit_roll = random.randint(1, 20) + \
+                        engine.player.attributes.get("agility", 10) // 3 + \
+                        engine.player.attributes.get("strength", 10) // 4
+                    if kind == "npc":
+                        defense = 8 + target.attributes.get("agility", 10) // 3
+                    else:
+                        defense = {"small": 12, "medium": 9, "large": 6,
+                                   "very_large": 5}.get(target.species.size, 8)
+                    hit_roll -= max(0, (dist - 5)) // 3  # range penalty
+
+                    if hit_roll >= defense:
+                        if kind == "npc":
+                            target.health -= dmg
+                            _check_npc_morale(target)
+                            engine._splatter_blood(lmap, target.local_x,
+                                                   target.local_y, 1)
+                            add_msg(f"You hurl the {item.name} at {target.display_name()}. "
+                                    f"It connects with a thud.")
+                            if target.combat_state == "dead":
+                                add_msg(f"{target.name} drops.", "critical")
+                                engine.journal.log_enemy_killed(target.name)
+                        else:
+                            target.take_damage(float(dmg))
+                            add_msg(f"The {item.name} hits the "
+                                    f"{target.species.display_name}.")
+                    else:
+                        add_msg(f"You throw the {item.name}. It misses.")
+
+                    # Item lands on the ground at target's position
+                    tx = getattr(target, 'local_x', px)
+                    ty = getattr(target, 'local_y', py)
+                    if lmap.in_bounds(tx, ty):
+                        lmap.tiles[ty][tx].ground_items.append(item)
+
+                    tick_time(ACTION_TIME["snap_shot"])
                     break
 
                 # Swap weapon

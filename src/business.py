@@ -413,10 +413,14 @@ class BusinessEntity:
 
     def _calc_revenue(self) -> float:
         """Calculate today's gross revenue from two sources:
-        1. Abstract base revenue (services — saloon drinks, hotel rooms, etc.)
+        1. Service revenue (drinks, rooms — consumes supplies from inventory)
         2. Inventory sales (NPC customers buy actual items from stock)"""
-        # ── Abstract service revenue ──────────────────────────────
+        # ── Service revenue (consumes supplies if available) ──────
         rev = self.base_revenue
+        # Bars/saloons need whiskey to make drink money
+        # Hotels need bedrolls/blankets, bakeries need ingredients
+        supply_bonus = self._consume_supplies()
+        rev += supply_bonus
 
         # Employee contribution
         for emp in self.employees:
@@ -450,6 +454,54 @@ class BusinessEntity:
         rev *= random.uniform(0.85, 1.15)
 
         return round(max(0, rev), 2)
+
+    def _consume_supplies(self) -> float:
+        """Consume inventory supplies to generate service revenue.
+        Saloons use whiskey, bakeries use ingredients, etc.
+        Returns bonus revenue from consumed supplies."""
+        if not self.inventory:
+            return 0.0
+
+        # What each business type consumes and how much revenue it generates
+        _SUPPLY_MAP = {
+            "saloon": [("whiskey", 3.0)],        # 1 whiskey → $3 in drinks
+            "hotel": [("bedroll", 0.5), ("candle", 0.2)],
+            "bakery": [("hardtack", 1.5)],        # uses flour/grain → bread sales
+            "brewery": [("whiskey", 0.0)],         # produces whiskey, doesn't consume
+            "boarding_house": [("hardtack", 0.8)],
+            "dancehall": [("whiskey", 2.5)],
+            "brothel": [("whiskey", 2.0)],
+        }
+
+        bp_key = self.blueprint_key
+        supplies = _SUPPLY_MAP.get(bp_key, [])
+        if not supplies:
+            return 0.0
+
+        bonus = 0.0
+        customers = {
+            "mining_camp_small": 2, "mining_camp_medium": 4,
+            "boomtown": 8, "small_town": 6,
+            "trading_post": 3, "city": 15,
+        }.get(self.settlement_type, 4)
+
+        for supply_id, rev_per_unit in supplies:
+            if rev_per_unit <= 0:
+                continue
+            # Consume up to customer count of this supply
+            consumed = 0
+            for _ in range(customers):
+                for i, item in enumerate(self.inventory):
+                    if item.id == supply_id:
+                        if getattr(item, 'stackable', False) and item.quantity > 1:
+                            item.quantity -= 1
+                        else:
+                            self.inventory.pop(i)
+                        consumed += 1
+                        break
+            bonus += consumed * rev_per_unit
+
+        return round(bonus, 2)
 
     def _process_customers(self) -> float:
         """Simulate NPC customers buying from inventory.

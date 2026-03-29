@@ -1014,10 +1014,10 @@ class TownGenerator:
             _set(bx + bw - 2, by + bh - 2, LocalTerrain.BARREL_TILE)
             _set(bx + bw - 3, by + bh - 2, LocalTerrain.BARREL_TILE)
             # Items
-            _place_item(bx + 2, by + 1, "whiskey", 3)
-            _place_item(bx + 4, by + 1, "whiskey", 2)
+            _place_item(bx + 2, by + 1, "whiskey", 20)
+            _place_item(bx + 4, by + 1, "whiskey", 20)
             _place_item(bx + 3, by + 4, "playing_cards")
-            _place_item(bx + 7, by + 6, "tobacco")
+            _place_item(bx + 7, by + 6, "tobacco", 5)
 
         # ── Hotel ─────────────────────────────────────────────────
         elif key == "hotel":

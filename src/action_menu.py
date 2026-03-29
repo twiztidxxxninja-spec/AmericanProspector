@@ -71,18 +71,18 @@ BG_SEL = ( 35,  35,  65)
 
 # Always visible in the default menu
 COMMON_ACTIONS: List[str] = [
-    "Pan for gold",
-    "Dig here",
     "Eat food",
     "Drink water",
+    "Dig here",
     "Reload firearm",
-    "Fill canteen",
     "Light a fire",
     "Make camp here",
     "Rest here",
     "Search the area",
     "Chop wood",
 ]
+# "Pan for gold", "Fill canteen", "Work the sluice", "Cook food" appear
+# in the NEARBY section only when terrain/structures are appropriate.
 
 # Shown when "Show more" is expanded — full hardcoded set
 MORE_ACTIONS: List[str] = [

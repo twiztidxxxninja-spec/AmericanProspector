@@ -150,12 +150,18 @@ class Player:
     def move(self, dx: int, dy: int) -> int:
         """
         Move on the local map. Returns SECONDS consumed.
+        Encumbrance slows movement: 1.5x at 75% capacity, 2.5x when overloaded.
         """
         from src.constants import WALK_TIME
         self.local_x += dx
         self.local_y += dy
         base = WALK_TIME  # seconds per tile
         time_cost = max(1, int(base * SPEED_TIME_MULT[self.speed]))
+        # Encumbrance penalty
+        if self.overloaded:
+            time_cost = int(time_cost * 2.5)
+        elif self.encumbered:
+            time_cost = int(time_cost * 1.5)
         return time_cost
 
     def move_world(self, dx: int, dy: int, world_map) -> int:

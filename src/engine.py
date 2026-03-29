@@ -1896,9 +1896,14 @@ class Engine:
             actions.append("Fish")
 
         # On pannable ground?
-        if tile.terrain in (LocalTerrain.GRAVEL_BAR, LocalTerrain.SAND,
-                             LocalTerrain.MUD, LocalTerrain.BEDROCK):
+        PANNABLE = (LocalTerrain.GRAVEL_BAR, LocalTerrain.SAND,
+                    LocalTerrain.MUD, LocalTerrain.BEDROCK,
+                    LocalTerrain.WORKED_GRAVEL, LocalTerrain.WORKED_DIRT,
+                    LocalTerrain.SPOIL_PILE)
+        if tile.terrain in PANNABLE:
             actions.append("Pan for gold")
+            if near_water:
+                actions.append("Load pan from here")
 
         # Near structures?
         fire = self._nearby_structure("cook", radius=2)

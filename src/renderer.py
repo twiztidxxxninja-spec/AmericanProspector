@@ -713,6 +713,44 @@ class Renderer:
         if state != GameState.LOCAL_MAP and world_map is not None:
             self._draw_world_tile_info(x, 1, player, world_map)
 
+        # Terrain name — what the player is standing on
+        if state == GameState.LOCAL_MAP and local_map is not None:
+            tile = local_map.tile_at(player.local_x, player.local_y)
+            if tile:
+                _TERRAIN_NAMES = {
+                    LocalTerrain.GROUND: "Bare Ground",
+                    LocalTerrain.GRASS: "Grass",
+                    LocalTerrain.FOREST: "Dense Forest",
+                    LocalTerrain.ROCK: "Solid Rock",
+                    LocalTerrain.WATER: "Water",
+                    LocalTerrain.GRAVEL_BAR: "Gravel Bar",
+                    LocalTerrain.BEDROCK: "Bedrock",
+                    LocalTerrain.MUD: "Mud",
+                    LocalTerrain.SAND: "Sand",
+                    LocalTerrain.BRUSH: "Brush",
+                    LocalTerrain.PIT: "Pit",
+                    LocalTerrain.SPOIL_PILE: "Spoil Pile",
+                    LocalTerrain.TUNDRA: "Tundra",
+                    LocalTerrain.PINE: "Pine Tree",
+                    LocalTerrain.OAK: "Oak Tree",
+                    LocalTerrain.ASPEN: "Aspen",
+                    LocalTerrain.JUNIPER: "Juniper",
+                    LocalTerrain.CEDAR: "Cedar",
+                    LocalTerrain.MAPLE: "Maple",
+                    LocalTerrain.CHESTNUT: "Chestnut",
+                    LocalTerrain.HICKORY: "Hickory",
+                    LocalTerrain.CYPRESS: "Cypress",
+                    LocalTerrain.MAGNOLIA: "Magnolia",
+                    LocalTerrain.WORKED_GRAVEL: "Worked Gravel",
+                    LocalTerrain.WORKED_DIRT: "Turned Dirt",
+                    LocalTerrain.SHALLOW_PIT: "Shallow Pit",
+                    LocalTerrain.DEEP_PIT: "Deep Pit",
+                    LocalTerrain.TAILINGS: "Tailings",
+                }
+                tname = _TERRAIN_NAMES.get(tile.terrain, "")
+                if tname:
+                    self.con.print(x, y - 3, f"{tname:<20}", fg=(180, 170, 140), bg=BLACK)
+
         # Z-level indicator
         if state == GameState.LOCAL_MAP and local_map is not None:
             pz = player.local_z

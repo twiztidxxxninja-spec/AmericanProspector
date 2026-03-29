@@ -8,14 +8,25 @@ import os
 # Ensure src is on path when run from project root
 sys.path.insert(0, os.path.dirname(__file__))
 
-from src.model_downloader import ensure_model, model_path
-from src.engine import Engine
+from src.version import VERSION, VERSION_NAME
 
 
 def main():
-    # Download LLM on first run if missing (shows progress UI, then continues)
+    game_root = os.path.dirname(os.path.abspath(__file__))
+    print(f"American Prospector {VERSION} ({VERSION_NAME})")
+
+    # Check for updates from GitHub
+    try:
+        from src.updater import run_update_check
+        run_update_check(game_root)
+    except Exception:
+        pass  # no internet, no tkinter, whatever — just start the game
+
+    # Download LLM on first run if missing
+    from src.model_downloader import ensure_model, model_path
     ensure_model()
 
+    from src.engine import Engine
     engine = Engine(llm_model_path=model_path())
     engine.run()
 

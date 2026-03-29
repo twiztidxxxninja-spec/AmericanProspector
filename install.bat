@@ -14,7 +14,7 @@ if errorlevel 1 (
 )
 
 echo [1/3] Installing base dependencies...
-pip install tcod numpy
+pip install tcod numpy pygame
 if errorlevel 1 (
     echo ERROR: Failed to install base dependencies.
     pause

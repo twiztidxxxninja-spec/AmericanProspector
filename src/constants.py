@@ -68,4 +68,5 @@ CLIMB_TIME_MULT = 1.5    # climbing ramps/stairs takes 1.5x walk time
 VIEW_Z_BELOW = 5         # how many z-levels below to show through open air
 
 # Title
-TITLE = "American Prospector"
+from src.version import VERSION, VERSION_NAME
+TITLE = f"American Prospector {VERSION} ({VERSION_NAME})"

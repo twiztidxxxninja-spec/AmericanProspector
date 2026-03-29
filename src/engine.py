@@ -2084,6 +2084,79 @@ class Engine:
                 LocalTerrain.GRAVEL_BAR, LocalTerrain.SAND, LocalTerrain.BEDROCK,
                 LocalTerrain.PIT, LocalTerrain.SPOIL_PILE)
 
+        # ── Hidden action: scalp (not in any menu, must be typed) ─────────
+        if "scalp" in a:
+            # Find a dead/downed NPC or animal nearby
+            px, py = self.player.local_x, self.player.local_y
+            victim = None
+            victim_name = ""
+            for n in self._tile_npcs():
+                if n.combat_state == "dead" and max(abs(n.local_x - px), abs(n.local_y - py)) <= 2:
+                    victim = n
+                    victim_name = n.name
+                    break
+            if not victim:
+                for a_obj in self.wildlife_mgr.get_animals(
+                        self.player.world_x, self.player.world_y,
+                        self.player.area_x, self.player.area_y):
+                    if a_obj.state == "dead" and max(abs(a_obj.local_x - px), abs(a_obj.local_y - py)) <= 2:
+                        victim = a_obj
+                        victim_name = a_obj.species.display_name
+                        break
+            if not victim:
+                self.add_message("There's nobody dead close enough to... do that to.", "advisory")
+                return
+            # Need a blade
+            has_blade = any(t in getattr(i, "tool_tags", []) for i in self.player.inventory
+                           for t in ("cut", "butcher", "skin"))
+            if not has_blade:
+                self.add_message("You'd need a knife for that.", "advisory")
+                return
+            # Do the deed
+            import random as _sc_rng
+            from src.items import Item
+            self.advance_time(5)
+            scalp_item = Item(
+                id="scalp", name=f"Scalp of {victim_name}",
+                weight=0.1, category="remains",
+                description=f"A human scalp taken from {victim_name}. Gruesome trophy.",
+                base_value=0.0,
+            )
+            self.player.inventory.append(scalp_item)
+            self._splatter_blood(lmap, px, py, 2)
+
+            msgs = [
+                f"You kneel beside {victim_name}'s body. The knife does its work. "
+                f"You pull the scalp free with a wet sound and tuck it away.",
+                f"You grab a fistful of hair and draw the blade across. "
+                f"It comes away in one piece. Blood runs down your wrist.",
+                f"You work the knife around the hairline. It takes longer than "
+                f"you expected. The result is a ragged, bloody trophy.",
+            ]
+            self.add_message(_sc_rng.choice(msgs), "normal")
+
+            # Witnesses react with extreme horror
+            witnesses = self._witnesses_near(px, py)
+            if witnesses:
+                region = lmap._region_name if lmap else ""
+                self.legal.record_crime(
+                    "murder", self.time.total_minutes // 1440,
+                    self.player.world_x, self.player.world_y, region,
+                    nearby_npcs=witnesses)
+                for w in witnesses:
+                    w.combat_state = "fleeing"
+                    w.adjust_relationship(-50)
+                self.add_message(
+                    "The witnesses stare in horror. They will never forget this.",
+                    "critical")
+                self.reputation.adjust(region, -60)
+                self._record_gossip(f"Scalped {victim_name} like a savage", -1.0)
+            else:
+                self.add_message("Nobody saw. But you know what you did.", "advisory")
+
+            self.player.gain_skill_xp("survival", 2.0)
+            return
+
         # ── Reload firearm ────────────────────────────────────────────────
         if "reload" in a or ("load" in a and any(w in a for w in
                 ("gun", "rifle", "revolver", "pistol", "shotgun", "firearm"))):

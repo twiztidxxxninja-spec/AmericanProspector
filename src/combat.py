@@ -62,10 +62,12 @@ def player_attack_npc(player: "Player", npc: "NPC",
                       weapon: Optional["Item"] = None,
                       distance: int = 1,
                       aimed_part: int = 0,
-                      accuracy_bonus: int = 0) -> CombatEvent:
+                      accuracy_bonus: int = 0,
+                      target_cover: int = 0) -> CombatEvent:
     """Resolve one attack from player onto npc. Mutates npc state.
     aimed_part: index into AIMED_SHOTS (0 = center mass / no aim).
-    accuracy_bonus: extra roll bonus from careful aim (+5 typical)."""
+    accuracy_bonus: extra roll bonus from careful aim (+5 typical).
+    target_cover: 0=none, 1=partial (-4), 2=full (can't hit)."""
 
     # --- Weapon selection ---
     if weapon and weapon.weapon_type == "firearm":
@@ -139,6 +141,17 @@ def player_attack_npc(player: "Player", npc: "NPC",
     aim_label, aim_penalty, aim_dmg_mult, aim_special = aim
     roll += aim_penalty  # negative = harder to hit
 
+    # Cover penalty — target behind cover is harder to hit
+    # partial cover = -4, full cover = can't be hit by ranged
+    if target_cover >= 2 and distance > 1:
+        return CombatEvent(
+            attacker=player.name, defender=npc.name,
+            weapon_name=weapon_name, hit=False, damage=0,
+            message=f"{npc.name} is behind full cover. Can't get a clean shot.",
+        )
+    if target_cover == 1:
+        roll -= 4
+
     if roll < npc_defense:
         miss_extra = f" (aimed: {aim_label})" if aimed_part > 0 else ""
         return CombatEvent(
@@ -200,21 +213,34 @@ def player_attack_npc(player: "Player", npc: "NPC",
 
 # ── NPC attacks player ─────────────────────────────────────────────────────
 
-def npc_attack_player(npc: "NPC", player: "Player") -> CombatEvent:
-    """Resolve one NPC attack onto the player. Mutates player.survival."""
+def npc_attack_player(npc: "NPC", player: "Player",
+                      player_cover: int = 0) -> CombatEvent:
+    """Resolve one NPC attack onto the player. Mutates player.survival.
+    player_cover: 0=none, 1=partial (-4 to NPC roll), 2=full (auto-miss)."""
     from src.player import Stance
+
+    # Full cover = can't be hit at range
+    dist = max(abs(npc.local_x - player.local_x), abs(npc.local_y - player.local_y))
+    if player_cover >= 2 and dist > 1:
+        return CombatEvent(
+            attacker=npc.name, defender=player.name,
+            weapon_name="", hit=False, damage=0,
+            message=f"{npc.name} fires but you're behind cover.",
+        )
 
     weapon_name, dmg_lo, dmg_hi, skill_name = _npc_weapon_profile(npc)
     skill_val = npc.skills.get(skill_name, 0)
 
-    # Player defense: agility + stance modifier
+    # Player defense: agility + stance + cover
     stance_bonus = {
         Stance.STANDING: 0, Stance.CROUCHED: 2,
         Stance.PRONE_DOWN: 4, Stance.PRONE_UP: 2,
     }
+    cover_bonus = {0: 0, 1: 4, 2: 99}  # partial cover = +4 defense
     player_defense = (8
                       + _attr_bonus(player.attributes.get("agility", 10))
-                      + stance_bonus.get(player.stance, 0))
+                      + stance_bonus.get(player.stance, 0)
+                      + cover_bonus.get(player_cover, 0))
 
     roll = _d20() + _skill_bonus(skill_val) + _attr_bonus(npc.attributes.get("agility", 10))
 

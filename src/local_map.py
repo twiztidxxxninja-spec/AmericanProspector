@@ -629,6 +629,68 @@ class LocalMap:
             for tile in row:
                 tile.terrain = terrain
 
+    # ── Cover values per terrain (0=none, 1=partial, 2=full) ─────────
+
+    TERRAIN_COVER = {
+        LocalTerrain.ROCK:       2,   # full cover behind boulders
+        LocalTerrain.FOREST:     1,   # dense forest = partial
+        LocalTerrain.PINE:       1,   # tree trunk = partial cover
+        LocalTerrain.OAK:        1,
+        LocalTerrain.ASPEN:      1,
+        LocalTerrain.JUNIPER:    1,
+        LocalTerrain.CEDAR:      1,
+        LocalTerrain.MAPLE:      1,
+        LocalTerrain.CHESTNUT:   1,
+        LocalTerrain.HICKORY:    1,
+        LocalTerrain.CYPRESS:    1,
+        LocalTerrain.MAGNOLIA:   1,
+        LocalTerrain.BRUSH:      1,   # brush = partial concealment
+        LocalTerrain.SPOIL_PILE: 1,   # dirt mound = partial
+        LocalTerrain.DEEP_PIT:   1,   # below ground level = partial
+    }
+
+    def cover_at(self, x: int, y: int) -> int:
+        """Return cover value at tile (0=none, 1=partial, 2=full)."""
+        if not self.in_bounds(x, y):
+            return 0
+        t = self.tiles[y][x].terrain
+        return self.TERRAIN_COVER.get(t, 0)
+
+    def best_adjacent_cover(self, x: int, y: int) -> int:
+        """Return best cover from any adjacent tile (what you'd duck behind)."""
+        best = 0
+        for dx in range(-1, 2):
+            for dy in range(-1, 2):
+                if dx == 0 and dy == 0:
+                    continue
+                c = self.cover_at(x + dx, y + dy)
+                if c > best:
+                    best = c
+        return best
+
+    def cover_between(self, x1: int, y1: int, x2: int, y2: int) -> int:
+        """Check tiles along LOS for cover. Returns max cover found between
+        the two points (exclusive of endpoints). Used for ranged combat."""
+        best = 0
+        # Simple step-by-step walk
+        dx = x2 - x1
+        dy = y2 - y1
+        steps = max(abs(dx), abs(dy))
+        if steps <= 1:
+            return 0
+        for i in range(1, steps):
+            t = i / steps
+            cx = int(x1 + dx * t)
+            cy = int(y1 + dy * t)
+            c = self.cover_at(cx, cy)
+            if c > best:
+                best = c
+        # Also check what the target is standing next to
+        target_adj = self.best_adjacent_cover(x2, y2)
+        if target_adj > best:
+            best = target_adj
+        return best
+
     def terrain_array(self):
         """Cached numpy int32 array of terrain types for fast FOV/rendering."""
         import numpy as np

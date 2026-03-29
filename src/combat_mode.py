@@ -169,9 +169,15 @@ def _npc_decide(npc, player, lmap, rng) -> Tuple[str, int]:
             return "flee", NPC_ACTION_TIME["move_away"]
         return "shoot", NPC_ACTION_TIME["shoot"]
 
+    # Wounded and exposed — seek cover
+    current_cover = lmap.best_adjacent_cover(npc.local_x, npc.local_y)
+    if hp_pct < 0.5 and current_cover == 0 and rng.random() < 0.6:
+        return "take_cover", NPC_ACTION_TIME["take_cover"]
+
     # At range with gun — shoot or careful aim
     if has_gun and dist > 3:
-        if hp_pct > 0.7 and rng.random() < 0.3:
+        if hp_pct > 0.7 and rng.random() < 0.3 and current_cover > 0:
+            # Only careful aim if in cover (safe to take time)
             return "careful_aim", NPC_ACTION_TIME["careful_aim"]
         return "shoot", NPC_ACTION_TIME["shoot"]
 
@@ -202,6 +208,29 @@ def _npc_execute(engine, npc, action, player, lmap, add_msg, rng):
             add_msg(f"{npc.name} flees into the distance.")
         return
 
+    if action == "take_cover":
+        # Find nearest tile with cover value > 0
+        best_cx, best_cy, best_d = npc.local_x, npc.local_y, 999
+        for dy in range(-4, 5):
+            for dx in range(-4, 5):
+                nx, ny = npc.local_x + dx, npc.local_y + dy
+                if not lmap.in_bounds(nx, ny) or not lmap.is_passable(nx, ny):
+                    continue
+                if lmap.cover_at(nx, ny) > 0 or lmap.best_adjacent_cover(nx, ny) > 0:
+                    d = abs(dx) + abs(dy)
+                    if d < best_d and d > 0:
+                        best_d = d
+                        best_cx, best_cy = nx, ny
+        if best_d < 999:
+            # Move one step toward cover
+            dx = 1 if best_cx > npc.local_x else (-1 if best_cx < npc.local_x else 0)
+            dy = 1 if best_cy > npc.local_y else (-1 if best_cy < npc.local_y else 0)
+            nx, ny = npc.local_x + dx, npc.local_y + dy
+            if lmap.in_bounds(nx, ny) and lmap.is_passable(nx, ny):
+                npc.local_x, npc.local_y = nx, ny
+                add_msg(f"{npc.name} dives for cover!")
+        return
+
     if action == "move_toward":
         dx = 1 if player.local_x > npc.local_x else (-1 if player.local_x < npc.local_x else 0)
         dy = 1 if player.local_y > npc.local_y else (-1 if player.local_y < npc.local_y else 0)
@@ -211,8 +240,11 @@ def _npc_execute(engine, npc, action, player, lmap, add_msg, rng):
         return
 
     if action in ("shoot", "careful_aim", "melee"):
-        # NPC attacks player
-        event = npc_attack_player(npc, player)
+        # Calculate player's cover from NPC's perspective
+        p_cover = lmap.cover_between(
+            npc.local_x, npc.local_y,
+            player.local_x, player.local_y)
+        event = npc_attack_player(npc, player, player_cover=p_cover)
         sev = "critical" if event.hit else "normal"
         add_msg(event.message, sev)
         if event.hit:
@@ -384,6 +416,16 @@ def enter_combat_mode(engine: "Engine", console, ctx) -> None:
                 console.print(x, y, "   Melee", fg=(180, 180, 180))
         else:
             console.print(x, y, "   Unarmed", fg=(180, 100, 100))
+        y += 2
+
+        # Player cover status
+        p_cover = lmap.best_adjacent_cover(px, py)
+        if p_cover >= 2:
+            console.print(x, y, "   Cover: FULL (behind rock)", fg=(100, 200, 255))
+        elif p_cover == 1:
+            console.print(x, y, "   Cover: Partial (tree/brush)", fg=(180, 220, 140))
+        else:
+            console.print(x, y, "   Cover: EXPOSED", fg=(255, 120, 80))
         y += 2
 
         # All hostiles
@@ -561,9 +603,14 @@ def _do_player_attack(engine, target, kind, weapon, aimed_part, dist,
                       accuracy_bonus, add_msg, lmap, rng):
     """Execute a player attack (shared by snap and careful aim)."""
     if kind == "npc":
+        # Calculate cover between player and target
+        t_cover = lmap.cover_between(
+            engine.player.local_x, engine.player.local_y,
+            target.local_x, target.local_y)
         evt = player_attack_npc(engine.player, target, weapon,
                                 distance=dist, aimed_part=aimed_part,
-                                accuracy_bonus=accuracy_bonus)
+                                accuracy_bonus=accuracy_bonus,
+                                target_cover=t_cover)
         add_msg(evt.message, "critical" if evt.killed else "normal")
         if evt.hit:
             skill = "firearms" if weapon.weapon_type == "firearm" else "survival"

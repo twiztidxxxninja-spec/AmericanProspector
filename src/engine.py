@@ -767,9 +767,20 @@ class Engine:
 
         # Business daily revenue
         rep = self.reputation.get(region)
+        # Auto-pause/unpause businesses based on player presence + manager
+        for biz in self.business_mgr.businesses.values():
+            at_biz = (p.world_x == biz.world_x and p.world_y == biz.world_y)
+            if at_biz:
+                biz.paused = False
+                biz.last_update_day = current_day
+            elif biz.manager_npc_id:
+                biz.paused = False
+            else:
+                biz.paused = True
+
         for biz_name, finance, event in self.business_mgr.tick_daily(current_day, rep):
-            if finance.profit != 0:
-                p.cash += finance.profit
+            # Business profit stays in biz.cash_reserve (not player.cash)
+            # Player withdraws via business UI [W]
             if event:
                 self.add_message(f"[{biz_name}] {event.description}", "advisory")
 
@@ -2596,9 +2607,13 @@ class Engine:
 
         # ── Gambling ──────────────────────────────────────────────────────
         # ── Business management ───────────────────────────────────────────
-        if "business" in a or "ledger" in a or "start a " in a and \
-           any(w in a for w in ("business", "company", "store", "shop",
-                                "saloon", "trading", "freight", "operation")):
+        _BIZ_WORDS = ("business", "company", "store", "shop", "saloon",
+                      "trading", "freight", "operation", "enterprise")
+        _NOT_BIZ = ("fire", "fight", "camp", "snare", "trap")
+        is_biz_action = (a == "business" or a == "ledger" or
+                         (any(w in a for w in _BIZ_WORDS) and
+                          not any(w in a for w in _NOT_BIZ)))
+        if is_biz_action:
             from src.business_ui import open_business_ui
             open_business_ui(self, self._console, self._ctx)
             return

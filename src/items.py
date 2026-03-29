@@ -807,6 +807,15 @@ ITEM_TEMPLATES: Dict[str, dict] = {
                        "Load a raw pelt and wait 24 hours.",
     },
 
+    "land_deed": {
+        "id": "land_deed", "name": "Land Deed", "weight": 0.05,
+        "category": "misc",
+        "description": "A deed proving ownership of a town lot. "
+                       "Required to build a business in established towns.",
+        "base_value": 0.0,
+        "extra": {"lot_wx": 0, "lot_wy": 0, "lot_x": 0, "lot_y": 0,
+                  "lot_w": 10, "lot_h": 8},
+    },
     "pencil": {
         "id": "pencil", "name": "Pencil", "weight": 0.05,
         "category": "tool",

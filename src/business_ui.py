@@ -399,6 +399,43 @@ def _show_ledger(engine, console, ctx, biz):
                         engine.add_message(f"Took {item.name} from business.", "normal")
                     break
 
+                # Withdraw cash [W] (any tab, present only)
+                if sym == K.w and is_present:
+                    from src.menus import pick_from_list
+                    if biz.cash_reserve <= 0:
+                        engine.add_message("No cash in the business.", "advisory")
+                        break
+                    amounts = []
+                    for pct in [10, 25, 50, 100]:
+                        amt = min(biz.cash_reserve, biz.cash_reserve * pct / 100)
+                        amounts.append((f"${amt:.2f} ({pct}%)", amt))
+                    labels = [a[0] for a in amounts]
+                    idx = pick_from_list(console, ctx, "Withdraw how much?", labels)
+                    if idx is not None:
+                        amt = amounts[idx][1]
+                        biz.cash_reserve -= amt
+                        engine.player.cash += amt
+                        engine.add_message(f"Withdrew ${amt:.2f} from business.", "normal")
+                    break
+
+                # Close business [Q] (overview tab only)
+                if sym == K.q and tab == 0:
+                    from src.menus import pick_from_list
+                    confirm = pick_from_list(console, ctx,
+                        f"CLOSE {biz.name}? Liquidates inventory, fires employees.",
+                        ["Yes — close it", "No — keep it"])
+                    if confirm == 0:
+                        # Liquidate inventory at 50% value
+                        liq_value = sum(getattr(i, 'base_value', 0) * 0.5
+                                        for i in biz.inventory)
+                        engine.player.cash += liq_value + biz.cash_reserve
+                        engine.add_message(
+                            f"Closed {biz.name}. Liquidated ${liq_value:.2f} "
+                            f"+ ${biz.cash_reserve:.2f} cash reserve.", "normal")
+                        del engine.business_mgr.businesses[biz.id]
+                        return
+                    break
+
                 # Clear orders (X key)
                 if sym == K.x and tab == 4:
                     biz.clear_pending_orders()

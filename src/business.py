@@ -455,6 +455,44 @@ class BusinessEntity:
 
         return round(max(0, rev), 2)
 
+    def _manager_auto_decisions(self):
+        """Manager makes autonomous buy/restock decisions."""
+        if not self.manager_npc_id:
+            return
+        # Find manager's skill level
+        mgr_skill = 3  # default
+        for emp in self.employees:
+            if emp.npc_id == self.manager_npc_id:
+                mgr_skill = emp.skill_level
+                break
+
+        # Auto-restock if low on key supplies and has cash
+        _RESTOCK_MAP = {
+            "saloon": [("whiskey", 10, 0.50)],
+            "bakery": [("hardtack", 10, 0.15)],
+            "general_store": [("hardtack", 5, 0.15), ("salt", 3, 0.30),
+                              ("rope_10ft", 3, 0.20)],
+            "hotel": [("candle", 3, 0.10)],
+            "brothel": [("whiskey", 5, 0.50)],
+            "dancehall": [("whiskey", 5, 0.50)],
+        }
+        restock_list = _RESTOCK_MAP.get(self.blueprint_key, [])
+        for item_id, min_qty, buy_price in restock_list:
+            current = sum(1 for i in self.inventory if i.id == item_id)
+            if current < min_qty and self.cash_reserve > buy_price * 5:
+                # Manager buys stock (better skill = better prices)
+                price_mult = max(0.7, 1.3 - mgr_skill * 0.06)
+                qty_to_buy = min_qty - current + 5  # buffer
+                cost = qty_to_buy * buy_price * price_mult
+                if self.cash_reserve >= cost:
+                    self.cash_reserve -= cost
+                    try:
+                        from src.items import make_item
+                        for _ in range(qty_to_buy):
+                            self.inventory.append(make_item(item_id))
+                    except Exception:
+                        pass
+
     def _consume_supplies(self) -> float:
         """Consume inventory supplies to generate service revenue.
         Saloons use whiskey, bakeries use ingredients, etc.
@@ -513,6 +551,8 @@ class BusinessEntity:
 
         return round(bonus, 2)
 
+    _all_businesses = None  # set by BusinessManager before tick
+
     def _process_customers(self) -> float:
         """Simulate NPC customers buying from inventory.
         Returns revenue from actual item sales."""
@@ -532,6 +572,15 @@ class BusinessEntity:
         if not has_seller and not self.manager_npc_id:
             # No one at the counter — drastically fewer sales
             base_customers = max(1, base_customers // 5)
+
+        # Competition — split customers with same-type businesses at same location
+        if self._all_businesses:
+            competitors = sum(1 for b in self._all_businesses
+                              if b.id != self.id and b.active and not b.paused
+                              and b.world_x == self.world_x and b.world_y == self.world_y
+                              and b.category == self.category)
+            if competitors > 0:
+                base_customers = max(1, base_customers // (competitors + 1))
 
         # Reputation affects foot traffic
         traffic_mult = 0.3 + (self.reputation / 100.0) * 1.4
@@ -601,6 +650,10 @@ class BusinessEntity:
         self.history.append(record)
         if len(self.history) > 90:
             self.history = self.history[-90:]
+
+        # Manager autonomous decisions
+        if self.manager_npc_id and not self.paused:
+            self._manager_auto_decisions()
 
         # Employee morale
         can_pay = self.cash_reserve >= 0
@@ -879,8 +932,13 @@ class BusinessManager:
     def found(self, blueprint_key: str, name: str,
                wx: int, wy: int, day: int,
                region: str = "", settlement_type: str = "small_town",
-               investment: float = 0.0) -> BusinessEntity:
+               investment: float = 0.0) -> Optional[BusinessEntity]:
         """Found a new business from a known blueprint."""
+        # Limit: max 3 businesses per world tile
+        at_loc = sum(1 for b in self.businesses.values()
+                     if b.world_x == wx and b.world_y == wy and b.active)
+        if at_loc >= 3:
+            return None
         biz = BusinessEntity(blueprint_key, name, wx, wy, day,
                               region, settlement_type)
         biz.id = self._next_id()
@@ -923,9 +981,11 @@ class BusinessManager:
         Returns list of (biz_name, finance, event_or_None).
         """
         results = []
-        for biz in self.businesses.values():
+        all_biz = list(self.businesses.values())
+        for biz in all_biz:
             if not biz.active or biz.paused:
                 continue
+            biz._all_businesses = all_biz  # for competition check
             finance = biz.tick_daily(current_day, player_rep)
             event = biz.roll_event(current_day)
             results.append((biz.name, finance, event))
@@ -945,25 +1005,27 @@ class BusinessManager:
                 ship = biz.shipments.pop(i)
                 rng = random.Random(current_day + i)
                 # Risk checks
+                raw_items = ship.get("items", [])
+                # Items are serialized dicts — get value from them
+                def _item_value(it):
+                    if isinstance(it, dict):
+                        return it.get("base_value", 1.0)
+                    return getattr(it, 'base_value', 1.0)
+                num_items = len(raw_items)
+
                 if rng.random() < ship.get("risk_robbery", 0):
                     results.append((biz.name,
-                        f"ROBBERY: Shipment to ({ship['dest_wx']},{ship['dest_wy']}) "
-                        f"was robbed! {len(ship.get('items',[]))} items lost."))
+                        f"ROBBERY: Shipment was robbed! {num_items} items lost."))
                     continue
                 if rng.random() < ship.get("risk_accident", 0):
-                    # Partial loss
-                    items = ship.get("items", [])
-                    lost = len(items) // 3
+                    lost = num_items // 3
+                    surviving_value = sum(_item_value(it) for it in raw_items[lost:])
+                    biz.cash_reserve += surviving_value * 1.5
                     results.append((biz.name,
-                        f"ACCIDENT: Shipment damaged in transit. "
-                        f"{lost} items lost, rest arrived."))
-                    # Sell surviving items at destination prices
-                    surviving_value = sum(getattr(it, 'base_value', 1) for it in items[lost:])
-                    biz.cash_reserve += surviving_value * 1.5  # destination premium
+                        f"ACCIDENT: {lost} items lost, rest sold for "
+                        f"${surviving_value * 1.5:.2f}."))
                     continue
-                # Successful delivery
-                items = ship.get("items", [])
-                total_value = sum(getattr(it, 'base_value', 1) for it in items)
+                total_value = sum(_item_value(it) for it in raw_items)
                 # Destination premium (items worth more at destination)
                 sell_value = total_value * 2.0  # rough 2x markup at destination
                 biz.cash_reserve += sell_value
@@ -1061,7 +1123,7 @@ class BusinessManager:
         arrival_day = current_day + travel_days
 
         shipment = {
-            "items": items,
+            "items": [_serialize_biz_item(i) for i in items],  # serialize for persistence
             "dest_wx": dest_wx, "dest_wy": dest_wy,
             "method": method,
             "cost": cost,

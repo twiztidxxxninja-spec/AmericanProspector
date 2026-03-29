@@ -95,24 +95,34 @@ def _place_name_from_coords(wx: int, wy: int, terrain: int) -> str:
 
 # ── NPC occupation → preferred rumor categories ───────────────────────────────
 
+# ── Event rumor categories (create situations when visited) ──────────────────
+
+# These are rumors that generate an encounter/situation at the referenced tile.
+# When the player visits, the dynamic location system spawns the scenario.
+EVENT_CATEGORIES = [
+    "bandits", "claim_jumpers", "lost_traveler", "abandoned_claim",
+    "wagon_wreck", "bounty", "rustlers", "sick_camp",
+    "rich_strike", "card_game", "duel_challenge", "stolen_goods",
+]
+
 _OCC_CATEGORIES = {
-    "prospector":   ["gold", "gold", "gold", "water"],
-    "miner":        ["gold", "gold", "gold", "trail"],
-    "assayer":      ["gold", "gold", "location", "gold"],
-    "trader":       ["location", "location", "trail", "gold"],
-    "merchant":     ["location", "location", "trail", "danger"],
-    "trapper":      ["water", "trail", "gold", "danger"],
-    "hunter":       ["water", "trail", "danger", "gold"],
-    "scout":        ["trail", "location", "water", "danger"],
-    "farmer":       ["water", "location", "trail", "gold"],
-    "rancher":      ["water", "trail", "location", "danger"],
-    "sheriff":      ["danger", "location", "trail", "gold"],
-    "lawman":       ["danger", "location", "trail", "gold"],
-    "bartender":    ["gold", "location", "danger", "trail"],
+    "prospector":   ["gold", "gold", "gold", "water", "abandoned_claim", "claim_jumpers"],
+    "miner":        ["gold", "gold", "gold", "trail", "rich_strike", "claim_jumpers"],
+    "assayer":      ["gold", "gold", "location", "gold", "rich_strike"],
+    "trader":       ["location", "location", "trail", "gold", "wagon_wreck", "stolen_goods"],
+    "merchant":     ["location", "location", "trail", "danger", "stolen_goods", "bandits"],
+    "trapper":      ["water", "trail", "gold", "danger", "lost_traveler"],
+    "hunter":       ["water", "trail", "danger", "gold", "lost_traveler", "bounty"],
+    "scout":        ["trail", "location", "water", "danger", "bandits", "wagon_wreck"],
+    "farmer":       ["water", "location", "trail", "gold", "rustlers"],
+    "rancher":      ["water", "trail", "location", "danger", "rustlers", "rustlers"],
+    "sheriff":      ["danger", "location", "trail", "gold", "bandits", "bounty", "duel_challenge"],
+    "lawman":       ["danger", "location", "trail", "gold", "bandits", "bounty"],
+    "bartender":    ["gold", "location", "danger", "trail", "card_game", "duel_challenge", "bandits"],
     "engineer":     ["trail", "location", "gold", "water"],
-    "doctor":       ["danger", "location", "water", "trail"],
+    "doctor":       ["danger", "location", "water", "trail", "sick_camp"],
 }
-_DEFAULT_CATS = ["gold", "location", "trail", "water"]
+_DEFAULT_CATS = ["gold", "location", "trail", "water", "bandits", "lost_traveler"]
 
 
 def _pick_category(npc: "NPC", rng: random.Random) -> str:
@@ -310,6 +320,109 @@ def _danger_rumor_text(dx: int, dy: int, dist: int,
             f"Passes close in by November. Don't get caught in there late in the season.")
 
 
+def _find_event_tile(player: "Player", world_map: "WorldMap",
+                     rng: random.Random) -> Optional[Tuple[int, int]]:
+    """Find a suitable tile for an event rumor (5-25 tiles away, not ocean)."""
+    from src.world_map import Terrain
+    px, py = player.world_x, player.world_y
+    candidates = []
+    for dy in range(-25, 26):
+        for dx in range(-25, 26):
+            wx, wy = px + dx, py + dy
+            if not world_map.in_bounds(wx, wy):
+                continue
+            dist = max(abs(dx), abs(dy))
+            if dist < 5 or dist > 25:
+                continue
+            terrain = int(world_map.tiles[wy, wx])
+            if terrain == Terrain.OCEAN:
+                continue
+            candidates.append((wx, wy))
+    if candidates:
+        return rng.choice(candidates)
+    return None
+
+
+# ── Event rumor text builders ──────────────────────────────────────────────────
+
+def _event_rumor_text(category: str, dx: int, dy: int, dist: int,
+                      terrain: int, place: str, spec: str,
+                      rng: random.Random) -> str:
+    direction = _dir(dx, dy)
+    dist_txt = _dist_text(dist)
+    terr_txt = _terrain_phrase(terrain)
+
+    _TEMPLATES = {
+        "bandits": [
+            f"Road agents working {direction} of here. Three men, armed. They hit a wagon last week.",
+            f"Watch the trail {direction}, {dist_txt} out. Bandits jumped two miners there.",
+            f"Heard gunshots {direction} last Tuesday. Somebody found a body near {place}.",
+            f"There's a gang camped {terr_txt}, {dist_txt} {direction}. They're robbing anyone who passes.",
+        ],
+        "claim_jumpers": [
+            f"Man named Harlan staked over somebody's claim near {place}. The original prospector ain't happy.",
+            f"Claim dispute {direction}, {dist_txt} out. Two parties both say it's theirs. Could get bloody.",
+            f"Somebody's been working another man's ground near {place}. Word is they're armed.",
+            f"There's trouble at {place} — claim jumpers moved in while the owner went to town for supplies.",
+        ],
+        "lost_traveler": [
+            f"Family went {direction} two weeks back. Nobody's seen 'em since. Wagon and all.",
+            f"Old man wandered off from camp {direction} of here. Probably lost in the hills.",
+            f"A woman came through asking about her husband. He went prospecting {direction} and didn't come back.",
+            f"Some greenhorn from back East headed {direction} alone. No supplies, no sense. Probably dead.",
+        ],
+        "abandoned_claim": [
+            f"There's a worked claim near {place}, {dist_txt} {direction}. Owner took sick and left. "
+            f"Might still be color there.",
+            f"Fellow packed up and left his diggings near {place}. Sluice box still standing.",
+            f"Abandoned camp {direction}, {dist_txt}. Tools scattered, tent still up. Don't know what happened.",
+        ],
+        "wagon_wreck": [
+            f"Wagon broke an axle {direction} of here, {dist_txt} out. Driver couldn't save the load.",
+            f"Supply wagon turned over near {place}. Goods scattered everywhere. First come, first serve.",
+            f"Heard there's a wrecked freight wagon {direction}. Supplies for the taking, if you get there first.",
+        ],
+        "bounty": [
+            f"Sheriff's offering twenty dollars for a man called Slade. Last seen heading {direction}.",
+            f"There's paper on a horse thief {direction} of here. Fifty dollar reward, dead or alive.",
+            f"Wanted man hiding out near {place}. Law's too busy to chase him. Could be money in it.",
+        ],
+        "rustlers": [
+            f"Cattle going missing {direction} of here. Ranchers are getting organized.",
+            f"Horse thieves working the area near {place}. Somebody's gonna get hung.",
+            f"Livestock disappearing {direction}, {dist_txt}. Trail leads {terr_txt}.",
+        ],
+        "sick_camp": [
+            f"Camp {direction} of here got the cholera. Nobody goes near it now.",
+            f"Miners at {place} are down sick. Could be bad water, could be worse.",
+            f"There's a fever camp {direction}, {dist_txt}. They need medicine and clean water.",
+        ],
+        "rich_strike": [
+            f"Somebody pulled a two-pound nugget out of {place}. Men are heading there now.",
+            f"New strike {direction}, {dist_txt} — coarse gold on the surface. Won't last long.",
+            f"They're finding gold by the handful near {place}. By the time you get there it'll be staked.",
+        ],
+        "card_game": [
+            f"Big stakes poker game at {place}. Three hundred dollars on the table last I heard.",
+            f"Miners up at {place} play cards every Saturday. High stakes if you've got the nerve.",
+            f"A gambler at {place} has been cleaning everyone out. Somebody needs to take him down a peg.",
+        ],
+        "duel_challenge": [
+            f"Man at {place} says he'll fight anyone who calls him a cheat. He means it.",
+            f"Two men arguing over a claim near {place}. They've agreed to settle it with pistols.",
+            f"Heard a prospector near {place} challenged the whole camp. Says his gun speaks for him.",
+        ],
+        "stolen_goods": [
+            f"Somebody robbed the supply train {direction} of here. Goods hidden {terr_txt} somewhere.",
+            f"Stolen merchandise cached near {place}. Trader's offering a cut to anyone who finds it.",
+            f"A thief stashed what he took {direction}, {dist_txt}. Find it and it's yours — or return it for the reward.",
+        ],
+    }
+
+    templates = _TEMPLATES.get(category, _TEMPLATES["bandits"])
+    return rng.choice(templates)
+
+
 # ── Main entry point ───────────────────────────────────────────────────────────
 
 def generate_rumor(player: "Player", npc: "NPC",
@@ -337,7 +450,7 @@ def generate_rumor(player: "Player", npc: "NPC",
 
     # Find reference tile
     tile: Optional[Tuple[int, int]] = None
-    if category == "gold":
+    if category == "gold" or category == "rich_strike":
         tile = _find_gold_tile(player, world_map, rng)
     elif category == "location":
         tile = _find_location_tile(player, world_map, rng)
@@ -345,6 +458,9 @@ def generate_rumor(player: "Player", npc: "NPC",
         tile = _find_water_tile(player, world_map, rng)
     elif category == "danger":
         tile = _find_danger_tile(player, world_map, rng)
+    elif category in EVENT_CATEGORIES:
+        # Event rumors: find any unvisited passable tile at moderate distance
+        tile = _find_event_tile(player, world_map, rng)
 
     # Fall back to gold if the specific finder came up empty
     if tile is None:
@@ -372,7 +488,9 @@ def generate_rumor(player: "Player", npc: "NPC",
     loc_name = loc_obj.name if loc_obj else ""
 
     # Build text
-    if category == "gold":
+    if category in EVENT_CATEGORIES:
+        text = _event_rumor_text(category, dx, dy, dist, terrain, place, spec, rng)
+    elif category == "gold":
         text = _gold_rumor_text(dx, dy, dist, terrain, place, spec)
     elif category == "location":
         text = _location_rumor_text(dx, dy, dist, terrain, place, spec, loc_name)
@@ -385,19 +503,32 @@ def generate_rumor(player: "Player", npc: "NPC",
     reveal = {"vague": 0, "directional": 3, "specific": 6}.get(spec, 0)
 
     # Journal text and place note
+    direction = _dir(dx, dy)
+    display = loc_name or place
+
+    # Event category label for journal
+    _EVENT_LABELS = {
+        "bandits": "Bandits reported", "claim_jumpers": "Claim dispute",
+        "lost_traveler": "Missing person", "abandoned_claim": "Abandoned claim",
+        "wagon_wreck": "Wagon wreck", "bounty": "Bounty",
+        "rustlers": "Rustlers", "sick_camp": "Sick camp",
+        "rich_strike": "Rich strike", "card_game": "Card game",
+        "duel_challenge": "Duel", "stolen_goods": "Stolen goods",
+    }
+
     if spec == "vague":
         j_text = f"{npc.name}: \"{text.strip('\"')}\""
         p_name = ""
     elif spec == "directional":
-        direction = _dir(dx, dy)
-        j_text = (f"{npc.name} mentioned {category} {_dist_text(dist)} "
+        label = _EVENT_LABELS.get(category, category.capitalize())
+        j_text = (f"{npc.name}: {label} {_dist_text(dist)} "
                   f"{direction}. Unverified.")
         p_name = ""
     else:
-        display = loc_name or place
+        label = _EVENT_LABELS.get(category, category.capitalize())
         j_text = (f"{npc.name} told me about {display} — "
-                  f"{_dist_text(dist)} {_dir(dx, dy)}. "
-                  f"{category.capitalize()} potential. Worth investigating.")
+                  f"{_dist_text(dist)} {direction}. "
+                  f"{label}. Worth investigating.")
         p_name = display
 
     return Rumor(

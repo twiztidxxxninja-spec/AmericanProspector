@@ -165,6 +165,12 @@ class DynamicLocationDB:
         self._counter += 1
         return f"{loc_type}_{wx}_{wy}_{self._counter}"
 
+    def add(self, loc: DynamicLocation) -> DynamicLocation:
+        """Add an externally-created location to the registry."""
+        if not loc.id:
+            loc.id = self._new_id(loc.loc_type, loc.world_x, loc.world_y)
+        return self._register(loc)
+
     def _register(self, loc: DynamicLocation) -> DynamicLocation:
         self._by_id[loc.id] = loc
         pos = (loc.world_x, loc.world_y)

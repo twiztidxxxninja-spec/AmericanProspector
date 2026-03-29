@@ -215,15 +215,39 @@ def _handle_rumor(npc: "NPC", player: "Player",
         if loc:
             loc.discovered = True
 
-    # Generate a dynamic location from the rumor (if gold-related)
+    # Generate a dynamic location from the rumor
     dynamic_locs = kwargs.get("dynamic_locs")
-    if dynamic_locs and rumor.category == "gold" and rumor.wx >= 0:
+    from src.rumor_system import EVENT_CATEGORIES
+    if dynamic_locs and rumor.wx >= 0:
         region = world_map.get_region(rumor.wx, rumor.wy) if world_map else ""
         year = kwargs.get("year", 1849)
-        dl = dynamic_locs.from_npc_rumor(
-            player.world_x, player.world_y, region, year, _rnd.Random())
-        if dl:
-            dl.discovered = True
+        if rumor.category == "gold" or rumor.category == "rich_strike":
+            dl = dynamic_locs.from_npc_rumor(
+                player.world_x, player.world_y, region, year, _rnd.Random())
+            if dl:
+                dl.discovered = True
+        elif rumor.category in EVENT_CATEGORIES:
+            # Create an event location at the referenced tile
+            _EVENT_LOC_TYPES = {
+                "bandits": "outlaw_camp", "claim_jumpers": "prospector_camp",
+                "lost_traveler": "abandoned_camp", "abandoned_claim": "abandoned_camp",
+                "wagon_wreck": "waystation", "bounty": "outlaw_camp",
+                "rustlers": "outlaw_camp", "sick_camp": "prospector_camp",
+                "rich_strike": "mining_camp", "card_game": "prospector_camp",
+                "duel_challenge": "prospector_camp", "stolen_goods": "abandoned_camp",
+            }
+            loc_type = _EVENT_LOC_TYPES.get(rumor.category, "prospector_camp")
+            from src.dynamic_locations import DynamicLocation
+            evt_name = rumor.place_name or f"Rumored {rumor.category.replace('_', ' ')}"
+            event_loc = DynamicLocation(
+                id="",  # filled by add()
+                name=evt_name,
+                world_x=rumor.wx, world_y=rumor.wy,
+                loc_type=loc_type, stage="active",
+                discovered=True,
+                notes=f"Rumor: {rumor.category}. Source: {npc.name}.",
+            )
+            dynamic_locs.add(event_loc)
 
     # Add to journal rumors tab
     if journal and rumor.journal_text:
@@ -237,6 +261,18 @@ def _handle_rumor(npc: "NPC", player: "Player",
             "water":    "Reliable water source.",
             "trail":    "Trail or crossing.",
             "danger":   "Dangerous terrain or hostile area.",
+            "bandits":  "DANGER: Bandits reported in the area.",
+            "claim_jumpers": "Claim dispute — could be violent.",
+            "lost_traveler":  "Missing person — may need help.",
+            "abandoned_claim": "Abandoned claim — could still have gold.",
+            "wagon_wreck":    "Wrecked wagon — salvageable goods.",
+            "bounty":         "Wanted fugitive in the area.",
+            "rustlers":       "Livestock thieves operating here.",
+            "sick_camp":      "Disease outbreak — approach with caution.",
+            "rich_strike":    "New gold strike — rush conditions.",
+            "card_game":      "High-stakes gambling.",
+            "duel_challenge": "Gunfight brewing.",
+            "stolen_goods":   "Stolen goods cached nearby.",
         }.get(rumor.category, "Point of interest.")
         journal.add_place(rumor.place_name, rumor.wx, rumor.wy, cat_note)
 

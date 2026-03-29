@@ -445,38 +445,52 @@ def _kill_msg(attacker: str, defender: str, weapon: str) -> str:
     return random.choice(opts)
 
 
-# ── Incapacitation flavor (LCS-inspired) ──────────────────────────────────
+# ── Incapacitation flavor — wounded/dying behavior ────────────────────────
 
 INCAP_FLAVOR = [
-    " cries out to God.",
-    " clutches at the wound.",
-    " coughs up blood.",
-    " screams in agony.",
-    " asks for mother.",
-    " whimpers softly.",
-    " begins to weep.",
-    " prays under their breath.",
-    " groans and doubles over.",
-    " gasps for air.",
-    " stumbles against a wall.",
-    " vomits.",
-    " begs for mercy.",
-    " stares off into nothing.",
-    " whispers 'Am I dead?'",
-    " shivers uncontrollably.",
-    " tries to crawl away.",
-    " murmurs something incoherent.",
-    " yells until the voice cracks dry.",
-    " looks strangely calm.",
-    " starts shaking.",
-    " slumps against the ground.",
-    " claws at the dirt.",
-    " asks for water.",
-    " seems lost in memories.",
-    " murmurs 'I'm so afraid...'",
-    " scratches at the air.",
-    " wears a look of disbelief.",
-    " stares at the blood on their hands.",
+    # Physical reactions
+    " presses a hand against the wound. Blood runs between the fingers.",
+    " doubles over, retching. Dark blood spatters the ground.",
+    " sucks air through clenched teeth, shaking hard.",
+    " slides down to one knee. Eyes glassy.",
+    " grabs a fistful of dirt, squeezing until the knuckles go white.",
+    " makes a wet, rattling sound with every breath.",
+    " drags one leg behind, leaving a smear of red in the dust.",
+    " sits down heavily, like the strings were cut.",
+    " holds the wound with both hands. It doesn't help.",
+    " spits a mouthful of blood and wipes a lip.",
+    " collapses to all fours, head hanging.",
+    " leans hard against a tree, breathing in shallow bursts.",
+    " presses a palm flat against the dirt, trembling.",
+    " pulls at a collar, gasping. Face gone grey.",
+    " curls into a ball, knees to chest.",
+    " rocks back and forth, arms wrapped tight.",
+    # Vocal
+    " calls out for someone not here. The name is garbled.",
+    " whispers a prayer. The words come out wrong.",
+    " says something about a farm, a wife. Trails off.",
+    " mutters the same word over and over. Can't make it out.",
+    " laughs once — a short, ugly sound. Then quiet.",
+    " says 'I don't want to die here.'",
+    " whispers 'Tell my boy...' The rest is lost.",
+    " asks what day it is. Doesn't seem to hear the answer.",
+    " says 'It's cold.' It isn't.",
+    " recites a Bible verse. Gets it wrong halfway through.",
+    " keeps saying 'okay' under their breath. Over and over.",
+    " moans low and steady, like a hurt animal.",
+    " tries to say something. Just blood.",
+    " whispers 'I can see the river.'",
+    # Behavioral
+    " fumbles for a weapon. Can't close the hand.",
+    " tries to stand. Makes it halfway. Falls.",
+    " looks at the sky with an expression that is hard to describe.",
+    " reaches toward something only they can see.",
+    " goes very still. Just the chest moving, barely.",
+    " blinks slowly. Seems to be looking through the ground.",
+    " folds the hands neatly. A strange, quiet gesture.",
+    " tries to crawl somewhere. Gives up after two feet.",
+    " pulls a photograph from a pocket. Holds it against the chest.",
+    " turns the head away. Doesn't want to see the blood.",
 ]
 
 
@@ -485,54 +499,82 @@ def incap_message(name: str) -> str:
     return name + random.choice(INCAP_FLAVOR)
 
 
-# ── Combat taunts (1849 period-appropriate) ───────────────────────────────
+# ── Combat taunts (1849 Gold Rush era) ────────────────────────────────────
 
 COMBAT_TAUNTS_HOSTILE = [
-    "\"I'll gut you like a fish!\"",
-    "\"You picked the wrong man to rob!\"",
-    "\"Come closer, I dare you!\"",
-    "\"You'll die out here and nobody'll find the body!\"",
-    "\"I've killed better men than you!\"",
-    "\"Say your prayers!\"",
-    "\"You son of a bitch!\"",
-    "\"That gold is mine!\"",
-    "\"I'll put you in the ground!\"",
-    "\"You goddamn thief!\"",
-    "\"Stand and fight, coward!\"",
-    "\"I'll send you straight to hell!\"",
-    "\"You ain't walking away from this!\"",
-    "\"Draw, you yellow-bellied bastard!\"",
-    "\"I'll hang your scalp on my belt!\"",
+    "\"I'll put you in a shallow grave and nobody'll know your name!\"",
+    "\"You picked the wrong camp to walk into, friend.\"",
+    "\"I been killing men since before you could walk!\"",
+    "\"Come on then! Let's see what you're made of!\"",
+    "\"That claim is mine. Die for it or walk away.\"",
+    "\"You think you're the first man I've shot?\"",
+    "\"I'll leave you for the coyotes!\"",
+    "\"You're dumber than you look, and that's saying something!\"",
+    "\"I've buried three men this month. You'll make four.\"",
+    "\"Your mother should've drowned you!\"",
+    "\"Stand still so I can shoot you proper!\"",
+    "\"You fight like a schoolmarm!\"",
+    "\"That gold dust on you? It's already mine.\"",
+    "\"The buzzards are gonna eat good tonight!\"",
+    "\"I'll tan your hide and sell it in Sacramento!\"",
+    "\"You yellow-bellied son of a mule!\"",
+    "\"Pray fast, boy. You ain't got long.\"",
+    "\"I'll carve my name in your skull!\"",
+    "\"Nobody out here to save you. Nobody out here to care.\"",
+    "\"This is the last face you're ever gonna see.\"",
 ]
 
 COMBAT_TAUNTS_WOUNDED = [
-    "\"Is that all you got?!\"",
-    "\"I ain't done yet!\"",
-    "\"You'll have to do better than that!\"",
-    "\"I've had worse from my wife!\"",
-    "\"Flesh wound!\"",
-    "\"Come on then! Finish it!\"",
-    "\"God damn you...\"",
-    "\"I'll take you with me!\"",
+    "\"That the best you can do?!\"",
+    "\"I've cut myself worse shaving!\"",
+    "\"You'll have to hit harder than that, you bastard!\"",
+    "\"I'm still standing! What does that tell you?\"",
+    "\"God damn you to hell and back!\"",
+    "\"I'll kill you with one arm if I have to!\"",
+    "\"Blood don't bother me none!\"",
+    "\"Flesh wound. I've had worse from a mule kick.\"",
+    "\"You're gonna regret not finishing me!\"",
+    "\"I ain't done. Not by a long shot.\"",
+    "\"Come closer. I dare you. COME CLOSER.\"",
+    "\"My grandpa hit harder than you, and he was blind!\"",
 ]
 
 COMBAT_TAUNTS_SCARED = [
-    "\"Wait — wait! I didn't mean it!\"",
-    "\"Don't shoot! Please!\"",
-    "\"Take the gold, just let me go!\"",
-    "\"I got children!\"",
-    "\"Hold on now, let's talk about this!\"",
-    "\"I surrender! I surrender!\"",
-    "\"Mercy! For God's sake!\"",
+    "\"Wait — hold on — I didn't mean none of it!\"",
+    "\"Don't shoot! Christ, don't shoot!\"",
+    "\"Take the dust, take all of it, just let me walk!\"",
+    "\"I got children back East! They need me!\"",
+    "\"Hold on now, let's be reasonable about this!\"",
+    "\"I yield! I yield, damn you!\"",
+    "\"Mercy! For the love of God!\"",
+    "\"Please — I ain't worth the bullet!\"",
+    "\"I was just bluffing! I wasn't really gonna!\"",
+    "\"You win! You win, alright?!\"",
+    "\"I'll leave! I'll leave the territory, I swear it!\"",
+]
+
+COMBAT_INSULTS = [
+    "\"You smell worse than a dead mule in July!\"",
+    "\"Your claim is worthless and so are you!\"",
+    "\"I've seen better men crawl out of a whiskey bottle!\"",
+    "\"You couldn't find gold in a jewelry store!\"",
+    "\"Your pan technique is an embarrassment to prospectors everywhere!\"",
+    "\"Did your mama teach you to shoot? Because she did a terrible job!\"",
+    "\"I've met smarter rocks!\"",
+    "\"You're about as useful as a screen door on a submarine!\"",
+    "\"Even the mules don't respect you!\"",
+    "\"I heard your last claim yielded nothing but disappointment!\"",
 ]
 
 
 def combat_taunt(name: str, health_pct: float, is_hostile: bool) -> str:
     """Return a combat taunt from an NPC. health_pct = current/max (0-1)."""
     if health_pct < 0.25 and random.random() < 0.5:
-        return f"{name} shouts: {random.choice(COMBAT_TAUNTS_SCARED)}"
+        return f"{name} cries: {random.choice(COMBAT_TAUNTS_SCARED)}"
     elif health_pct < 0.5:
         return f"{name} snarls: {random.choice(COMBAT_TAUNTS_WOUNDED)}"
     elif is_hostile:
+        if random.random() < 0.3:
+            return f"{name} sneers: {random.choice(COMBAT_INSULTS)}"
         return f"{name} shouts: {random.choice(COMBAT_TAUNTS_HOSTILE)}"
     return ""

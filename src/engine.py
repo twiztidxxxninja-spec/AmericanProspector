@@ -3671,6 +3671,12 @@ class Engine:
                                       distance=dist, aimed_part=aimed_part)
             self.add_message(event.message, "normal")
 
+            # Log to After Action Report
+            region = lmap._region_name if lmap else ""
+            self.journal.begin_combat(self.time.date_string, region)
+            self.journal.log_combat_event(event.message,
+                "critical" if event.killed else "normal")
+
             if event.hit:
                 skill = "firearms" if (weapon and weapon.weapon_type == "firearm") \
                         else "survival"
@@ -3681,7 +3687,10 @@ class Engine:
                 if event.killed:
                     self._blood_pool(lmap, target.local_x, target.local_y,
                                      radius=2, heavy=True)
+                    self.journal.log_enemy_killed(target.name)
                     lmap.invalidate_terrain_cache()
+                if event.defender_fled:
+                    self.journal.log_enemy_fled(target.name)
 
             witnesses = self._witnesses_near(
                 self.player.local_x, self.player.local_y,
@@ -3810,14 +3819,20 @@ class Engine:
                     taunt = combat_taunt(npc.name, hp_pct, True)
                     if taunt:
                         self.add_message(taunt, "normal")
+                        self.journal.log_combat_event(taunt)
                 # Attack
                 event = npc_attack_player(npc, self.player)
                 self.add_message(event.message,
                                  "critical" if event.hit else "normal")
+                self.journal.log_combat_event(event.message,
+                    "critical" if event.hit else "normal")
                 if event.hit:
                     self._splatter_blood(lmap,
                         self.player.local_x, self.player.local_y, 1)
+                    if hasattr(event, 'wound_desc') and event.wound_desc:
+                        self.journal.log_player_wound(event.wound_desc)
                 if event.killed:
+                    self.journal.end_combat()
                     self._trigger_death(f"Killed by {npc.name}.")
             elif npc.combat_state == "fleeing":
                 # Move NPC away from player (simple — just mark not present

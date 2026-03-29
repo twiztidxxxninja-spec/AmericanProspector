@@ -57,12 +57,33 @@ class PlaceNote:
     visited: bool = True
 
 
+@dataclass
+class CombatEvent:
+    """Single event in a combat encounter for After Action Report."""
+    text: str
+    severity: str = "normal"  # normal, critical, advisory
+
+
+@dataclass
+class AfterActionReport:
+    """Complete record of a combat encounter."""
+    date_str: str
+    location: str
+    events: List[CombatEvent] = field(default_factory=list)
+    player_wounds: List[str] = field(default_factory=list)
+    enemies_killed: List[str] = field(default_factory=list)
+    enemies_fled: List[str] = field(default_factory=list)
+    summary: str = ""  # LLM-generated or auto-generated narrative
+
+
 class Journal:
     def __init__(self):
         self.diary:   List[DiaryEntry]  = []
         self.rumors:  List[RumorEntry]  = []
         self.letters: List[Letter]      = []
         self.places:  List[PlaceNote]   = []
+        self.combat_log: List[AfterActionReport] = []
+        self._active_combat: Optional[AfterActionReport] = None
         # People tab is derived from npc manager
 
     def add_diary(self, date_str: str, text: str):
@@ -82,6 +103,89 @@ class Journal:
                     p.notes = notes
                 return
         self.places.append(PlaceNote(name, wx, wy, notes))
+
+    # ── Combat log / After Action Report ─────────────────────────────
+
+    def begin_combat(self, date_str: str, location: str = ""):
+        """Start recording a combat encounter."""
+        if self._active_combat is None:
+            self._active_combat = AfterActionReport(date_str, location)
+
+    def log_combat_event(self, text: str, severity: str = "normal"):
+        """Record an event during active combat."""
+        if self._active_combat is None:
+            self.begin_combat("", "")
+        self._active_combat.events.append(CombatEvent(text, severity))
+
+    def log_enemy_killed(self, name: str):
+        if self._active_combat:
+            self._active_combat.enemies_killed.append(name)
+
+    def log_enemy_fled(self, name: str):
+        if self._active_combat:
+            self._active_combat.enemies_fled.append(name)
+
+    def log_player_wound(self, desc: str):
+        if self._active_combat:
+            self._active_combat.player_wounds.append(desc)
+
+    def end_combat(self):
+        """Finalize the combat encounter and generate the report."""
+        if self._active_combat is None:
+            return
+        aar = self._active_combat
+        self._active_combat = None
+        if not aar.events:
+            return
+        # Auto-generate summary narrative from events
+        aar.summary = _generate_aar_summary(aar)
+        self.combat_log.append(aar)
+        # Keep only last 20 reports
+        if len(self.combat_log) > 20:
+            self.combat_log = self.combat_log[-20:]
+
+    @property
+    def latest_aar(self) -> Optional[AfterActionReport]:
+        return self.combat_log[-1] if self.combat_log else None
+
+
+def _generate_aar_summary(aar: AfterActionReport) -> str:
+    """Build a narrative summary from combat events."""
+    lines = []
+    if aar.location:
+        lines.append(f"Engagement at {aar.location}, {aar.date_str}.")
+    else:
+        lines.append(f"Combat engagement, {aar.date_str}.")
+    lines.append("")
+
+    # Key events — filter to the most dramatic
+    critical = [e.text for e in aar.events if e.severity == "critical"]
+    hits = [e.text for e in aar.events if "hit" in e.text.lower() or
+            "shoots" in e.text.lower() or "strikes" in e.text.lower() or
+            "drops" in e.text.lower() or "shattered" in e.text.lower()]
+    taunts = [e.text for e in aar.events if "shouts:" in e.text or
+              "snarls:" in e.text or "cries:" in e.text]
+
+    # Build narrative
+    if taunts:
+        lines.append(taunts[0])
+    for evt in (critical or hits)[:8]:
+        lines.append(evt)
+
+    # Outcome
+    lines.append("")
+    if aar.enemies_killed:
+        names = ", ".join(aar.enemies_killed)
+        lines.append(f"Killed: {names}.")
+    if aar.enemies_fled:
+        names = ", ".join(aar.enemies_fled)
+        lines.append(f"Fled: {names}.")
+    if aar.player_wounds:
+        lines.append(f"Wounds sustained: {'; '.join(aar.player_wounds[:3])}.")
+    if not aar.enemies_killed and not aar.enemies_fled:
+        lines.append("No casualties on either side.")
+
+    return "\n".join(lines)
 
     def unread_letters(self) -> int:
         return sum(1 for l in self.letters if not l.read)

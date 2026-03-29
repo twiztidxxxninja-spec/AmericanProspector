@@ -263,6 +263,69 @@ def _handle_write(sym, state: MenuState, ctx: dict) -> bool:
 
 
 # ============================================================================
+#  AAR (AFTER ACTION REPORT)
+# ============================================================================
+
+def _draw_aar(state, con, x, y, w, h, **kw):
+    journal = kw.get("journal")
+    if not journal or not journal.combat_log:
+        con.print(x + 2, y + 2, "No combat encounters recorded.", fg=GREY)
+        return
+
+    # Show latest report (or selected one)
+    idx = getattr(state, '_aar_idx', len(journal.combat_log) - 1)
+    idx = max(0, min(idx, len(journal.combat_log) - 1))
+    state._aar_idx = idx
+    aar = journal.combat_log[idx]
+
+    # Header
+    con.print(x + 2, y + 1,
+              f"Report {idx + 1}/{len(journal.combat_log)}  [</>] navigate",
+              fg=GREY)
+
+    # Summary text
+    lines = aar.summary.split("\n") if aar.summary else ["No summary."]
+    scroll = getattr(state, '_aar_scroll', 0)
+    max_lines = h - 4
+    for i, line in enumerate(lines[scroll:scroll + max_lines]):
+        fg = WHITE
+        if "Killed:" in line:
+            fg = (255, 80, 80)
+        elif "Fled:" in line:
+            fg = (200, 200, 80)
+        elif "Wounds:" in line:
+            fg = (255, 160, 60)
+        elif "shouts:" in line or "snarls:" in line or "cries:" in line:
+            fg = (180, 160, 120)
+        con.print(x + 2, y + 3 + i, line[:w - 4], fg=fg)
+
+
+def _handle_aar(state, event, **kw):
+    journal = kw.get("journal")
+    if not journal or not journal.combat_log:
+        return False
+    sym = event.sym
+    K = tcod.event.KeySym
+    idx = getattr(state, '_aar_idx', len(journal.combat_log) - 1)
+
+    if sym == K.COMMA or sym == K.LEFT:
+        state._aar_idx = max(0, idx - 1)
+        return True
+    if sym == K.PERIOD or sym == K.RIGHT:
+        state._aar_idx = min(len(journal.combat_log) - 1, idx + 1)
+        return True
+    # Scroll
+    scroll = getattr(state, '_aar_scroll', 0)
+    if sym == K.UP:
+        state._aar_scroll = max(0, scroll - 1)
+        return True
+    if sym == K.DOWN:
+        state._aar_scroll = scroll + 1
+        return True
+    return False
+
+
+# ============================================================================
 #  PUBLIC
 # ============================================================================
 
@@ -279,6 +342,7 @@ def open_journal(con, ctx, journal, player, npc_manager,
         MenuTab("Rumors", _draw_rumors, _handle_rumors),
         MenuTab("Mail", _draw_mail, _handle_mail, badge=mail_badge),
         MenuTab("Write", _draw_write, _handle_write),
+        MenuTab("AAR", _draw_aar, _handle_aar),
     ]
     menu = TabbedMenu("JOURNAL", tabs, width=72, height=42)
     return menu.run(con, ctx, journal=journal, player=player,

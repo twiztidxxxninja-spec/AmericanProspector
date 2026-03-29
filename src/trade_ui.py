@@ -33,10 +33,13 @@ def open_trade_ui(console, ctx, player: "Player", npc: "NPC",
     LIST_Y = Y + 4
     MAX_ROWS = H - 8
 
+    GOLD_RATE = 20.67 * 0.90  # $18.60/oz — merchant cut on raw dust
+
     selected = 0
     column = 0   # 0 = merchant (buy), 1 = player (sell)
     scroll_l = 0
     scroll_r = 0
+    pay_with_gold = False  # G key toggles
     messages = []
 
     def _get_merchant_items():
@@ -110,15 +113,24 @@ def open_trade_ui(console, ctx, player: "Player", npc: "NPC",
         console.print(COL_LEFT, HEADER_Y, "FOR SALE (Buy)", fg=buy_fg, bg=(15, 12, 10))
         console.print(COL_RIGHT, HEADER_Y, "YOUR ITEMS (Sell)", fg=sell_fg, bg=(15, 12, 10))
 
-        # Cash bar
-        cash_y = Y + H - 3
+        # Cash bar + payment mode
+        cash_y = Y + H - 4
         console.print(COL_LEFT, cash_y,
-                      f"Your cash: ${player.cash:.2f}   Gold: {player.gold_oz:.3f} oz",
+                      f"Cash: ${player.cash:.2f}   Gold: {player.gold_oz:.3f} oz "
+                      f"(${player.gold_oz * GOLD_RATE:.2f} value)",
                       fg=(220, 200, 100), bg=(15, 12, 10))
+        if pay_with_gold:
+            console.print(COL_LEFT, cash_y + 1,
+                          "Paying with: GOLD DUST  [G] switch to cash",
+                          fg=(255, 220, 50), bg=(15, 12, 10))
+        else:
+            console.print(COL_LEFT, cash_y + 1,
+                          "Paying with: CASH  [G] switch to gold",
+                          fg=(200, 200, 200), bg=(15, 12, 10))
 
         # Controls
         console.print(COL_LEFT, Y + H - 2,
-                      "[Enter] Buy/Sell  [TAB] Switch  [Esc] Close",
+                      "[Enter] Buy/Sell  [TAB] Switch  [G] Payment  [Esc] Close",
                       fg=(100, 100, 100), bg=(15, 12, 10))
 
         # ── Merchant stock (left column) ──────────────────────────
@@ -132,7 +144,10 @@ def open_trade_ui(console, ctx, player: "Player", npc: "NPC",
             name = mi["name"][:COL_W - 12]
             qty_str = f"x{mi['qty']}" if mi["qty"] > 1 else ""
             price_str = f"${mi['price']:.2f}"
-            can_afford = player.cash >= mi["price"]
+            if pay_with_gold:
+                can_afford = (player.gold_oz * GOLD_RATE) >= mi["price"]
+            else:
+                can_afford = player.cash >= mi["price"]
             price_fg = (100, 200, 100) if can_afford else (200, 80, 80)
             if is_sel:
                 price_fg = (150, 255, 150) if can_afford else (255, 100, 100)
@@ -205,22 +220,44 @@ def open_trade_ui(console, ctx, player: "Player", npc: "NPC",
                         scroll_r = selected - MAX_ROWS + 1
                     break
 
+                if sym == K.g:
+                    pay_with_gold = not pay_with_gold
+                    mode = "gold dust" if pay_with_gold else "cash"
+                    messages.append(f"Now paying with {mode}.")
+                    break
+
                 if sym in (K.RETURN, K.KP_ENTER):
                     if column == 0 and m_items:
                         # BUY
                         mi = m_items[selected]
-                        if player.cash >= mi["price"]:
-                            player.cash -= mi["price"]
-                            mi["entry"].quantity -= 1
-                            try:
-                                bought = make_item(mi["item_id"])
-                                player.inventory.append(bought)
-                                messages.append(
-                                    f"Bought {mi['name']} for ${mi['price']:.2f}")
-                            except Exception:
-                                messages.append(f"Bought {mi['name']}")
+                        price = mi["price"]
+                        if pay_with_gold:
+                            oz_needed = price / GOLD_RATE
+                            if player.gold_oz >= oz_needed:
+                                player.gold_oz -= oz_needed
+                                mi["entry"].quantity -= 1
+                                try:
+                                    bought = make_item(mi["item_id"])
+                                    player.inventory.append(bought)
+                                    messages.append(
+                                        f"Bought {mi['name']} for {oz_needed:.3f} oz gold")
+                                except Exception:
+                                    messages.append(f"Bought {mi['name']}")
+                            else:
+                                messages.append(f"Not enough gold ({oz_needed:.3f} oz needed)")
                         else:
-                            messages.append(f"Can't afford ${mi['price']:.2f}")
+                            if player.cash >= price:
+                                player.cash -= price
+                                mi["entry"].quantity -= 1
+                                try:
+                                    bought = make_item(mi["item_id"])
+                                    player.inventory.append(bought)
+                                    messages.append(
+                                        f"Bought {mi['name']} for ${price:.2f}")
+                                except Exception:
+                                    messages.append(f"Bought {mi['name']}")
+                            else:
+                                messages.append(f"Can't afford ${price:.2f}")
                     elif column == 1 and p_items:
                         # SELL
                         pi = p_items[selected]

@@ -1559,97 +1559,34 @@ class Engine:
                 w.lodged = ""
                 options[choice] = f"(extracted) {w.part}"
             elif act == "butcher":
-                break  # fall through to butcher code below
+                # Execute butcher, then loop back so player can pick up results
+                self._do_butcher_npc(npc)
+                # After butcher, ground items may exist — add pickup option
+                tile = lmap.tile_at(npc.local_x, npc.local_y)
+                if tile.ground_items:
+                    for gi in tile.ground_items:
+                        options.append(f"Pick up {gi.name}")
+                        option_actions.append(("pickup_ground", gi))
+                options[choice] = "(butchered)"
+                option_actions[choice] = ("done", None)
+                continue
+            elif act == "pickup_ground":
+                gi = data
+                tile = lmap.tile_at(npc.local_x, npc.local_y)
+                if gi in tile.ground_items:
+                    tile.ground_items.remove(gi)
+                    self.player.inventory.append(gi)
+                    self.add_message(f"Took {gi.name}.", "normal")
+                    options[choice] = f"(taken) {gi.name}"
             self.advance_time(1)
 
-        # ── Butcher path ──────────────────────────────────────────────
-            # Generate loot based on NPC occupation
-            rng = _rnd.Random(hash(npc.npc_id))
-            loot = []
-            cash_found = rng.uniform(0.50, 15.00)
-            self.player.cash += cash_found
-            loot_msgs = [f"${cash_found:.2f} in coins and dust"]
+    def _do_butcher_npc(self, npc):
+        """Execute the butcher action on an NPC. Places items on ground."""
+        from src.menus import pick_from_list
+        from src.butcher import has_sharp_tool
+        from src.items import Item
+        import random as _rnd
 
-            # Occupation-based loot
-            occ = (npc.occupation or "").lower()
-            if "prospector" in occ or "miner" in occ:
-                gold = rng.uniform(0.01, 0.15)
-                self.player.gold_oz += gold
-                loot_msgs.append(f"{gold:.3f} oz gold dust")
-                if rng.random() < 0.4:
-                    try:
-                        loot.append(make_item("gold_pan"))
-                    except Exception:
-                        pass
-            if "hunter" in occ or "trapper" in occ:
-                if rng.random() < 0.5:
-                    try:
-                        loot.append(make_item("hunting_knife"))
-                    except Exception:
-                        pass
-            if rng.random() < 0.3:
-                try:
-                    loot.append(make_item("hardtack"))
-                except Exception:
-                    pass
-            if rng.random() < 0.2:
-                try:
-                    loot.append(make_item("whiskey"))
-                except Exception:
-                    pass
-            # Weapon
-            if rng.random() < 0.35:
-                weapon_ids = ["percussion_revolver", "bowie_knife", "hunting_knife"]
-                try:
-                    loot.append(make_item(rng.choice(weapon_ids)))
-                except Exception:
-                    pass
-
-            for item in loot:
-                self.player.inventory.append(item)
-                loot_msgs.append(item.name)
-
-            self.add_message(
-                f"You search {npc.name}'s body: {', '.join(loot_msgs)}.",
-                "normal")
-            # Recover lodged objects from wounds
-            if hasattr(npc, 'wounds') and npc.wounds:
-                for w in npc.wounds.wounds:
-                    if w.lodged:
-                        lodged_items = {
-                            "bullet": ("rifle_ball", "Lead Ball"),
-                            "shot": ("shotgun_shell", "Shotgun Pellets"),
-                            "arrowhead": ("arrow", "Arrowhead"),
-                            "knife": ("hunting_knife", "Lodged Blade"),
-                        }
-                        item_id, item_name = lodged_items.get(
-                            w.lodged, ("", w.lodged))
-                        if item_id:
-                            try:
-                                recovered = make_item(item_id)
-                                self.player.inventory.append(recovered)
-                                self.add_message(
-                                    f"You dig out a {w.lodged} from the body.",
-                                    "normal")
-                            except Exception:
-                                pass
-                        w.lodged = ""
-            self.advance_time(3)
-
-            # Crime if witnessed
-            witnesses = self._witnesses_near(
-                self.player.local_x, self.player.local_y,
-                exclude_id=npc.npc_id)
-            if witnesses and npc.combat_state != "dead":
-                lmap = self.current_local
-                region = lmap._region_name if lmap else ""
-                self.legal.record_crime(
-                    "theft", self.time.total_minutes // 1440,
-                    self.player.world_x, self.player.world_y, region,
-                    nearby_npcs=witnesses)
-            return
-
-        # ── Butcher path ──────────────────────────────────────────────
         if npc.combat_state == "surrendered" or (npc.alive and npc.health < 25):
             # Killing a surrendered person
             confirm = pick_from_list(self._console, self._ctx,

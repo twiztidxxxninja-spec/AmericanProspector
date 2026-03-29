@@ -4855,6 +4855,8 @@ class Engine:
                         self.player.world_x, self.player.world_y,
                         self.player.area_x, self.player.area_y)
                     self.renderer.draw_wildlife(_animals, lmap, self.player)
+                self.renderer.draw_poi_indicators(
+                    self.player, self.dynamic_locs, self.world)
                 self.renderer.draw_pack_animals(self.player)
                 # Time/date in sidebar
                 console.print(

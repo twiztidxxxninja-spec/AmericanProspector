@@ -306,6 +306,54 @@ class Renderer:
         player_fg = (255, 160, 160) if underground else WHITE
         self.con.print(half_w, half_h + 1, "@", fg=player_fg, bg=BLACK)
 
+    def draw_poi_indicators(self, player: Player, dynamic_locs, world_map):
+        """Draw directional arrows at viewport edge pointing to nearby POIs."""
+        if not dynamic_locs:
+            return
+        from src.constants import AREAS_PER_WORLD, PATCH_SIZE
+        px, py = player.local_x, player.local_y
+        half_w, half_h = VIEWPORT_W // 2, VIEWPORT_H // 2
+
+        nearby = dynamic_locs.get_nearby(player.world_x, player.world_y, radius=3)
+        for loc in nearby:
+            if not loc.discovered:
+                continue
+            # Convert world tile distance to approximate local tile offset
+            dwx = loc.world_x - player.world_x
+            dwy = loc.world_y - player.world_y
+            # Each world tile = 14 patches × 384 tiles
+            approx_dx = dwx * AREAS_PER_WORLD * PATCH_SIZE // 2
+            approx_dy = dwy * AREAS_PER_WORLD * PATCH_SIZE // 2
+            # If same world tile, point toward center patch
+            if dwx == 0 and dwy == 0:
+                center = AREAS_PER_WORLD // 2
+                approx_dx = (center - player.area_x) * PATCH_SIZE
+                approx_dy = (center - player.area_y) * PATCH_SIZE
+
+            if approx_dx == 0 and approx_dy == 0:
+                continue
+
+            # Project to viewport edge
+            if abs(approx_dx) > abs(approx_dy):
+                edge_x = (VIEWPORT_W - 2) if approx_dx > 0 else 1
+                edge_y = half_h + int(approx_dy * half_w / max(abs(approx_dx), 1))
+                arrow = ">" if approx_dx > 0 else "<"
+            else:
+                edge_y = (VIEWPORT_H - 1) if approx_dy > 0 else 1
+                edge_x = half_w + int(approx_dx * half_h / max(abs(approx_dy), 1))
+                arrow = "v" if approx_dy > 0 else "^"
+
+            edge_y = max(1, min(VIEWPORT_H - 1, edge_y)) + 1  # +1 for hotbar
+            edge_x = max(0, min(VIEWPORT_W - 1, edge_x))
+
+            # Draw arrow + abbreviated name
+            self.con.print(edge_x, edge_y, arrow, fg=(255, 200, 50), bg=(40, 30, 10))
+            label = loc.name[:8]
+            lx = max(0, min(edge_x - len(label) // 2, VIEWPORT_W - len(label)))
+            ly = edge_y + (1 if arrow in ("^", "<", ">") else -1)
+            if 1 <= ly <= VIEWPORT_H:
+                self.con.print(lx, ly, label, fg=(200, 170, 80), bg=(0, 0, 0))
+
     def draw_npcs(self, npcs, local_map: LocalMap, player: Player):
         """Render NPC glyphs and adjacent name labels over the viewport."""
         cam_x = player.local_x - VIEWPORT_W // 2
@@ -546,38 +594,49 @@ class Renderer:
             # Player marker
             self.con.print(MAP_WIDTH // 2, MAP_HEIGHT // 2 + 1, "@", fg=WHITE, bg=BLACK)
         else:
-            # Strided — show full world scaled down, centered
-            # Calculate offset to center the world map on screen
+            # Strided views — center on player, fill the screen
             scaled_w = world_map.width  // stride
             scaled_h = world_map.height // stride
-            off_x = (MAP_WIDTH  - scaled_w) // 2
-            off_y = (MAP_HEIGHT - scaled_h) // 2 + 1
 
-            for sy in range(scaled_h):
-                for sx in range(scaled_w):
-                    wx = sx * stride
-                    wy = sy * stride
+            if scaled_w <= MAP_WIDTH and scaled_h <= MAP_HEIGHT:
+                # Fits on screen — center the map (country zoom)
+                off_x = (MAP_WIDTH  - scaled_w) // 2
+                off_y = (MAP_HEIGHT - scaled_h) // 2 + 1
+                vx, vy = 0, 0
+            else:
+                # Larger than screen — scroll centered on player (state zoom)
+                off_x, off_y = 0, 1
+                vx = player.world_x // stride - MAP_WIDTH // 2
+                vy = player.world_y // stride - MAP_HEIGHT // 2
+                vx = max(0, min(vx, scaled_w - MAP_WIDTH))
+                vy = max(0, min(vy, scaled_h - MAP_HEIGHT))
+
+            draw_w = min(scaled_w, MAP_WIDTH)
+            draw_h = min(scaled_h, MAP_HEIGHT)
+
+            for sy in range(draw_h):
+                for sx in range(draw_w):
+                    wx = (vx + sx) * stride
+                    wy = (vy + sy) * stride
                     self._draw_world_tile(world_map, wx, wy,
                                           off_x + sx, off_y + sy, player,
                                           sample_stride=stride, no_dim=True)
             # Player marker
-            px = off_x + player.world_x // stride
-            py = off_y + player.world_y // stride
+            px = off_x + player.world_x // stride - vx
+            py = off_y + player.world_y // stride - vy
             if 0 <= px < MAP_WIDTH and 0 <= py < MAP_HEIGHT + 1:
                 self.con.print(px, py, "@", fg=WHITE, bg=BLACK)
 
-            # Location labels — only discovered, only major cities at country zoom
+            # Location labels — only discovered, filter by zoom
             for loc in world_map.locations.values():
                 if not loc.discovered:
                     continue
-                # At country zoom (stride=20): only show pop 10k+
-                # At state zoom (stride=5): only show pop 2k+
                 if stride >= 20 and loc.population < 10000:
                     continue
                 if stride >= 5 and loc.population < 2000:
                     continue
-                lx = off_x + loc.x // stride
-                ly = off_y + loc.y // stride
+                lx = off_x + loc.x // stride - vx
+                ly = off_y + loc.y // stride - vy
                 if 0 <= lx < MAP_WIDTH - 1 and 1 <= ly < MAP_HEIGHT + 1:
                     self.con.print(lx, ly, "*", fg=YELLOW, bg=BLACK)
                     label = loc.name[:10]

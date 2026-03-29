@@ -306,6 +306,30 @@ class Renderer:
         player_fg = (255, 160, 160) if underground else WHITE
         self.con.print(half_w, half_h + 1, "@", fg=player_fg, bg=BLACK)
 
+    def draw_fire(self, fire_system, local_map, player: Player):
+        """Render fire tiles as flickering glyphs."""
+        import random
+        cam_x = player.local_x - VIEWPORT_W // 2
+        cam_y = player.local_y - VIEWPORT_H // 2
+        for (fx, fy) in fire_system.get_fire_tiles():
+            sx = fx - cam_x
+            sy = fy - cam_y + 1
+            if 0 <= sx < VIEWPORT_W and 1 <= sy < VIEWPORT_H + 1:
+                glyph = random.choice(["^", "*", "~", "#"])
+                fg = random.choice([
+                    (255, 200, 50), (255, 150, 30), (255, 100, 20),
+                    (255, 80, 10), (255, 255, 100),
+                ])
+                self.con.print(sx, sy, glyph, fg=fg, bg=(80, 20, 5))
+        # Draw heating tiles (about to catch) with dim orange
+        for (hx, hy) in fire_system.get_heat_tiles():
+            if (hx, hy) in fire_system.burning:
+                continue
+            sx = hx - cam_x
+            sy = hy - cam_y + 1
+            if 0 <= sx < VIEWPORT_W and 1 <= sy < VIEWPORT_H + 1:
+                self.con.print(sx, sy, ".", fg=(180, 80, 20), bg=(40, 10, 0))
+
     def draw_poi_indicators(self, player: Player, dynamic_locs, world_map):
         """Draw directional arrows at viewport edge pointing to nearby POIs."""
         if not dynamic_locs:

@@ -665,6 +665,34 @@ class Engine:
                 # Fluid simulation — run every 10+ minutes of game time
                 if lmap.fluid_system and minutes >= 10:
                     lmap.fluid_system.simulate_step()
+                # Fire spread — tick every minute
+                if hasattr(lmap, '_fire') and lmap._fire and lmap._fire.active:
+                    for _ in range(max(1, minutes)):
+                        fire_msgs = lmap._fire.tick(lmap)
+                        for fm in fire_msgs:
+                            self.add_message(fm, "critical")
+                    lmap.invalidate_terrain_cache()
+                    # Damage player if standing in or near fire
+                    pkey = (self.player.local_x, self.player.local_y)
+                    if pkey in lmap._fire.burning:
+                        burn_dmg = 8.0 * minutes
+                        self.player.survival.health -= burn_dmg
+                        self.add_message("You're in the fire! MOVE!", "critical")
+                    else:
+                        # Heat damage from nearby fire
+                        fire_tiles = lmap._fire.get_fire_tiles()
+                        near_fire = 0
+                        for (fx, fy) in fire_tiles:
+                            d = max(abs(fx - self.player.local_x),
+                                    abs(fy - self.player.local_y))
+                            if d <= 3:
+                                near_fire += 1
+                        if near_fire >= 3:
+                            heat_dmg = 1.0 * minutes
+                            self.player.survival.health -= heat_dmg
+                            self.add_message(
+                                "The heat is intense. You're too close to the fire.",
+                                "advisory")
 
     def _run_daily_ticks(self, current_day: int):
         """Run all once-per-day system updates."""
@@ -3389,7 +3417,53 @@ class Engine:
             return
 
         # ── Light a fire ─────────────────────────────────────────────────
-        if "light" in a and "fire" in a or "start fire" in a or "make fire" in a:
+        # ── Light a fire (spreading) — pick a direction ─────────────────
+        is_set_fire = ("set fire" in a or
+                       ("light" in a and "fire" in a and "camp" not in a) or
+                       ("burn" in a and ("brush" in a or "tree" in a or
+                        "building" in a or "camp" in a)))
+        if is_set_fire:
+            has_flint = any(i.id == "flint_steel" for i in self.player.inventory)
+            if not has_flint:
+                self.add_message("You need flint and steel.", "advisory")
+                return
+            from src.fire_system import FireSystem, IGNITE_TICKS
+            from src.menus import pick_direction_menu
+            direction = pick_direction_menu(
+                self._console, self._ctx, "Set fire in which direction?")
+            if direction is None:
+                return
+            dx, dy = direction
+            nx, ny = px + dx, py + dy
+            if not lmap.in_bounds(nx, ny):
+                self.add_message("Nothing there.", "advisory")
+                return
+            t = lmap.tiles[ny][nx].terrain
+            if IGNITE_TICKS.get(t, 0) <= 0:
+                self.add_message("That won't burn.", "advisory")
+                return
+            if not hasattr(lmap, '_fire') or lmap._fire is None:
+                lmap._fire = FireSystem()
+            lmap._fire.ignite(nx, ny, lmap)
+            self.add_message(
+                "You strike the flint. Sparks catch. Flames lick upward. "
+                "The fire begins to spread.", "normal")
+            self.advance_time(5)
+            # Arson crime if in settlement
+            if hasattr(lmap, 'town_layout') and lmap.town_layout:
+                witnesses = self._witnesses_near(px, py)
+                if witnesses:
+                    region = lmap._region_name if lmap else ""
+                    self.legal.record_crime(
+                        "arson", self.time.total_minutes // 1440,
+                        self.player.world_x, self.player.world_y, region,
+                        nearby_npcs=witnesses)
+                    self.add_message("Arson! Witnesses see what you've done.", "critical")
+            return
+
+        # ── Build campfire (contained, doesn't spread) ────────────────
+        if ("camp" in a and "fire" in a) or "make fire" in a or \
+           "start fire" in a or "build fire" in a or "campfire" in a:
             has_flint = any(i.id == "flint_steel" for i in self.player.inventory)
             has_wood = any(i.id == "log" or "wood" in i.name.lower()
                           for i in self.player.inventory)
@@ -4972,6 +5046,9 @@ class Engine:
                     self.renderer.draw_wildlife(_animals, lmap, self.player)
                 self.renderer.draw_poi_indicators(
                     self.player, self.dynamic_locs, self.world)
+                # Fire rendering
+                if hasattr(lmap, '_fire') and lmap._fire and lmap._fire.active:
+                    self.renderer.draw_fire(lmap._fire, lmap, self.player)
                 self.renderer.draw_pack_animals(self.player)
                 # Time/date in sidebar
                 console.print(

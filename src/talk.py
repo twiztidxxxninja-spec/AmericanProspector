@@ -678,14 +678,15 @@ def talk_menu(con: tcod.console.Console, ctx,
                         else:
                             resp = f'*{npc.name} shrugs.* "No mail service here."'
                     elif resp == "__TRADE__" or resp == "__DO_TRADE__":
-                        # Basic trading: show merchant stock + player items
-                        from src.economy import OCCUPATION_TO_MERCHANT, TradeEngine
+                        # Open visual trade UI
+                        from src.economy import OCCUPATION_TO_MERCHANT
                         from src.economy import generate_stock
+                        from src.trade_ui import open_trade_ui
                         mtype_key = OCCUPATION_TO_MERCHANT.get(npc.occupation, "general_store")
                         trade_engine = kwargs.get("trade_engine")
                         region = ""
                         stype = "small_town"
-                        w_map = kwargs.get("world_map")
+                        w_map = world_map or kwargs.get("world_map")
                         if w_map:
                             region = w_map.get_region(player.world_x, player.world_y)
                             loc_here = w_map.get_location_at(player.world_x, player.world_y)
@@ -693,7 +694,6 @@ def talk_menu(con: tcod.console.Console, ctx,
                                 from src.town_gen import classify_settlement
                                 stype = classify_settlement(loc_here.location_type, loc_here.population)
 
-                        # Generate stock if not cached
                         stock_key = f"_stock_{npc_id}"
                         if stock_key not in state_extra_cache:
                             stock = generate_stock(mtype_key, npc_id,
@@ -701,25 +701,12 @@ def talk_menu(con: tcod.console.Console, ctx,
                             state_extra_cache[stock_key] = stock
                         stock = state_extra_cache[stock_key]
 
-                        # Build buy/sell list
-                        log.append(f'*{npc.name} lays out their wares:*')
-                        if stock.items:
-                            for entry in stock.items[:8]:
-                                price = entry.base_price
-                                if trade_engine:
-                                    from src.items import Item as _TItem
-                                    tmp = _TItem(id=entry.item_id, name=entry.name,
-                                                  weight=0, category=entry.category,
-                                                  base_value=entry.base_price,
-                                                  condition=entry.condition)
-                                    price = trade_engine.get_buy_price(
-                                        tmp, region, stype, mtype_key)
-                                qty_str = f" x{entry.quantity}" if entry.quantity > 1 else ""
-                                log.append(f'  {entry.name}{qty_str} — ${price:.2f}')
-                        else:
-                            log.append("  (Nothing for sale right now.)")
-                        log.append(f'  Cash: ${player.cash:.2f}  Gold: {player.gold_oz:.3f} oz')
-                        log.append("  (Type 'buy [item]' or 'sell [item]' to trade)")
+                        trade_msgs = open_trade_ui(
+                            con, ctx, player, npc, stock,
+                            trade_engine=trade_engine, region=region,
+                            settlement_type=stype, merchant_type=mtype_key)
+                        for tm in trade_msgs[-3:]:
+                            log.append(tm)
                         resp = ""
                     elif resp == "__DELEGATE__":
                         comp_mgr = kwargs.get("companion_mgr")

@@ -37,7 +37,9 @@ def enter_trapping_mode(engine: "Engine", console, ctx) -> None:
     rng = random.Random()
     messages = []
     selected_trap = 0
-    auto_bait = False  # B toggles — auto-uses best bait when setting traps
+    auto_bait = False       # B toggles — auto-uses best bait
+    preset_bait = ""        # selected bait type (empty = best available)
+    preset_trap_type = ""   # selected trap type (empty = pick each time)
 
     def add_msg(text, sev="normal"):
         messages.append((text, sev))
@@ -217,14 +219,19 @@ def enter_trapping_mode(engine: "Engine", console, ctx) -> None:
         y += 2
 
         # Controls
-        # Auto-bait status
-        ab_fg = (100, 200, 100) if auto_bait else (120, 120, 120)
-        console.print(x, y, f"Auto-bait: {'ON' if auto_bait else 'OFF'}  [B] toggle",
-                      fg=ab_fg)
+        # Presets status
+        from src.items import ITEM_TEMPLATES
+        trap_name = ITEM_TEMPLATES.get(preset_trap_type, {}).get("name", "pick each time") if preset_trap_type else "pick each time"
+        bait_name = preset_bait or "best available"
+        console.print(x, y, f"Trap: {trap_name[:18]}  [T]", fg=(180, 170, 130))
         y += 1
+        ab_fg = (100, 200, 100) if auto_bait else (150, 150, 150)
+        console.print(x, y, f"Bait: {bait_name[:18]}  [N]  Auto:[B]{'ON' if auto_bait else 'off'}",
+                      fg=ab_fg)
+        y += 2
         console.print(x, y,     "[S]et  [C]heck  [R]eset  [P]ickup", fg=(120, 120, 120))
         console.print(x, y + 1, "[F]Craft  [TAB]Cycle  [arrows]Move", fg=(120, 120, 120))
-        console.print(x, y + 2, "[ESC/Y] Exit trapping mode", fg=(120, 120, 120))
+        console.print(x, y + 2, "[ESC/Y] Exit", fg=(120, 120, 120))
 
         # Messages
         log_y = 44
@@ -248,7 +255,48 @@ def enter_trapping_mode(engine: "Engine", console, ctx) -> None:
                 # Toggle auto-bait
                 if sym == K.b:
                     auto_bait = not auto_bait
-                    add_msg(f"Auto-bait: {'ON — best bait used automatically' if auto_bait else 'OFF — choose bait manually'}")
+                    add_msg(f"Auto-bait: {'ON' if auto_bait else 'OFF'}")
+                    break
+
+                # Select default trap type
+                if sym == K.t:
+                    from src.menus import pick_from_list
+                    trap_types = list(set(i.id for i in player.inventory
+                                         if "trap" in getattr(i, "tool_tags", [])))
+                    if not trap_types:
+                        add_msg("No traps in inventory.", "advisory")
+                        break
+                    from src.items import ITEM_TEMPLATES
+                    labels = ["Auto (pick each time)"] + [
+                        ITEM_TEMPLATES.get(tid, {}).get("name", tid) for tid in trap_types]
+                    idx = pick_from_list(console, ctx, "Default trap type?", labels)
+                    if idx is not None:
+                        if idx == 0:
+                            preset_trap_type = ""
+                            add_msg("Trap: pick each time.")
+                        else:
+                            preset_trap_type = trap_types[idx - 1]
+                            name = ITEM_TEMPLATES.get(preset_trap_type, {}).get("name", preset_trap_type)
+                            add_msg(f"Default trap: {name}")
+                    break
+
+                # Select default bait
+                if sym == K.n:
+                    from src.menus import pick_from_list
+                    bait_items = [i for i in player.inventory
+                                  if i.is_food() or i.id == "castoreum"]
+                    if not bait_items:
+                        add_msg("No bait in inventory.", "advisory")
+                        break
+                    labels = ["Best available (auto)"] + [i.name for i in bait_items]
+                    idx = pick_from_list(console, ctx, "Default bait?", labels)
+                    if idx is not None:
+                        if idx == 0:
+                            preset_bait = ""
+                            add_msg("Bait: best available.")
+                        else:
+                            preset_bait = bait_items[idx - 1].id
+                            add_msg(f"Default bait: {bait_items[idx - 1].name}")
                     break
 
                 # Set trap
@@ -259,11 +307,19 @@ def enter_trapping_mode(engine: "Engine", console, ctx) -> None:
                     if not trap_items:
                         add_msg("No traps in inventory. [F] to craft.", "advisory")
                         break
-                    labels = [f"{t.name}" for t in trap_items]
-                    tidx = pick_from_list(console, ctx, "Set which trap?", labels)
-                    if tidx is None:
-                        break
-                    trap_item = trap_items[tidx]
+                    # Use preset trap type or pick
+                    trap_item = None
+                    if preset_trap_type:
+                        for ti in trap_items:
+                            if ti.id == preset_trap_type:
+                                trap_item = ti
+                                break
+                    if not trap_item:
+                        labels = [f"{t.name}" for t in trap_items]
+                        tidx = pick_from_list(console, ctx, "Set which trap?", labels)
+                        if tidx is None:
+                            break
+                        trap_item = trap_items[tidx]
                     direction = pick_direction_menu(console, ctx, "Place where?")
                     if direction is None:
                         break
@@ -277,12 +333,18 @@ def enter_trapping_mode(engine: "Engine", console, ctx) -> None:
                                   if i.is_food() or i.id == "castoreum"]
                     bait = ""
                     if auto_bait and bait_items:
-                        # Auto-pick best bait: castoreum first, then any meat
+                        # Auto-pick: use preset bait type, or best available
                         best = None
-                        for bi in bait_items:
-                            if bi.id == "castoreum":
-                                best = bi
-                                break
+                        if preset_bait:
+                            for bi in bait_items:
+                                if bi.id == preset_bait or bi.name == preset_bait:
+                                    best = bi
+                                    break
+                        if not best:
+                            for bi in bait_items:
+                                if bi.id == "castoreum":
+                                    best = bi
+                                    break
                         if not best:
                             best = bait_items[0]
                         bait = best.name

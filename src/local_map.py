@@ -192,6 +192,7 @@ class LocalTile:
     spoil_dir: Optional[Tuple[int, int]] = None
     panned: bool = False
     mineral_hint: str = ""           # geology assessment label (set by prospecting)
+    blood: int = 0                   # 0=none, 1=light (pink), 2=heavy (dark red)
     gold_column: Optional[GoldColumn] = None
     ground_items: List[Any] = field(default_factory=list)
 

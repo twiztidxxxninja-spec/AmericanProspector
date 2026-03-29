@@ -397,18 +397,27 @@ def _miss_msg(attacker: str, defender: str, weapon: str) -> str:
 
 def _hit_msg(attacker: str, defender: str, weapon: str,
              dmg: int, hp: float) -> str:
-    condition = ("badly wounded" if hp < 25
-                 else "wounded" if hp < 50
-                 else "shaken")
+    condition = ("barely standing" if hp < 15
+                 else "badly wounded" if hp < 30
+                 else "bleeding heavily" if hp < 50
+                 else "hurt")
     if _is_ranged(weapon):
-        verb = "grazes" if dmg <= 5 else "shoots" if dmg <= 15 else "hits hard with"
-        return (f"{attacker} {verb} {defender} with the {weapon} ({dmg} dmg). "
-                f"{defender.capitalize()} is {condition}.")
+        if dmg <= 5:
+            return f"The {weapon} cracks. A graze — {defender} flinches. ({condition})"
+        elif dmg <= 15:
+            return f"{attacker} shoots {defender}. Blood sprays. ({condition})"
+        else:
+            return (f"The {weapon} roars. {defender} staggers from the impact. "
+                    f"({condition})")
     else:
         weapon_str = f" with the {weapon}" if weapon else ""
-        verb = "grazes" if dmg <= 5 else "hits" if dmg <= 15 else "strikes hard"
-        return (f"{attacker} {verb} {defender}{weapon_str} ({dmg} dmg). "
-                f"{defender.capitalize()} is {condition}.")
+        if dmg <= 5:
+            return f"{attacker} catches {defender}{weapon_str}. A glancing blow. ({condition})"
+        elif dmg <= 15:
+            return f"{attacker} connects{weapon_str}. {defender} reels. ({condition})"
+        else:
+            return (f"{attacker} lands a savage blow{weapon_str}. "
+                    f"{defender} stumbles. ({condition})")
 
 
 def _kill_msg(attacker: str, defender: str, weapon: str) -> str:
@@ -426,3 +435,43 @@ def _kill_msg(attacker: str, defender: str, weapon: str) -> str:
             f"{defender} drops. It's over.",
         ]
     return random.choice(opts)
+
+
+# ── Incapacitation flavor (LCS-inspired) ──────────────────────────────────
+
+INCAP_FLAVOR = [
+    " cries out to God.",
+    " clutches at the wound.",
+    " coughs up blood.",
+    " screams in agony.",
+    " asks for mother.",
+    " whimpers softly.",
+    " begins to weep.",
+    " prays under their breath.",
+    " groans and doubles over.",
+    " gasps for air.",
+    " stumbles against a wall.",
+    " vomits.",
+    " begs for mercy.",
+    " stares off into nothing.",
+    " whispers 'Am I dead?'",
+    " shivers uncontrollably.",
+    " tries to crawl away.",
+    " murmurs something incoherent.",
+    " yells until the voice cracks dry.",
+    " looks strangely calm.",
+    " starts shaking.",
+    " slumps against the ground.",
+    " claws at the dirt.",
+    " asks for water.",
+    " seems lost in memories.",
+    " murmurs 'I'm so afraid...'",
+    " scratches at the air.",
+    " wears a look of disbelief.",
+    " stares at the blood on their hands.",
+]
+
+
+def incap_message(name: str) -> str:
+    """Random incapacitation flavor text for a badly wounded character."""
+    return name + random.choice(INCAP_FLAVOR)

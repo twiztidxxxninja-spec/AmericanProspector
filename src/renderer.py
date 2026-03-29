@@ -190,6 +190,13 @@ class Renderer:
 
                 glyph, fg, bg = LOCAL_GLYPH.get(tile.terrain, ("?", WHITE, BLACK))
 
+                # Blood tint on background
+                blood = getattr(tile, "blood", 0)
+                if blood == 1:  # light — pink tint
+                    bg = (max(bg[0], 60), bg[1] // 2, bg[2] // 2)
+                elif blood >= 2:  # heavy — dark red
+                    bg = (max(bg[0], 90), min(bg[1], 10), min(bg[2], 10))
+
                 if gold_overlay and getattr(tile, "panned", False):
                     g = tile.gold_grade
                     if g < 0.05:

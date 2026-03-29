@@ -483,7 +483,7 @@ def create_wound(damage: float, damage_type: str = DmgType.BLUNT,
     # Description
     part_label = part_info["label"]
     desc = _build_description(wtype, sev, part_label, bone_broken, compound,
-                               lodged, sprain, nerve)
+                               lodged, sprain, nerve, dtype=dtype)
 
     return DetailedWound(
         id=_next_wound_id(), part=part, wound_type=wtype,
@@ -509,33 +509,104 @@ def _infer_wound_type(dtype: str) -> str:
 
 
 def _build_description(wtype, sev, part_label, bone, compound,
-                        lodged, sprain, nerve) -> str:
-    pieces = []
-    sev_adj = {"light": "minor", "moderate": "", "severe": "severe",
-               "critical": "critical"}.get(sev, "")
-    wtype_noun = {
-        WndType.BRUISE:     "bruise", WndType.SPRAIN: "sprain",
-        WndType.CUT:        "cut", WndType.LACERATION: "laceration",
-        WndType.STAB:       "stab wound", WndType.GUNSHOT: "gunshot wound",
-        WndType.CRUSH:      "crush injury", WndType.FRACTURE: "fracture",
-        WndType.BITE_WOUND: "bite wound", WndType.BURN_WOUND: "burn",
-        WndType.AVULSION:   "avulsion",
-    }.get(wtype, "wound")
+                        lodged, sprain, nerve, dtype="") -> str:
+    """Build LCS-style vivid wound description based on damage type × body part."""
+    rng = random.Random()
+    pl = part_label.lower()
 
-    base = f"{sev_adj} {wtype_noun}".strip().capitalize()
-    pieces.append(f"{base} to the {part_label.lower()}")
+    # ── LCS-style per-type per-severity descriptions ──
+    # These replace the generic "moderate cut to the head" with vivid text
+    _GUNSHOT_DESC = {
+        Sev.LIGHT:    [f"A bullet grazes the {pl}, tearing skin.",
+                       f"A round clips the {pl} — a shallow furrow."],
+        Sev.MODERATE: [f"A bullet punches through the {pl}, spraying blood.",
+                       f"The {pl} is shot — clean entry, blood flowing."],
+        Sev.SEVERE:   [f"The {pl} is shattered by a bullet — bone fragments visible.",
+                       f"A round tears through the {pl}, splattering the ground."],
+        Sev.CRITICAL: [f"The {pl} is blown apart — a catastrophic gunshot wound.",
+                       f"A bullet destroys the {pl}. Blood everywhere."],
+    }
+    _SLASH_DESC = {
+        Sev.LIGHT:    [f"A shallow cut across the {pl}.",
+                       f"The blade nicks the {pl} — bleeding lightly."],
+        Sev.MODERATE: [f"A deep gash opens across the {pl}.",
+                       f"The {pl} is sliced open — muscle visible."],
+        Sev.SEVERE:   [f"The {pl} is laid open to the bone.",
+                       f"A vicious cut nearly severs the {pl}."],
+        Sev.CRITICAL: [f"The {pl} is hacked apart — hanging by strips of flesh.",
+                       f"The blade bites deep into the {pl} — catastrophic damage."],
+    }
+    _BLUNT_DESC = {
+        Sev.LIGHT:    [f"A glancing blow bruises the {pl}.",
+                       f"The {pl} takes a solid hit — swelling immediately."],
+        Sev.MODERATE: [f"A heavy blow crunches into the {pl}.",
+                       f"The {pl} is smashed hard — deep purple bruising."],
+        Sev.SEVERE:   [f"The {pl} crumples under a devastating impact.",
+                       f"Bones crack in the {pl} — the sound is sickening."],
+        Sev.CRITICAL: [f"The {pl} is crushed flat. Bone and tissue pulped.",
+                       f"A massive impact caves in the {pl}."],
+    }
+    _BITE_DESC = {
+        Sev.LIGHT:    [f"Teeth rake across the {pl}, drawing blood.",
+                       f"A bite tears the skin of the {pl}."],
+        Sev.MODERATE: [f"Jaws clamp down on the {pl} and rip.",
+                       f"The {pl} is savaged — deep punctures and torn flesh."],
+        Sev.SEVERE:   [f"The {pl} is mauled — flesh hanging in strips.",
+                       f"Teeth sink deep into the {pl} and wrench sideways."],
+        Sev.CRITICAL: [f"The {pl} is torn apart by powerful jaws.",
+                       f"Jaws crush the {pl} — mangled beyond recognition."],
+    }
+    _BURN_DESC = {
+        Sev.LIGHT:    [f"The {pl} is singed — red and blistering.",
+                       f"A burn reddens the {pl}."],
+        Sev.MODERATE: [f"The skin of the {pl} bubbles and blackens.",
+                       f"A serious burn covers the {pl} — second degree."],
+        Sev.SEVERE:   [f"The {pl} is charred — flesh cracking open.",
+                       f"Third-degree burns cover the {pl}. Skin gone."],
+        Sev.CRITICAL: [f"The {pl} is burned to the bone.",
+                       f"The {pl} is a mass of charred ruin."],
+    }
+    _STAB_DESC = {
+        Sev.LIGHT:    [f"A shallow puncture in the {pl}.",
+                       f"The point pricks the {pl} — a minor wound."],
+        Sev.MODERATE: [f"A deep puncture wound in the {pl}.",
+                       f"The blade sinks into the {pl} — dark blood wells up."],
+        Sev.SEVERE:   [f"The {pl} is impaled — the blade goes deep.",
+                       f"A savage thrust pierces the {pl} through."],
+        Sev.CRITICAL: [f"The {pl} is run through — the point exits the far side.",
+                       f"A devastating thrust destroys the {pl} from within."],
+    }
 
+    # Pick description by damage type
+    type_descs = {
+        DmgType.GUNSHOT: _GUNSHOT_DESC,
+        DmgType.BLAST:   _GUNSHOT_DESC,
+        DmgType.SLASH:   _SLASH_DESC,
+        DmgType.BLUNT:   _BLUNT_DESC,
+        DmgType.BITE:    _BITE_DESC,
+        DmgType.BURN:    _BURN_DESC,
+        DmgType.PIERCE:  _STAB_DESC,
+    }
+    desc_table = type_descs.get(dtype, _BLUNT_DESC)
+    options = desc_table.get(sev, desc_table.get(Sev.MODERATE, [f"Wound to the {pl}."]))
+    base_desc = rng.choice(options)
+
+    # Append complications
+    extras = []
     if compound:
-        pieces.append("compound fracture — bone exposed")
+        extras.append("Bone exposed through the wound")
     elif bone:
-        pieces.append("broken bone")
+        extras.append("Bone broken")
     if lodged:
-        pieces.append(f"{lodged} lodged")
+        extras.append(f"{lodged.capitalize()} lodged in the wound")
     if sprain:
-        pieces.append("sprained")
+        extras.append("Joint sprained")
     if nerve:
-        pieces.append("nerve damage — numbness/paralysis")
-    return "; ".join(pieces)
+        extras.append("Nerve damage — numbness spreading")
+
+    if extras:
+        return base_desc + " " + ". ".join(extras) + "."
+    return base_desc
 
 
 # ============================================================================

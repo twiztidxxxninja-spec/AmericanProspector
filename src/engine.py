@@ -330,6 +330,75 @@ class Engine:
         self.player.local_x = best_x
         self.player.local_y = best_y
 
+    # ── Gore: blood on ground, severed parts ────────────────────────────
+
+    def _splatter_blood(self, lmap, x: int, y: int, intensity: int = 1):
+        """Mark tiles with blood. intensity: 1=light (pink), 2=heavy (dark red)."""
+        if lmap.in_bounds(x, y):
+            tile = lmap.tiles[y][x]
+            tile.blood = max(tile.blood, intensity)
+
+    def _blood_pool(self, lmap, cx: int, cy: int, radius: int = 2, heavy: bool = False):
+        """Create a blood pool centered at (cx, cy)."""
+        import random as _r
+        for dy in range(-radius, radius + 1):
+            for dx in range(-radius, radius + 1):
+                nx, ny = cx + dx, cy + dy
+                if not lmap.in_bounds(nx, ny):
+                    continue
+                dist = abs(dx) + abs(dy)
+                if dist <= radius:
+                    intensity = 2 if (heavy and dist <= 1) else 1
+                    if _r.random() < 0.7:  # not every tile, looks more natural
+                        self._splatter_blood(lmap, nx, ny, intensity)
+
+    def _fling_severed_part(self, lmap, part_name: str,
+                            from_x: int, from_y: int,
+                            attacker_x: int, attacker_y: int):
+        """Create a severed body part item and fling it away from the attacker.
+        Leaves a blood trail as it skids across tiles."""
+        import random as _r
+        from src.items import Item
+
+        # Direction: away from attacker
+        dx = from_x - attacker_x
+        dy = from_y - attacker_y
+        # Normalize to -1/0/1
+        if dx != 0: dx = dx // abs(dx)
+        if dy != 0: dy = dy // abs(dy)
+        if dx == 0 and dy == 0:
+            dx = _r.choice([-1, 1])
+
+        # Fling 2-5 tiles
+        distance = _r.randint(2, 5)
+        cx, cy = from_x, from_y
+        for i in range(distance):
+            # Jitter path slightly
+            nx = cx + dx + _r.choice([0, 0, _r.choice([-1, 1])])
+            ny = cy + dy + _r.choice([0, 0, _r.choice([-1, 1])])
+            if not lmap.in_bounds(nx, ny) or not lmap.is_passable(nx, ny):
+                break
+            cx, cy = nx, ny
+            self._splatter_blood(lmap, cx, cy, 2 if i < 2 else 1)
+
+        # Create the body part item on the final tile
+        part_item = Item(
+            id=f"severed_{part_name.lower().replace(' ', '_')}",
+            name=f"Severed {part_name}",
+            weight=_r.uniform(0.5, 8.0),
+            category="remains",
+            description=f"A severed {part_name.lower()}. Gruesome.",
+            base_value=0.0,
+        )
+        if lmap.in_bounds(cx, cy):
+            lmap.tiles[cy][cx].ground_items.append(part_item)
+            self._splatter_blood(lmap, cx, cy, 2)  # pool where it lands
+
+        # Heavy blood at the source
+        self._blood_pool(lmap, from_x, from_y, radius=1, heavy=True)
+
+        return cx, cy  # where it landed
+
     # ── LOD: Progressive detail / eyesight ──────────────────────────────
 
     # Patch summaries — lightweight metadata for nearby unvisited patches
@@ -3606,6 +3675,13 @@ class Engine:
                 skill = "firearms" if (weapon and weapon.weapon_type == "firearm") \
                         else "survival"
                 self.player.gain_skill_xp(skill, 3.0 if event.killed else 1.5)
+                # Blood on the ground
+                self._splatter_blood(lmap, target.local_x, target.local_y,
+                                     2 if event.killed else 1)
+                if event.killed:
+                    self._blood_pool(lmap, target.local_x, target.local_y,
+                                     radius=2, heavy=True)
+                    lmap.invalidate_terrain_cache()
 
             witnesses = self._witnesses_near(
                 self.player.local_x, self.player.local_y,
@@ -3675,25 +3751,33 @@ class Engine:
                 animal.take_damage(float(dmg))
                 skill_name = "firearms" if (weapon and weapon.weapon_type == "firearm") else "survival"
 
+                # Blood on ground
+                self._splatter_blood(lmap, animal.local_x, animal.local_y,
+                                     2 if animal.state == "dead" else 1)
+
                 if animal.state == "dead":
                     self.add_message(
-                        f"The {sp.display_name} drops. Approach and [P] to butcher.",
+                        f"The {sp.display_name} drops. Blood pools beneath it. "
+                        f"[P] to butcher.",
                         "normal")
+                    self._blood_pool(lmap, animal.local_x, animal.local_y,
+                                     radius=2, heavy=True)
                     self.player.gain_skill_xp(skill_name, 5.0)
                 elif animal.state == "downed":
                     self.add_message(
-                        f"The {sp.display_name} goes down, too wounded to move. "
-                        f"Approach and [P] to butcher.",
+                        f"The {sp.display_name} collapses, breathing hard. "
+                        f"[P] to butcher.",
                         "normal")
                     self.player.gain_skill_xp(skill_name, 3.0)
                 elif animal.state == "wounded_fleeing":
                     self.add_message(
-                        f"The {sp.display_name} is hit and staggers away. Follow it.",
+                        f"The {sp.display_name} staggers and runs, leaving a blood trail.",
                         "advisory")
                     self.player.gain_skill_xp(skill_name, 1.5)
                 else:
                     self.add_message(
-                        f"You hit the {sp.display_name} for {dmg} damage.", "normal")
+                        f"You hit the {sp.display_name}. It recoils, bleeding.",
+                        "normal")
                     self.player.gain_skill_xp(skill_name, 1.5)
                     if sp.danger_level == 2 and animal.state not in ("fleeing", "wounded_fleeing"):
                         animal.state = "hostile"
@@ -3708,14 +3792,25 @@ class Engine:
         Called after every player action. Hostile NPCs attack; fleeing NPCs move.
         Surrendered and neutral NPCs do nothing.
         """
-        from src.combat import npc_attack_player
+        import random
+        from src.combat import npc_attack_player, incap_message
+        lmap = self.current_local
         for npc in self._tile_npcs():
             if not npc.alive:
                 continue
+            # Badly wounded NPCs emit incapacitation flavor
+            if npc.health < 25 and npc.health > 0 and npc.combat_state != "dead":
+                if random.random() < 0.4:  # 40% chance per tick
+                    self.add_message(incap_message(npc.name), "normal")
+                    self._splatter_blood(lmap, npc.local_x, npc.local_y, 1)
             if npc.combat_state == "hostile":
                 event = npc_attack_player(npc, self.player)
                 self.add_message(event.message,
                                  "critical" if event.hit else "normal")
+                if event.hit:
+                    # Blood on player's tile
+                    self._splatter_blood(lmap,
+                        self.player.local_x, self.player.local_y, 1)
                 if event.killed:
                     self._trigger_death(f"Killed by {npc.name}.")
             elif npc.combat_state == "fleeing":

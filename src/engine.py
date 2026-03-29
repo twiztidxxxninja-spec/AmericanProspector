@@ -902,6 +902,12 @@ class Engine:
         if sym == K.t:
             self._open_talk()
             return True
+        # Hunting mode  H
+        if sym == K.h:
+            if self.state == GameState.LOCAL_MAP:
+                from src.hunting_mode import enter_hunting_mode
+                enter_hunting_mode(self, self._console, self._ctx)
+            return True
         if sym == K.s:
             if event.mod & tcod.event.Modifier.CTRL:
                 self._do_save()
@@ -1698,6 +1704,7 @@ class Engine:
             ("B  Build (equipment, walls, zones)", CYAN),
             ("K  Combat (attack target)", CYAN),
             ("M  Mining mode (pan or sluice work loop)", CYAN),
+            ("H  Hunting mode (stalk, track, shoot)", CYAN),
             ("E  Examine surroundings", CYAN),
             ("P  Pickup items / Butcher downed animal", CYAN),
             ("L  Message log (scrollable history)", CYAN),

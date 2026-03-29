@@ -1,0 +1,3 @@
+tcod>=16.0
+numpy>=1.24
+llama-cpp-python>=0.3.0

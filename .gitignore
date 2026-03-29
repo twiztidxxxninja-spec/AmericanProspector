@@ -1,0 +1,17 @@
+__pycache__/
+*.pyc
+*.pyo
+dist/
+build/
+*.spec
+installer_output/
+saves/
+error.log
+keylog.txt
+event_debug.log
+config.json
+models/
+*.gguf
+*.gguf.tmp
+.venv/
+venv/

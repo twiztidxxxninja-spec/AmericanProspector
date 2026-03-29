@@ -1,0 +1,669 @@
+"""
+Item definitions and inventory management.
+Items are data — dicts loaded from JSON or defined here as defaults.
+"""
+
+from dataclasses import dataclass, field
+from typing import Optional, List, Dict, Any
+
+
+@dataclass
+class Item:
+    id: str                          # unique identifier e.g. "gold_pan"
+    name: str                        # display name
+    weight: float                    # pounds
+    category: str                    # tool / food / drink / material / weapon / clothing / misc
+    description: str = ""
+
+    # Food/drink properties
+    nutrition: float = 0.0           # hunger restored (0–50)
+    hydration: float = 0.0           # thirst restored (0–50)
+    perishable: bool = False         # spoils over time
+    days_until_spoil: Optional[int] = None
+
+    # Tool properties
+    tool_tags: List[str] = field(default_factory=list)  # e.g. ["dig", "chop", "pan"]
+    condition: float = 100.0         # 0–100; degrades with use
+    quality: str = "standard"        # improvised / poor / standard / good / excellent
+
+    # Weapon properties
+    damage_min: int = 0
+    damage_max: int = 0
+    weapon_type: str = ""            # melee / firearm / bow
+
+    # Value
+    base_value: float = 0.0         # dollars at fair market price
+
+    # Stack
+    stackable: bool = False
+    quantity: int = 1
+
+    # Extra data for special items (ammo count, map data, etc.)
+    extra: Dict[str, Any] = field(default_factory=dict)
+
+    def display_name(self) -> str:
+        if self.stackable and self.quantity > 1:
+            return f"{self.name} x{self.quantity}"
+        if self.condition < 25:
+            return f"{self.name} (worn)"
+        return self.name
+
+    def is_food(self) -> bool:
+        return self.nutrition > 0
+
+    def is_drink(self) -> bool:
+        return self.hydration > 0
+
+    def is_tool(self) -> bool:
+        return bool(self.tool_tags)
+
+    def is_weapon(self) -> bool:
+        return self.weapon_type != ""
+
+    def spoil_warning(self) -> Optional[str]:
+        if self.perishable and self.days_until_spoil is not None:
+            if self.days_until_spoil <= 0:
+                return "spoiled"
+            if self.days_until_spoil <= 1:
+                return "spoiling soon"
+        return None
+
+
+# ── Starting item templates ────────────────────────────────────────────────
+
+def make_item(template_id: str, quantity: int = 1) -> Item:
+    """Create an item from a template."""
+    t = ITEM_TEMPLATES.get(template_id)
+    if t is None:
+        raise ValueError(f"Unknown item template: {template_id}")
+    item = Item(**{**t, "quantity": quantity})
+    return item
+
+
+ITEM_TEMPLATES: Dict[str, dict] = {
+    # ── Tools ──────────────────────────────────────────────────────────────
+    "gold_pan": {
+        "id": "gold_pan", "name": "Gold Pan", "weight": 2.0,
+        "category": "tool", "tool_tags": ["pan"],
+        "description": "A wide sheet-iron pan for washing placer gold from gravel.",
+        "base_value": 1.50, "quality": "standard",
+    },
+    "pickaxe": {
+        "id": "pickaxe", "name": "Pickaxe", "weight": 5.0,
+        "category": "tool", "tool_tags": ["dig", "break_rock"],
+        "description": "A heavy iron pickaxe for breaking rock and moving earth.",
+        "base_value": 2.00, "quality": "standard",
+        "damage_min": 3, "damage_max": 8, "weapon_type": "melee",
+    },
+    "shovel": {
+        "id": "shovel", "name": "Shovel", "weight": 4.0,
+        "category": "tool", "tool_tags": ["dig", "move_earth"],
+        "description": "A long-handled iron shovel.",
+        "base_value": 1.50, "quality": "standard",
+    },
+    "hand_axe": {
+        "id": "hand_axe", "name": "Hand Axe", "weight": 3.0,
+        "category": "tool", "tool_tags": ["chop", "cut"],
+        "description": "A short-handled axe for felling trees and splitting wood.",
+        "base_value": 1.25, "quality": "standard",
+        "damage_min": 4, "damage_max": 10, "weapon_type": "melee",
+    },
+    "hunting_knife": {
+        "id": "hunting_knife", "name": "Hunting Knife", "weight": 0.5,
+        "category": "tool", "tool_tags": ["cut", "butcher", "skin"],
+        "description": "A heavy-bladed knife for field dressing game.",
+        "base_value": 0.75, "quality": "standard",
+        "damage_min": 2, "damage_max": 6, "weapon_type": "melee",
+    },
+    "flint_steel": {
+        "id": "flint_steel", "name": "Flint & Steel", "weight": 0.1,
+        "category": "tool", "tool_tags": ["fire"],
+        "description": "Flint and steel for starting fires.",
+        "base_value": 0.25, "quality": "standard",
+    },
+    "compass": {
+        "id": "compass", "name": "Compass", "weight": 0.2,
+        "category": "tool", "tool_tags": ["navigate"],
+        "description": "A brass pocket compass.",
+        "base_value": 2.00, "quality": "standard",
+    },
+    "canteen": {
+        "id": "canteen", "name": "Canteen", "weight": 0.5,
+        "category": "tool", "tool_tags": ["carry_water"],
+        "description": "A tin canteen holding about a quart of water.",
+        "base_value": 0.50, "quality": "standard",
+        "extra": {"filled": True, "contents": "water"},
+    },
+
+    # ── Food ───────────────────────────────────────────────────────────────
+    "hardtack": {
+        "id": "hardtack", "name": "Hardtack", "weight": 0.1,
+        "category": "food", "nutrition": 10.0,
+        "description": "A hard, dry biscuit. Keeps indefinitely. Tastes like it.",
+        "base_value": 0.03, "stackable": True, "perishable": False,
+    },
+    "salt_pork": {
+        "id": "salt_pork", "name": "Salt Pork", "weight": 0.5,
+        "category": "food", "nutrition": 25.0,
+        "description": "Heavily salted cured pork. Lasts weeks without refrigeration.",
+        "base_value": 0.10, "stackable": True, "perishable": True, "days_until_spoil": 30,
+    },
+    "jerky": {
+        "id": "jerky", "name": "Beef Jerky", "weight": 0.1,
+        "category": "food", "nutrition": 15.0,
+        "description": "Dried and salted beef. Compact trail food.",
+        "base_value": 0.08, "stackable": True, "perishable": True, "days_until_spoil": 60,
+    },
+    "dried_beans": {
+        "id": "dried_beans", "name": "Dried Beans", "weight": 0.2,
+        "category": "food", "nutrition": 20.0,
+        "description": "Dried beans. Require soaking and cooking but filling and cheap.",
+        "base_value": 0.02, "stackable": True, "perishable": False,
+        "extra": {"requires_cooking": True},
+    },
+    "pemican": {
+        "id": "pemican", "name": "Pemmican", "weight": 0.2,
+        "category": "food", "nutrition": 30.0,
+        "description": "Rendered fat mixed with dried meat and berries. Dense trail ration.",
+        "base_value": 0.15, "stackable": True, "perishable": True, "days_until_spoil": 180,
+    },
+    "fresh_venison": {
+        "id": "fresh_venison", "name": "Fresh Venison", "weight": 1.0,
+        "category": "food", "nutrition": 35.0,
+        "description": "Fresh deer meat. Must be cooked. Spoils in 2 days.",
+        "base_value": 0.05, "stackable": True, "perishable": True, "days_until_spoil": 2,
+        "extra": {"requires_cooking": True},
+    },
+    "fresh_fish": {
+        "id": "fresh_fish", "name": "Fresh Fish", "weight": 0.5,
+        "category": "food", "nutrition": 22.0,
+        "description": "A freshly caught fish. Can be eaten raw in a pinch; better cooked. Spoils in 1 day.",
+        "base_value": 0.03, "stackable": True, "perishable": True, "days_until_spoil": 1,
+    },
+    "dried_fish": {
+        "id": "dried_fish", "name": "Dried Fish", "weight": 0.25,
+        "category": "food", "nutrition": 18.0,
+        "description": "Fish dried over a fire. Lasts weeks on the trail.",
+        "base_value": 0.05, "stackable": True, "perishable": True, "days_until_spoil": 30,
+    },
+
+    # ── Butcher yields — meat cuts ─────────────────────────────────────────
+    # Names/weights are overridden per-animal at butcher time; these are templates.
+    "backstraps": {
+        "id": "backstraps", "name": "Backstraps", "weight": 2.0,
+        "category": "food", "nutrition": 50.0,
+        "description": "The prime tenderloin strips along the spine. Best cut on any animal.",
+        "base_value": 0.30, "stackable": True, "perishable": True, "days_until_spoil": 2,
+    },
+    "hindquarter_meat": {
+        "id": "hindquarter_meat", "name": "Hindquarter", "weight": 8.0,
+        "category": "food", "nutrition": 40.0,
+        "description": "The hind leg and haunch — most of the large muscle on a big animal.",
+        "base_value": 0.08, "stackable": True, "perishable": True, "days_until_spoil": 2,
+    },
+    "shoulder_meat": {
+        "id": "shoulder_meat", "name": "Shoulder", "weight": 5.0,
+        "category": "food", "nutrition": 35.0,
+        "description": "Front shoulder and leg meat. Tougher than hindquarter but plenty of it.",
+        "base_value": 0.06, "stackable": True, "perishable": True, "days_until_spoil": 2,
+    },
+    "rib_meat": {
+        "id": "rib_meat", "name": "Ribs", "weight": 3.0,
+        "category": "food", "nutrition": 30.0,
+        "description": "Rib section meat. Good over a fire.",
+        "base_value": 0.05, "stackable": True, "perishable": True, "days_until_spoil": 2,
+    },
+    "neck_meat": {
+        "id": "neck_meat", "name": "Neck Meat", "weight": 1.5,
+        "category": "food", "nutrition": 25.0,
+        "description": "Neck and jaw meat. Stringy but edible.",
+        "base_value": 0.03, "stackable": True, "perishable": True, "days_until_spoil": 2,
+    },
+    "tongue": {
+        "id": "tongue", "name": "Tongue", "weight": 1.0,
+        "category": "food", "nutrition": 28.0,
+        "description": "A frontier delicacy. Rich and tender when braised.",
+        "base_value": 0.20, "stackable": True, "perishable": True, "days_until_spoil": 1,
+    },
+    "heart": {
+        "id": "heart", "name": "Heart", "weight": 0.5,
+        "category": "food", "nutrition": 35.0,
+        "description": "Dense organ meat, very nutritious. Best eaten fresh.",
+        "base_value": 0.10, "stackable": True, "perishable": True, "days_until_spoil": 1,
+    },
+    "liver": {
+        "id": "liver", "name": "Liver", "weight": 1.5,
+        "category": "food", "nutrition": 45.0,
+        "description": "Highly nutritious organ. Spoils very fast — eat it first.",
+        "base_value": 0.08, "stackable": True, "perishable": True, "days_until_spoil": 1,
+    },
+    "kidneys": {
+        "id": "kidneys", "name": "Kidneys", "weight": 0.3,
+        "category": "food", "nutrition": 20.0,
+        "description": "Pair of kidneys. Strong flavor; nutritious.",
+        "base_value": 0.05, "stackable": True, "perishable": True, "days_until_spoil": 1,
+    },
+    "breast_meat": {
+        "id": "breast_meat", "name": "Breast Meat", "weight": 0.8,
+        "category": "food", "nutrition": 38.0,
+        "description": "Bird breast — lean and good eating.",
+        "base_value": 0.10, "stackable": True, "perishable": True, "days_until_spoil": 1,
+    },
+    "bird_leg": {
+        "id": "bird_leg", "name": "Bird Leg", "weight": 0.3,
+        "category": "food", "nutrition": 22.0,
+        "description": "A drumstick. Dark meat; takes longer to cook.",
+        "base_value": 0.05, "stackable": True, "perishable": True, "days_until_spoil": 1,
+    },
+    "giblets": {
+        "id": "giblets", "name": "Giblets", "weight": 0.2,
+        "category": "food", "nutrition": 25.0,
+        "description": "Heart, liver, and gizzard from a bird.",
+        "base_value": 0.05, "stackable": True, "perishable": True, "days_until_spoil": 1,
+    },
+    "snake_meat": {
+        "id": "snake_meat", "name": "Snake Meat", "weight": 0.3,
+        "category": "food", "nutrition": 18.0,
+        "description": "White, lean meat. Tastes a bit like chicken.",
+        "base_value": 0.03, "stackable": True, "perishable": True, "days_until_spoil": 1,
+    },
+
+    # ── Butcher yields — non-food ───────────────────────────────────────────
+    "raw_hide": {
+        "id": "raw_hide", "name": "Raw Hide", "weight": 15.0,
+        "category": "material",
+        "description": "Untanned animal hide. Heavy and perishable. Needs to be stretched and dried or tanned.",
+        "base_value": 3.00, "stackable": False, "perishable": True, "days_until_spoil": 5,
+    },
+    "small_hide": {
+        "id": "small_hide", "name": "Small Hide", "weight": 1.0,
+        "category": "material",
+        "description": "Hide from a small animal. Useful for small leather goods once tanned.",
+        "base_value": 0.75, "stackable": True, "perishable": True, "days_until_spoil": 5,
+    },
+    "tallow": {
+        "id": "tallow", "name": "Tallow", "weight": 1.5,
+        "category": "material",
+        "description": "Rendered animal fat. Used for cooking, candles, waterproofing, and soap-making.",
+        "base_value": 0.15, "stackable": True, "perishable": True, "days_until_spoil": 30,
+    },
+    "bear_fat": {
+        "id": "bear_fat", "name": "Bear Fat", "weight": 1.5,
+        "category": "material",
+        "description": "Premium rendered fat. Excellent for cooking, lamp oil, and rubbing on leather.",
+        "base_value": 0.50, "stackable": True, "perishable": True, "days_until_spoil": 60,
+    },
+    "sinew": {
+        "id": "sinew", "name": "Sinew", "weight": 0.05,
+        "category": "material",
+        "description": "Strong tendon fibers. Used for bowstrings, thread, and binding.",
+        "base_value": 0.10, "stackable": True,
+    },
+    "animal_bones": {
+        "id": "animal_bones", "name": "Bones", "weight": 2.0,
+        "category": "material",
+        "description": "Large bones. Marrow can be eaten; bones used for tools and handles.",
+        "base_value": 0.02, "stackable": True,
+    },
+    "antlers": {
+        "id": "antlers", "name": "Antlers", "weight": 3.0,
+        "category": "material",
+        "description": "Hard antler — excellent for tool handles, knife scales, and trade.",
+        "base_value": 1.50, "stackable": False,
+    },
+    "animal_horn": {
+        "id": "animal_horn", "name": "Horns", "weight": 1.5,
+        "category": "material",
+        "description": "Animal horns. Used for powder horns, drinking vessels, and trade.",
+        "base_value": 1.00, "stackable": False,
+    },
+    "bear_claws": {
+        "id": "bear_claws", "name": "Bear Claws", "weight": 0.5,
+        "category": "material",
+        "description": "A set of bear claws. Prized as jewelry and trade goods.",
+        "base_value": 2.50, "stackable": True,
+    },
+    "bear_gallbladder": {
+        "id": "bear_gallbladder", "name": "Bear Gallbladder", "weight": 0.05,
+        "category": "material",
+        "description": "Valuable for trade; believed to have medicinal properties. Sought by certain buyers.",
+        "base_value": 5.00, "stackable": True,
+    },
+    "stomach_sac": {
+        "id": "stomach_sac", "name": "Stomach", "weight": 0.5,
+        "category": "material",
+        "description": "The stomach sac. Cleaned and dried it can serve as a water container or cooking vessel.",
+        "base_value": 0.05, "stackable": True,
+    },
+    "intestines": {
+        "id": "intestines", "name": "Intestines", "weight": 1.0,
+        "category": "material",
+        "description": "Cleaned intestines used for sausage casings. Perishable.",
+        "base_value": 0.02, "stackable": True, "perishable": True, "days_until_spoil": 1,
+    },
+    "bird_feathers": {
+        "id": "bird_feathers", "name": "Feathers", "weight": 0.05,
+        "category": "material",
+        "description": "Flight feathers. Used for fletching arrows and pillow stuffing.",
+        "base_value": 0.05, "stackable": True,
+    },
+    "rattlesnake_rattle": {
+        "id": "rattlesnake_rattle", "name": "Rattlesnake Rattle", "weight": 0.01,
+        "category": "misc",
+        "description": "The rattle from a rattlesnake. Curiosity; used as a trinket.",
+        "base_value": 0.10, "stackable": True,
+    },
+    "castoreum": {
+        "id": "castoreum", "name": "Castoreum", "weight": 0.05,
+        "category": "material",
+        "description": "Oily secretion from a beaver's castor glands. Powerful trapping lure and perfume fixative.",
+        "base_value": 2.00, "stackable": True,
+    },
+    "head": {
+        "id": "head", "name": "Head", "weight": 4.0,
+        "category": "material",
+        "description": "The animal's head. Contains the brain (useful for hide tanning), cheek meat, and tongue if not removed.",
+        "base_value": 0.05, "stackable": False, "perishable": True, "days_until_spoil": 2,
+    },
+    "hooves": {
+        "id": "hooves", "name": "Hooves", "weight": 0.5,
+        "category": "material",
+        "description": "Hooves. Boiled down for hide glue.",
+        "base_value": 0.02, "stackable": True,
+    },
+
+    # ── Drink ──────────────────────────────────────────────────────────────
+    "water_quart": {
+        "id": "water_quart", "name": "Water (quart)", "weight": 2.1,
+        "category": "drink", "hydration": 25.0,
+        "description": "A quart of water.",
+        "base_value": 0.0, "stackable": True,
+    },
+
+    # ── Clothing / Gear ────────────────────────────────────────────────────
+    "bedroll": {
+        "id": "bedroll", "name": "Bedroll", "weight": 5.0,
+        "category": "clothing",
+        "description": "A wool blanket rolled and tied. Provides warmth while sleeping outdoors.",
+        "base_value": 1.50,
+        "extra": {"warmth_bonus": 20, "slot": "bedroll"},
+    },
+    "canvas_tent": {
+        "id": "canvas_tent", "name": "Canvas Tent", "weight": 12.0,
+        "category": "misc",
+        "description": "A small canvas tent for one or two people. Can be pitched on the local map.",
+        "base_value": 8.00, "tool_tags": ["pitch_tent"],
+    },
+
+    # ── Firearms ───────────────────────────────────────────────────────────
+    "percussion_rifle": {
+        "id": "percussion_rifle", "name": "Percussion Rifle", "weight": 9.0,
+        "category": "weapon",
+        "description": "A .50 caliber percussion rifle. Single shot; 30 second reload. "
+                       "Requires both hands to fire accurately.",
+        "base_value": 15.00, "weapon_type": "firearm",
+        "damage_min": 15, "damage_max": 30,
+        "extra": {"loaded": False, "ammo_type": "rifle_ball", "reload_time": 30,
+                  "two_handed": True, "capacity": 1},
+    },
+    "percussion_revolver": {
+        "id": "percussion_revolver", "name": "Colt Revolver", "weight": 2.5,
+        "category": "weapon",
+        "description": "A .36 caliber Colt Navy revolver. Six shots.",
+        "base_value": 25.00, "weapon_type": "firearm",
+        "damage_min": 8, "damage_max": 18,
+        "extra": {"loaded": 0, "ammo_type": "revolver_ball", "reload_time": 60,
+                  "two_handed": False, "capacity": 6},
+    },
+    "shotgun": {
+        "id": "shotgun", "name": "Double-Barrel Shotgun", "weight": 8.0,
+        "category": "weapon",
+        "description": "A 12-gauge side-by-side. Devastating at close range. Two shots.",
+        "base_value": 20.00, "weapon_type": "firearm",
+        "damage_min": 18, "damage_max": 35,
+        "extra": {"loaded": 0, "ammo_type": "shotgun_shell", "reload_time": 20,
+                  "two_handed": True, "capacity": 2},
+    },
+
+    # ── Ammunition ────────────────────────────────────────────────────────
+    "rifle_ball": {
+        "id": "rifle_ball", "name": "Rifle Ball & Powder", "weight": 0.05,
+        "category": "material",
+        "description": "A lead ball, powder charge, and percussion cap. One shot for a rifle.",
+        "base_value": 0.05, "stackable": True,
+    },
+    "revolver_ball": {
+        "id": "revolver_ball", "name": "Revolver Ball & Cap", "weight": 0.02,
+        "category": "material",
+        "description": "Paper cartridge with ball and cap for a percussion revolver.",
+        "base_value": 0.03, "stackable": True,
+    },
+    "shotgun_shell": {
+        "id": "shotgun_shell", "name": "Shotgun Shell", "weight": 0.06,
+        "category": "material",
+        "description": "A loaded shotshell with shot and powder.",
+        "base_value": 0.08, "stackable": True,
+    },
+
+    # ── Melee Weapons ─────────────────────────────────────────────────────
+    "bowie_knife": {
+        "id": "bowie_knife", "name": "Bowie Knife", "weight": 0.8,
+        "category": "weapon",
+        "description": "A heavy clip-point knife, 9-inch blade. Formidable in a fight.",
+        "base_value": 5.00, "weapon_type": "melee",
+        "damage_min": 5, "damage_max": 12, "tool_tags": ["cut"],
+    },
+
+    # ── Materials ──────────────────────────────────────────────────────────
+    "rope_10ft": {
+        "id": "rope_10ft", "name": "Rope (10 ft)", "weight": 1.0,
+        "category": "material",
+        "description": "Ten feet of hemp rope.",
+        "base_value": 0.20, "stackable": True,
+    },
+    "gold_dust": {
+        "id": "gold_dust", "name": "Gold Dust", "weight": 0.07,  # 1 troy oz
+        "category": "material",
+        "description": "Raw placer gold dust. Worth ~$20 per troy ounce at the assay office.",
+        "base_value": 20.67, "stackable": True,
+        "extra": {"troy_oz": 1.0, "fineness": 0.900},
+    },
+
+    # ── Construction Materials ─────────────────────────────────────────
+    "log": {
+        "id": "log", "name": "Log", "weight": 12.0,
+        "category": "material",
+        "description": "A felled tree trunk, rough-cut. Primary building material.",
+        "base_value": 0.10, "stackable": True,
+    },
+    "plank": {
+        "id": "plank", "name": "Plank", "weight": 4.0,
+        "category": "material",
+        "description": "A sawn plank of lumber. Smoother and lighter than raw logs.",
+        "base_value": 0.25, "stackable": True,
+    },
+    "stone": {
+        "id": "stone", "name": "Stone", "weight": 5.0,
+        "category": "material",
+        "description": "A rough fieldstone suitable for building walls, fireplaces, and foundations.",
+        "base_value": 0.05, "stackable": True,
+    },
+    "nails": {
+        "id": "nails", "name": "Nails", "weight": 0.5,
+        "category": "material",
+        "description": "A handful of cut iron nails. Essential for plank construction.",
+        "base_value": 0.15, "stackable": True,
+    },
+    "iron_bar": {
+        "id": "iron_bar", "name": "Iron Bar", "weight": 8.0,
+        "category": "material",
+        "description": "A bar of wrought iron. Used for heavy construction and toolmaking.",
+        "base_value": 1.50, "stackable": True,
+    },
+    "canvas": {
+        "id": "canvas", "name": "Canvas", "weight": 2.0,
+        "category": "material",
+        "description": "A bolt of heavy canvas cloth. Used for tents, tarps, and covers.",
+        "base_value": 1.00, "stackable": True,
+    },
+    "brush_bundle": {
+        "id": "brush_bundle", "name": "Brush", "weight": 1.0,
+        "category": "material",
+        "description": "A bundle of cut brush and branches. Used for lean-tos and thatching.",
+        "base_value": 0.02, "stackable": True,
+    },
+    "clay": {
+        "id": "clay", "name": "Clay", "weight": 3.0,
+        "category": "material",
+        "description": "Wet clay dug from a riverbank. Used for chinking, mortar, and pottery.",
+        "base_value": 0.03, "stackable": True,
+    },
+
+    # ── Writing & Art Supplies ─────────────────────────────────────────
+    "paper": {
+        "id": "paper", "name": "Paper", "weight": 0.02,
+        "category": "material",
+        "description": "A sheet of writing paper.",
+        "base_value": 0.05, "stackable": True,
+    },
+    "parchment": {
+        "id": "parchment", "name": "Parchment", "weight": 0.03,
+        "category": "material",
+        "description": "A sheet of treated animal skin. Durable writing surface.",
+        "base_value": 0.15, "stackable": True,
+    },
+    "stationery": {
+        "id": "stationery", "name": "Stationery", "weight": 0.03,
+        "category": "material",
+        "description": "Bordered letter paper. Proper for correspondence.",
+        "base_value": 0.10, "stackable": True,
+    },
+    "ink": {
+        "id": "ink", "name": "Ink", "weight": 0.2,
+        "category": "material",
+        "description": "A small bottle of iron gall ink. Standard writing ink.",
+        "base_value": 0.25, "stackable": True,
+    },
+    "quill": {
+        "id": "quill", "name": "Quill", "weight": 0.01,
+        "category": "tool",
+        "description": "A goose feather quill pen. Requires ink.",
+        "base_value": 0.05, "tool_tags": ["write"],
+    },
+    "pen": {
+        "id": "pen", "name": "Pen", "weight": 0.05,
+        "category": "tool",
+        "description": "A steel-nib dip pen. Better than a quill. Requires ink.",
+        "base_value": 0.50, "tool_tags": ["write"],
+    },
+    "pencil": {
+        "id": "pencil", "name": "Pencil", "weight": 0.02,
+        "category": "tool",
+        "description": "A graphite pencil. Writes without ink. Good for sketching.",
+        "base_value": 0.10, "tool_tags": ["write", "draw"],
+    },
+    "charcoal_stick": {
+        "id": "charcoal_stick", "name": "Charcoal Stick", "weight": 0.02,
+        "category": "tool",
+        "description": "A stick of charcoal for drawing. Can be made from any fire.",
+        "base_value": 0.02, "tool_tags": ["draw"],
+    },
+    "paint_set": {
+        "id": "paint_set", "name": "Paints", "weight": 0.5,
+        "category": "tool",
+        "description": "A small set of watercolor paints in pans. For painting on paper or canvas.",
+        "base_value": 2.00, "tool_tags": ["paint"],
+    },
+    "art_canvas": {
+        "id": "art_canvas", "name": "Canvas", "weight": 0.3,
+        "category": "material",
+        "description": "A stretched canvas for painting. Reusable writing surface.",
+        "base_value": 0.75, "stackable": True,
+    },
+}
+
+
+# ── Skill book item generation ─────────────────────────────────────────────
+
+def make_skill_book(book_id: str) -> Optional[Item]:
+    """Create a skill book Item from the SKILL_BOOKS catalog in writing.py."""
+    try:
+        from src.writing import SKILL_BOOKS
+    except ImportError:
+        return None
+    bdef = SKILL_BOOKS.get(book_id)
+    if not bdef:
+        return None
+    return Item(
+        id=bdef.id, name=bdef.title, weight=bdef.weight,
+        category="misc", description=bdef.description,
+        base_value=bdef.base_value,
+        extra={
+            "teaches_skill": bdef.skill,
+            "skill_depth": bdef.depth,
+            "xp_per_read": bdef.xp_per_read,
+            "readable": True,
+        },
+    )
+
+
+def random_skill_books(rng, count: int = 1) -> List[Item]:
+    """Generate random skill books for spawning in buildings/shelves."""
+    try:
+        from src.writing import SKILL_BOOKS
+    except ImportError:
+        return []
+    books = []
+    available = [(bid, bdef) for bid, bdef in SKILL_BOOKS.items()
+                 if rng.random() < bdef.rarity]
+    if not available:
+        return []
+    for _ in range(count):
+        bid, bdef = rng.choice(available)
+        book = make_skill_book(bid)
+        if book:
+            books.append(book)
+    return books
+
+
+# ── Starting loadout ────────────────────────────────────────────────────────
+
+def starting_inventory() -> List[Item]:
+    """Default starting gear for a Forty-Niner template."""
+    return [
+        make_item("gold_pan"),
+        make_item("pickaxe"),
+        make_item("shovel"),
+        make_item("hunting_knife"),
+        make_item("flint_steel"),
+        make_item("compass"),
+        make_item("canteen"),
+        make_item("bedroll"),
+        make_item("hardtack",  quantity=10),
+        make_item("salt_pork", quantity=5),
+        make_item("jerky",     quantity=3),
+        make_item("percussion_rifle"),
+        make_item("rifle_ball", quantity=20),
+        make_item("rope_10ft", quantity=3),
+    ]
+
+
+# ── Food priority sorting ────────────────────────────────────────────────────
+
+PERISHABILITY_ORDER = {
+    "fresh_fish": 0,
+    "fresh_venison": 1,
+    "salt_pork": 2,
+    "jerky": 2,
+    "pemican": 3,
+    "dried_beans": 4,
+    "hardtack": 5,
+}
+
+def sort_food_by_perishability(items: List[Item]) -> List[Item]:
+    """Sort food items most-perishable first."""
+    food = [i for i in items if i.is_food()]
+    food.sort(key=lambda i: (
+        i.days_until_spoil if i.days_until_spoil is not None else 9999
+    ))
+    return food

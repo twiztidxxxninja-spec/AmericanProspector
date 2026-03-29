@@ -1,0 +1,895 @@
+"""
+src/town_gen.py
+
+Town and settlement physical layout generator for American Prospector.
+
+Generates buildings, roads, and structures on the local map when the
+player first approaches a named location.  Layout is deterministic
+per world position so re-entering the same tile produces the same town.
+
+Two-tier design:
+    Tier 1 — permanent named locations exist in WorldMap.locations from
+             world creation (world_gen.py).  NPCs know about them, can
+             reference them, give directions.
+    Tier 2 — physical layout (buildings, streets, wells, corrals) is
+             generated on-demand by this module the first time the
+             player enters the local map tile.
+
+Settlement types and their layouts:
+    mining_camp_small  — scattered tents around a clearing, fire pits
+    mining_camp_medium — tents/cabins along a rough path, maybe a store
+    boomtown           — main street with wood buildings, side alleys
+    small_town         — grid streets, town square, permanent buildings
+    trading_post       — single compound: store, corral, living quarters
+
+Integration:
+    In engine._ensure_local() or LocalMap._generate(), after base terrain:
+
+        from src.town_gen import TownGenerator, classify_settlement
+        loc = world_map.get_location_at(wx, wy)
+        if loc:
+            stype = classify_settlement(loc.location_type, loc.population)
+            gen = TownGenerator(seed=world_map.seed + wx*997 + wy)
+            layout = gen.generate(local_map, stype, loc.name)
+            # layout.buildings available for NPC placement
+"""
+
+import random
+from dataclasses import dataclass, field
+from typing import List, Dict, Optional, Tuple, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from src.local_map import LocalMap
+
+
+# ============================================================================
+#  TOWN TERRAIN CONSTANTS
+# ============================================================================
+# Extend LocalTerrain at runtime so the renderer picks them up.
+
+_TOWN_TERRAIN_REGISTERED = False
+
+# Terrain type IDs (start at 30 to avoid clashing with local_map.py 0-22)
+ROAD        = 30
+WOOD_FLOOR  = 31
+WOOD_WALL   = 32
+STONE_WALL  = 33
+DOOR        = 34
+FENCE       = 35
+TENT_CANVAS = 36
+HITCHING    = 37
+WELL_TILE   = 38
+FIREPIT_T   = 39
+SIGN_POST   = 40
+PORCH       = 41
+COUNTER     = 42
+
+_TOWN_GLYPHS = {
+    #              glyph   fg_rgb              bg_rgb
+    ROAD:        ("=", (140, 115,  75), (55, 42, 22)),
+    WOOD_FLOOR:  (".", (155, 118,  68), (62, 45, 24)),
+    WOOD_WALL:   ("#", (130, 100,  55), (50, 35, 15)),
+    STONE_WALL:  ("#", (150, 148, 140), (65, 62, 58)),
+    DOOR:        ("+", (170, 130,  70), (62, 45, 24)),
+    FENCE:       ("-", (130, 105,  60), (40, 30, 12)),
+    TENT_CANVAS: ("/", (185, 175, 150), (75, 70, 55)),
+    HITCHING:    ("|", (110,  85,  50), (35, 25, 10)),
+    WELL_TILE:   ("O", (100, 100, 110), (38, 38, 42)),
+    FIREPIT_T:   ("*", (200,  90,  30), (80, 30,  8)),
+    SIGN_POST:   ("!", (160, 130,  70), (55, 42, 22)),
+    PORCH:       (".", (145, 112,  62), (58, 42, 20)),
+    COUNTER:     ("=", (120,  90,  50), (45, 32, 15)),
+}
+
+_TOWN_PASSABLE = {
+    ROAD: True, WOOD_FLOOR: True, WOOD_WALL: False, STONE_WALL: False,
+    DOOR: True, FENCE: True, TENT_CANVAS: False, HITCHING: True,
+    WELL_TILE: False, FIREPIT_T: True, SIGN_POST: True, PORCH: True,
+    COUNTER: False,
+}
+
+_TOWN_TRANSPARENT = {
+    ROAD: True, WOOD_FLOOR: True, WOOD_WALL: False, STONE_WALL: False,
+    DOOR: True, FENCE: True, TENT_CANVAS: False, HITCHING: True,
+    WELL_TILE: True, FIREPIT_T: True, SIGN_POST: True, PORCH: True,
+    COUNTER: True,
+}
+
+
+def register_town_terrain() -> None:
+    """
+    Register town terrain types in the LocalTerrain system.
+    Call once during engine initialization.
+    Safe to call multiple times (idempotent).
+    """
+    global _TOWN_TERRAIN_REGISTERED
+    if _TOWN_TERRAIN_REGISTERED:
+        return
+    from src.local_map import LocalTerrain, LOCAL_GLYPH, LOCAL_PASSABLE, LOCAL_TRANSPARENT
+
+    LocalTerrain.ROAD        = ROAD
+    LocalTerrain.WOOD_FLOOR  = WOOD_FLOOR
+    LocalTerrain.WOOD_WALL   = WOOD_WALL
+    LocalTerrain.STONE_WALL  = STONE_WALL
+    LocalTerrain.DOOR        = DOOR
+    LocalTerrain.FENCE       = FENCE
+    LocalTerrain.TENT_CANVAS = TENT_CANVAS
+    LocalTerrain.HITCHING    = HITCHING
+    LocalTerrain.WELL_TILE   = WELL_TILE
+    LocalTerrain.FIREPIT_T   = FIREPIT_T
+    LocalTerrain.SIGN_POST   = SIGN_POST
+    LocalTerrain.PORCH       = PORCH
+    LocalTerrain.COUNTER     = COUNTER
+
+    LOCAL_GLYPH.update(_TOWN_GLYPHS)
+    LOCAL_PASSABLE.update(_TOWN_PASSABLE)
+    LOCAL_TRANSPARENT.update(_TOWN_TRANSPARENT)
+    _TOWN_TERRAIN_REGISTERED = True
+
+
+# ============================================================================
+#  BUILDING TEMPLATES
+# ============================================================================
+
+@dataclass
+class BuildingDef:
+    """Template describing a building type."""
+    key: str            # lookup key
+    label: str          # display name on the map
+    w: int              # width in local tiles
+    h: int              # height in local tiles
+    wall: int           # terrain type for walls (WOOD_WALL, STONE_WALL, TENT_CANVAS)
+    floor: int          # terrain type for floor (WOOD_FLOOR, or ROAD for open-air)
+    occupation: str     # NPC occupation that works here ("" = residential / no staff)
+
+
+BUILDING_DEFS: Dict[str, BuildingDef] = {}
+
+def _bd(key, label, w, h, wall, floor, occ=""):
+    BUILDING_DEFS[key] = BuildingDef(key, label, w, h, wall, floor, occ)
+
+# Structures
+_bd("tent",           "Tent",             2, 2, TENT_CANVAS, WOOD_FLOOR)
+_bd("cabin",          "Cabin",            3, 3, WOOD_WALL,   WOOD_FLOOR)
+_bd("general_store",  "General Store",    4, 3, WOOD_WALL,   WOOD_FLOOR, "Merchant")
+_bd("saloon",         "Saloon",           5, 4, WOOD_WALL,   WOOD_FLOOR, "Saloon Keeper")
+_bd("hotel",          "Hotel",            5, 4, WOOD_WALL,   WOOD_FLOOR, "Boarding House Keeper")
+_bd("boarding_house", "Boarding House",   4, 3, WOOD_WALL,   WOOD_FLOOR, "Boarding House Keeper")
+_bd("church",         "Church",           4, 5, WOOD_WALL,   WOOD_FLOOR, "Preacher")
+_bd("jail",           "Sheriff's Office", 3, 3, STONE_WALL,  WOOD_FLOOR, "Sheriff")
+_bd("blacksmith",     "Blacksmith",       3, 3, WOOD_WALL,   ROAD,       "Blacksmith")
+_bd("assay_office",   "Assay Office",     3, 3, WOOD_WALL,   WOOD_FLOOR, "Assayer")
+_bd("livery",         "Livery Stable",    4, 4, WOOD_WALL,   ROAD,       "Teamster")
+_bd("bank",           "Bank",             3, 3, STONE_WALL,  WOOD_FLOOR, "Banker")
+_bd("doctor_office",  "Doctor's Office",  3, 3, WOOD_WALL,   WOOD_FLOOR, "Doctor")
+_bd("lawyer_office",  "Attorney at Law",  3, 2, WOOD_WALL,   WOOD_FLOOR, "Lawyer")
+_bd("barber",         "Barber",           3, 2, WOOD_WALL,   WOOD_FLOOR, "Barber")
+_bd("newspaper",      "Newspaper Office", 3, 3, WOOD_WALL,   WOOD_FLOOR, "Newspaper Editor")
+_bd("telegraph",      "Telegraph Office", 3, 2, WOOD_WALL,   WOOD_FLOOR, "Telegraph Operator")
+_bd("school",         "School",           4, 3, WOOD_WALL,   WOOD_FLOOR, "Teacher")
+_bd("house",          "House",            3, 3, WOOD_WALL,   WOOD_FLOOR)
+_bd("small_house",    "House",            2, 2, WOOD_WALL,   WOOD_FLOOR)
+_bd("trading_store",  "Trading Post",     5, 4, WOOD_WALL,   WOOD_FLOOR, "Merchant")
+_bd("warehouse",      "Warehouse",        5, 3, WOOD_WALL,   WOOD_FLOOR)
+_bd("dancehall",      "Dance Hall",       5, 4, WOOD_WALL,   WOOD_FLOOR, "Dancehall Girl")
+# Outdoor features (no walls — placed as single terrain tiles)
+_bd("fire_pit",       "Fire Pit",         1, 1, 0, FIREPIT_T)
+_bd("well",           "Well",             1, 1, 0, WELL_TILE)
+_bd("corral",         "Corral",           4, 4, FENCE, ROAD)
+_bd("hitching_post",  "Hitching Post",    1, 1, 0, HITCHING)
+
+
+# ============================================================================
+#  SETTLEMENT BUILDING LISTS
+# ============================================================================
+# For each settlement type:
+#   required  — always placed
+#   pool      — (building_key, min_count, max_count) sampled randomly
+#   layout    — algorithm name
+
+SETTLEMENT_BUILDINGS: Dict[str, dict] = {
+    "mining_camp_small": {
+        "required": [],
+        "pool": [
+            ("tent",      3, 6),
+            ("fire_pit",  1, 2),
+            ("hitching_post", 0, 1),
+        ],
+        "layout": "scattered",
+        "radius": 14,            # scatter radius from center
+    },
+    "mining_camp_medium": {
+        "required": ["general_store"],
+        "pool": [
+            ("tent",       4, 10),
+            ("cabin",      1, 4),
+            ("fire_pit",   2, 3),
+            ("blacksmith", 0, 1),
+            ("saloon",     0, 1),
+            ("well",       0, 1),
+            ("hitching_post", 1, 2),
+        ],
+        "layout": "path",
+        "radius": 22,
+    },
+    "boomtown": {
+        "required": ["general_store", "saloon", "boarding_house"],
+        "pool": [
+            ("saloon",      0, 2),
+            ("assay_office", 0, 1),
+            ("blacksmith",  1, 1),
+            ("doctor_office", 0, 1),
+            ("barber",      0, 1),
+            ("livery",      0, 1),
+            ("newspaper",   0, 1),
+            ("dancehall",   0, 1),
+            ("house",       2, 6),
+            ("small_house", 2, 5),
+            ("tent",        3, 8),
+            ("well",        1, 2),
+            ("hitching_post", 2, 4),
+            ("fire_pit",    1, 2),
+        ],
+        "layout": "main_street",
+        "street_len": 36,
+    },
+    "small_town": {
+        "required": ["general_store", "saloon", "hotel", "church", "jail"],
+        "pool": [
+            ("bank",        0, 1),
+            ("school",      0, 1),
+            ("telegraph",   0, 1),
+            ("assay_office", 0, 1),
+            ("blacksmith",  1, 1),
+            ("doctor_office", 1, 1),
+            ("lawyer_office", 0, 1),
+            ("barber",      0, 1),
+            ("livery",      1, 1),
+            ("newspaper",   0, 1),
+            ("dancehall",   0, 1),
+            ("warehouse",   0, 1),
+            ("boarding_house", 0, 2),
+            ("house",       4, 10),
+            ("small_house", 3, 8),
+            ("well",        1, 3),
+            ("hitching_post", 3, 6),
+            ("corral",      0, 2),
+        ],
+        "layout": "grid",
+        "streets_ew": 3,      # east-west streets
+        "streets_ns": 3,      # north-south streets
+    },
+    "trading_post": {
+        "required": ["trading_store"],
+        "pool": [
+            ("cabin",       1, 2),
+            ("corral",      1, 1),
+            ("well",        1, 1),
+            ("hitching_post", 1, 2),
+            ("fire_pit",    1, 1),
+        ],
+        "layout": "compound",
+        "radius": 10,
+    },
+}
+
+
+# ============================================================================
+#  PLACED BUILDING
+# ============================================================================
+
+@dataclass
+class PlacedBuilding:
+    """A building placed on the local map."""
+    template: str       # key into BUILDING_DEFS
+    x: int              # top-left corner (local map coords)
+    y: int
+    w: int              # actual dimensions
+    h: int
+    door_x: int         # door tile position
+    door_y: int
+    label: str = ""     # display name
+    occupation: str = "" # NPC occupation associated with this building
+
+
+# ============================================================================
+#  SETTLEMENT LAYOUT
+# ============================================================================
+
+@dataclass
+class SettlementLayout:
+    """Complete layout of a settlement — result of generation."""
+    buildings: List[PlacedBuilding] = field(default_factory=list)
+    road_tiles: List[Tuple[int, int]] = field(default_factory=list)
+    settlement_type: str = ""
+    settlement_name: str = ""
+    center_x: int = 192
+    center_y: int = 192
+
+    def building_at(self, x: int, y: int) -> Optional[PlacedBuilding]:
+        """Return the building whose footprint contains (x, y), or None."""
+        for b in self.buildings:
+            if b.x <= x < b.x + b.w and b.y <= y < b.y + b.h:
+                return b
+        return None
+
+    def to_dict(self) -> Dict:
+        return {
+            "buildings": [
+                {"template": b.template, "x": b.x, "y": b.y,
+                 "w": b.w, "h": b.h, "door_x": b.door_x, "door_y": b.door_y,
+                 "label": b.label, "occupation": b.occupation}
+                for b in self.buildings
+            ],
+            "road_tiles": self.road_tiles,
+            "settlement_type": self.settlement_type,
+            "settlement_name": self.settlement_name,
+            "center_x": self.center_x,
+            "center_y": self.center_y,
+        }
+
+    @classmethod
+    def from_dict(cls, d: Dict) -> "SettlementLayout":
+        layout = cls()
+        layout.settlement_type = d.get("settlement_type", "")
+        layout.settlement_name = d.get("settlement_name", "")
+        layout.center_x = d.get("center_x", 192)
+        layout.center_y = d.get("center_y", 192)
+        layout.road_tiles = [tuple(t) for t in d.get("road_tiles", [])]
+        for bd in d.get("buildings", []):
+            layout.buildings.append(PlacedBuilding(**bd))
+        return layout
+
+
+# ============================================================================
+#  SETTLEMENT TYPE CLASSIFIER
+# ============================================================================
+
+def classify_settlement(loc_type: str, population: int) -> str:
+    """
+    Determine settlement_type from a WorldLocation's type and population.
+
+    Also handles DynamicLocation.loc_type values.
+    """
+    lt = loc_type.lower()
+    if lt == "mining_camp":
+        return "mining_camp_small" if population < 25 else "mining_camp_medium"
+    if lt == "prospector_camp":
+        return "mining_camp_small"
+    if lt in ("waystation", "trading_post"):
+        return "trading_post"
+    if lt == "boomtown" or (lt == "town" and population > 2000):
+        return "boomtown"
+    if lt == "city" or population > 5000:
+        return "small_town"
+    if lt == "fort" or lt == "outpost":
+        return "trading_post"
+    if lt == "camp":
+        return "mining_camp_small" if population < 25 else "mining_camp_medium"
+    if lt == "town":
+        return "boomtown" if population > 500 else "mining_camp_medium"
+    return "mining_camp_medium"
+
+
+# ============================================================================
+#  TOWN GENERATOR
+# ============================================================================
+
+class TownGenerator:
+    """
+    Generates a settlement layout on a LocalMap.
+    Deterministic for the same seed.
+
+    Usage:
+        gen = TownGenerator(seed=world_seed + wx*997 + wy)
+        layout = gen.generate(local_map, "boomtown", "Sacramento")
+        # layout.buildings contains all placed buildings with NPC occupation hints
+    """
+
+    def __init__(self, seed: int = 0):
+        self.seed = seed
+        self.rng = random.Random(seed)
+
+    def generate(self, local_map: "LocalMap", settlement_type: str,
+                 settlement_name: str = "") -> SettlementLayout:
+        """Main entry: generate and apply settlement layout to local_map."""
+        register_town_terrain()
+
+        sett = SETTLEMENT_BUILDINGS.get(settlement_type,
+                                         SETTLEMENT_BUILDINGS["mining_camp_small"])
+        cx = local_map.width  // 2
+        cy = local_map.height // 2
+
+        layout = SettlementLayout(
+            settlement_type=settlement_type,
+            settlement_name=settlement_name,
+            center_x=cx, center_y=cy,
+        )
+
+        # Collect buildings to place
+        to_place: List[str] = list(sett["required"])
+        for bkey, lo, hi in sett["pool"]:
+            count = self.rng.randint(lo, hi)
+            to_place.extend([bkey] * count)
+
+        # Route to layout algorithm
+        algo = sett.get("layout", "scattered")
+        if algo == "main_street":
+            self._layout_main_street(local_map, layout, to_place, sett)
+        elif algo == "grid":
+            self._layout_grid(local_map, layout, to_place, sett)
+        elif algo == "compound":
+            self._layout_compound(local_map, layout, to_place, sett)
+        elif algo == "path":
+            self._layout_path(local_map, layout, to_place, sett)
+        else:
+            self._layout_scattered(local_map, layout, to_place, sett)
+
+        # Apply layout to local map tiles
+        self._apply_to_map(local_map, layout)
+
+        return layout
+
+    # ── Layout algorithms ──────────────────────────────────────────────
+
+    def _layout_scattered(self, lm, layout: SettlementLayout,
+                           to_place: List[str], sett: dict) -> None:
+        """
+        Mining camp: tents and fire pits scattered in a circular clearing.
+        No roads, just a rough clearing in the terrain.
+        """
+        cx, cy = layout.center_x, layout.center_y
+        radius = sett.get("radius", 14)
+
+        # Clear a rough circular area
+        self._clear_area(lm, cx, cy, radius)
+
+        placed_rects: List[Tuple[int, int, int, int]] = []
+        for bkey in to_place:
+            bdef = BUILDING_DEFS.get(bkey)
+            if not bdef:
+                continue
+            pos = self._find_scattered_pos(cx, cy, radius, bdef.w, bdef.h,
+                                            placed_rects, lm)
+            if pos:
+                px, py = pos
+                pb = self._place_building(lm, bdef, px, py)
+                layout.buildings.append(pb)
+                placed_rects.append((px, py, bdef.w, bdef.h))
+
+    def _layout_path(self, lm, layout: SettlementLayout,
+                      to_place: List[str], sett: dict) -> None:
+        """
+        Medium camp: a winding path through the center with buildings
+        placed along both sides.
+        """
+        cx, cy = layout.center_x, layout.center_y
+        radius = sett.get("radius", 22)
+
+        # Create a roughly east-west path through the center
+        path_y = cy
+        for px in range(cx - radius, cx + radius + 1):
+            path_y += self.rng.choice([-1, 0, 0, 0, 1])
+            path_y = max(cy - 4, min(cy + 4, path_y))
+            if lm.in_bounds(px, path_y):
+                layout.road_tiles.append((px, path_y))
+
+        # Clear area around path
+        self._clear_area(lm, cx, cy, radius)
+
+        # Place buildings alternating above and below the path
+        placed_rects: List[Tuple[int, int, int, int]] = []
+        side = 1
+        cursor_x = cx - radius + 2
+
+        for bkey in to_place:
+            bdef = BUILDING_DEFS.get(bkey)
+            if not bdef:
+                continue
+            # Try placing beside the path
+            if side > 0:
+                by = cy - 3 - bdef.h
+            else:
+                by = cy + 3
+            bx = cursor_x
+
+            if self._can_place(bx, by, bdef.w, bdef.h, placed_rects, lm):
+                pb = self._place_building(lm, bdef, bx, by)
+                layout.buildings.append(pb)
+                placed_rects.append((bx, by, bdef.w, bdef.h))
+                cursor_x += bdef.w + 1
+            else:
+                # Try scattered fallback
+                pos = self._find_scattered_pos(cx, cy, radius, bdef.w, bdef.h,
+                                                placed_rects, lm)
+                if pos:
+                    pb = self._place_building(lm, bdef, pos[0], pos[1])
+                    layout.buildings.append(pb)
+                    placed_rects.append((pos[0], pos[1], bdef.w, bdef.h))
+
+            side *= -1
+            if cursor_x > cx + radius - 4:
+                cursor_x = cx - radius + 2
+
+    def _layout_main_street(self, lm, layout: SettlementLayout,
+                             to_place: List[str], sett: dict) -> None:
+        """
+        Boomtown: one main street running east-west with buildings
+        on both sides and alleys between them.
+        """
+        cx, cy = layout.center_x, layout.center_y
+        street_len = sett.get("street_len", 36)
+        half = street_len // 2
+
+        # Main street: 2 tiles wide
+        for sx in range(cx - half, cx + half + 1):
+            for sy in (cy, cy + 1):
+                if lm.in_bounds(sx, sy):
+                    layout.road_tiles.append((sx, sy))
+
+        # Clear the town area
+        self._clear_area(lm, cx, cy, max(half + 6, 24))
+
+        # Sort buildings: larger ones first (they're harder to place)
+        to_place.sort(key=lambda k: -(BUILDING_DEFS.get(k, BuildingDef("", "", 1, 1, 0, 0)).w *
+                                       BUILDING_DEFS.get(k, BuildingDef("", "", 1, 1, 0, 0)).h))
+
+        placed_rects: List[Tuple[int, int, int, int]] = []
+        north_cursor = cx - half + 1
+        south_cursor = cx - half + 1
+
+        for bkey in to_place:
+            bdef = BUILDING_DEFS.get(bkey)
+            if not bdef:
+                continue
+
+            placed = False
+            # Try north side of street
+            bx = north_cursor
+            by = cy - 2 - bdef.h  # 1 tile porch gap
+            if self._can_place(bx, by, bdef.w, bdef.h, placed_rects, lm):
+                # Add porch between building and street
+                for px in range(bx, bx + bdef.w):
+                    if lm.in_bounds(px, cy - 1):
+                        layout.road_tiles.append((px, cy - 1))
+                pb = self._place_building(lm, bdef, bx, by)
+                layout.buildings.append(pb)
+                placed_rects.append((bx, by, bdef.w, bdef.h))
+                north_cursor = bx + bdef.w + 1
+                placed = True
+
+            if not placed:
+                # Try south side
+                bx = south_cursor
+                by = cy + 3  # street is 2 wide + 1 porch
+                if self._can_place(bx, by, bdef.w, bdef.h, placed_rects, lm):
+                    for px in range(bx, bx + bdef.w):
+                        if lm.in_bounds(px, cy + 2):
+                            layout.road_tiles.append((px, cy + 2))
+                    pb = self._place_building(lm, bdef, bx, by)
+                    layout.buildings.append(pb)
+                    placed_rects.append((bx, by, bdef.w, bdef.h))
+                    south_cursor = bx + bdef.w + 1
+                    placed = True
+
+            if not placed:
+                # Overflow to side streets
+                pos = self._find_scattered_pos(cx, cy, half, bdef.w, bdef.h,
+                                                placed_rects, lm)
+                if pos:
+                    pb = self._place_building(lm, bdef, pos[0], pos[1])
+                    layout.buildings.append(pb)
+                    placed_rects.append((pos[0], pos[1], bdef.w, bdef.h))
+
+        # Add cross-street alleys
+        for i in range(2):
+            alley_x = cx - half // 3 + i * (2 * half // 3)
+            for ay in range(cy - 15, cy + 15):
+                if lm.in_bounds(alley_x, ay):
+                    layout.road_tiles.append((alley_x, ay))
+
+    def _layout_grid(self, lm, layout: SettlementLayout,
+                      to_place: List[str], sett: dict) -> None:
+        """
+        Established town: grid of streets with buildings in blocks.
+        Town square at center intersection.
+        """
+        cx, cy = layout.center_x, layout.center_y
+        ew = sett.get("streets_ew", 3)
+        ns = sett.get("streets_ns", 3)
+        block_w = 10    # tiles between N-S streets
+        block_h = 8     # tiles between E-W streets
+
+        total_w = ns * block_w + (ns + 1)
+        total_h = ew * block_h + (ew + 1)
+        start_x = cx - total_w // 2
+        start_y = cy - total_h // 2
+
+        self._clear_area(lm, cx, cy, max(total_w, total_h) // 2 + 4)
+
+        # Lay E-W streets
+        for i in range(ew + 1):
+            sy = start_y + i * (block_h + 1)
+            for sx in range(start_x, start_x + total_w):
+                if lm.in_bounds(sx, sy):
+                    layout.road_tiles.append((sx, sy))
+
+        # Lay N-S streets
+        for i in range(ns + 1):
+            sx = start_x + i * (block_w + 1)
+            for sy in range(start_y, start_y + total_h):
+                if lm.in_bounds(sx, sy):
+                    layout.road_tiles.append((sx, sy))
+
+        # Town square: clear center block
+        sq_x = start_x + (ns // 2) * (block_w + 1) + 1
+        sq_y = start_y + (ew // 2) * (block_h + 1) + 1
+        for sy in range(sq_y, sq_y + block_h):
+            for sx in range(sq_x, sq_x + block_w):
+                if lm.in_bounds(sx, sy):
+                    layout.road_tiles.append((sx, sy))
+
+        # Place buildings in blocks (skip center block = town square)
+        to_place.sort(key=lambda k: -(BUILDING_DEFS.get(k, BuildingDef("", "", 1, 1, 0, 0)).w *
+                                       BUILDING_DEFS.get(k, BuildingDef("", "", 1, 1, 0, 0)).h))
+
+        placed_rects: List[Tuple[int, int, int, int]] = []
+        bldg_idx = 0
+
+        for bi in range(ew):
+            for bj in range(ns):
+                if bi == ew // 2 and bj == ns // 2:
+                    continue  # skip town square block
+
+                blk_x = start_x + bj * (block_w + 1) + 1
+                blk_y = start_y + bi * (block_h + 1) + 1
+
+                # Fill this block with buildings
+                cursor_x = blk_x
+                cursor_y = blk_y
+                while bldg_idx < len(to_place):
+                    bkey = to_place[bldg_idx]
+                    bdef = BUILDING_DEFS.get(bkey)
+                    if not bdef:
+                        bldg_idx += 1
+                        continue
+                    if cursor_x + bdef.w > blk_x + block_w:
+                        cursor_x = blk_x
+                        cursor_y += bdef.h + 1
+                    if cursor_y + bdef.h > blk_y + block_h:
+                        break  # block full, move to next
+                    if self._can_place(cursor_x, cursor_y, bdef.w, bdef.h,
+                                        placed_rects, lm):
+                        pb = self._place_building(lm, bdef, cursor_x, cursor_y)
+                        layout.buildings.append(pb)
+                        placed_rects.append((cursor_x, cursor_y, bdef.w, bdef.h))
+                        cursor_x += bdef.w + 1
+                    else:
+                        cursor_x += 1
+                    bldg_idx += 1
+
+    def _layout_compound(self, lm, layout: SettlementLayout,
+                          to_place: List[str], sett: dict) -> None:
+        """
+        Trading post: a main building with outbuildings around it.
+        """
+        cx, cy = layout.center_x, layout.center_y
+        radius = sett.get("radius", 10)
+        self._clear_area(lm, cx, cy, radius)
+
+        placed_rects: List[Tuple[int, int, int, int]] = []
+
+        # Place main building at center
+        if to_place:
+            main_key = to_place.pop(0)
+            bdef = BUILDING_DEFS.get(main_key)
+            if bdef:
+                bx = cx - bdef.w // 2
+                by = cy - bdef.h // 2
+                pb = self._place_building(lm, bdef, bx, by)
+                layout.buildings.append(pb)
+                placed_rects.append((bx, by, bdef.w, bdef.h))
+
+        # Scatter outbuildings around the main one
+        for bkey in to_place:
+            bdef = BUILDING_DEFS.get(bkey)
+            if not bdef:
+                continue
+            pos = self._find_scattered_pos(cx, cy, radius, bdef.w, bdef.h,
+                                            placed_rects, lm)
+            if pos:
+                pb = self._place_building(lm, bdef, pos[0], pos[1])
+                layout.buildings.append(pb)
+                placed_rects.append((pos[0], pos[1], bdef.w, bdef.h))
+
+        # Road from center to edges
+        for dx in range(cx - radius, cx + radius + 1):
+            if lm.in_bounds(dx, cy + 3):
+                layout.road_tiles.append((dx, cy + 3))
+
+    # ── Building placement helpers ─────────────────────────────────────
+
+    def _place_building(self, lm, bdef: BuildingDef,
+                         bx: int, by: int) -> PlacedBuilding:
+        """Create a PlacedBuilding (does not write to map yet)."""
+        # Door in the center of the south wall
+        door_x = bx + bdef.w // 2
+        door_y = by + bdef.h - 1
+        return PlacedBuilding(
+            template=bdef.key, x=bx, y=by, w=bdef.w, h=bdef.h,
+            door_x=door_x, door_y=door_y,
+            label=bdef.label, occupation=bdef.occupation,
+        )
+
+    def _can_place(self, x: int, y: int, w: int, h: int,
+                    placed: List[Tuple[int, int, int, int]],
+                    lm) -> bool:
+        """Check if a rectangle fits without overlapping placed buildings."""
+        if not lm.in_bounds(x, y) or not lm.in_bounds(x + w - 1, y + h - 1):
+            return False
+        for px, py, pw, ph in placed:
+            if not (x + w <= px or px + pw <= x or
+                    y + h <= py or py + ph <= y):
+                return False
+        return True
+
+    def _find_scattered_pos(self, cx: int, cy: int, radius: int,
+                             w: int, h: int,
+                             placed: List[Tuple[int, int, int, int]],
+                             lm) -> Optional[Tuple[int, int]]:
+        """Find a random non-overlapping position within radius of center."""
+        for _ in range(40):
+            bx = cx + self.rng.randint(-radius, radius - w)
+            by = cy + self.rng.randint(-radius, radius - h)
+            if self._can_place(bx, by, w, h, placed, lm):
+                return (bx, by)
+        return None
+
+    def _clear_area(self, lm, cx: int, cy: int, radius: int) -> None:
+        """Clear terrain in a rough circle to make room for the settlement."""
+        from src.local_map import LocalTerrain
+        for dy in range(-radius, radius + 1):
+            for dx in range(-radius, radius + 1):
+                if dx * dx + dy * dy <= radius * radius:
+                    nx, ny = cx + dx, cy + dy
+                    if lm.in_bounds(nx, ny):
+                        t = lm.tiles[ny][nx].terrain
+                        # Only clear natural terrain, not water or rock
+                        if t not in (LocalTerrain.WATER, LocalTerrain.ROCK,
+                                     LocalTerrain.BEDROCK):
+                            lm.tiles[ny][nx].terrain = LocalTerrain.GROUND
+
+    # ── Apply layout to local map ──────────────────────────────────────
+
+    def _apply_to_map(self, lm, layout: SettlementLayout) -> None:
+        """
+        Write all roads and buildings to the local map.
+
+        Buildings use EDGE-BASED WALLS via lm.wall_grid:
+        - All tiles inside the building footprint become floor tiles
+          (walkable, usable space).
+        - Walls are placed on the outer edges of perimeter tiles, not
+          as full impassable tiles.
+        - Doors are edge openings (passable, no LOS block).
+
+        This matches the player construction system in construction.py.
+        """
+        from src.construction import Edge
+
+        # Ensure wall_grid exists on this local map
+        if not hasattr(lm, "wall_grid") or lm.wall_grid is None:
+            from src.construction import WallGrid
+            lm.wall_grid = WallGrid()
+        wg = lm.wall_grid
+
+        # Map BuildingDef.wall terrain constants → Edge types
+        _WALL_TO_EDGE = {
+            WOOD_WALL:   Edge.WOOD_WALL,
+            STONE_WALL:  Edge.STONE_WALL,
+            FENCE:       Edge.FENCE,
+            TENT_CANVAS: Edge.CANVAS,
+        }
+
+        # Roads first
+        for rx, ry in layout.road_tiles:
+            if lm.in_bounds(rx, ry):
+                lm.tiles[ry][rx].terrain = ROAD
+
+        # Buildings
+        for b in layout.buildings:
+            bdef = BUILDING_DEFS.get(b.template)
+            if not bdef:
+                continue
+
+            # Single-tile features (fire pit, well, hitching post)
+            if bdef.w == 1 and bdef.h == 1 and bdef.wall == 0:
+                if lm.in_bounds(b.x, b.y):
+                    lm.tiles[b.y][b.x].terrain = bdef.floor
+                continue
+
+            # Determine edge type for this building's walls
+            edge_type = _WALL_TO_EDGE.get(bdef.wall, Edge.WOOD_WALL)
+            floor_terrain = bdef.floor if bdef.floor else WOOD_FLOOR
+
+            # All tiles inside footprint become floor (walkable space)
+            for dy in range(bdef.h):
+                for dx in range(bdef.w):
+                    nx, ny = b.x + dx, b.y + dy
+                    if lm.in_bounds(nx, ny):
+                        lm.tiles[ny][nx].terrain = floor_terrain
+
+            # Place edge walls on the outer boundary
+            for dx in range(bdef.w):
+                # North wall (top row, north edge)
+                wg.set_edge(b.x + dx, b.y, "N", edge_type)
+                # South wall (bottom row, south edge)
+                wg.set_edge(b.x + dx, b.y + bdef.h - 1, "S", edge_type)
+
+            for dy in range(bdef.h):
+                # West wall (left column, west edge)
+                wg.set_edge(b.x, b.y + dy, "W", edge_type)
+                # East wall (right column, east edge)
+                wg.set_edge(b.x + bdef.w - 1, b.y + dy, "E", edge_type)
+
+            # Door — replace one wall segment with a door edge
+            if lm.in_bounds(b.door_x, b.door_y):
+                # Figure out which edge the door is on
+                if b.door_y == b.y + bdef.h - 1:
+                    wg.set_edge(b.door_x, b.door_y, "S", Edge.DOOR)
+                elif b.door_y == b.y:
+                    wg.set_edge(b.door_x, b.door_y, "N", Edge.DOOR)
+                elif b.door_x == b.x:
+                    wg.set_edge(b.door_x, b.door_y, "W", Edge.DOOR)
+                elif b.door_x == b.x + bdef.w - 1:
+                    wg.set_edge(b.door_x, b.door_y, "E", Edge.DOOR)
+
+            # Sign post in front of labeled buildings
+            if b.label and b.label not in ("House", "Cabin", "Tent"):
+                sign_x = b.door_x
+                sign_y = b.door_y + 1
+                if lm.in_bounds(sign_x, sign_y):
+                    t = lm.tiles[sign_y][sign_x].terrain
+                    if t in (ROAD, 0, 1):  # GROUND, GRASS
+                        lm.tiles[sign_y][sign_x].terrain = SIGN_POST
+
+            # Spawn skill books inside certain buildings
+            if b.label in ("School", "Doctor's Office", "Attorney at Law",
+                            "Church", "Newspaper Office", "Hotel",
+                            "Boarding House", "House"):
+                try:
+                    from src.items import random_skill_books
+                    import random as _bk_rng
+                    books = random_skill_books(
+                        _bk_rng.Random(self.seed + b.x * 100 + b.y),
+                        count=_bk_rng.Random(self.seed + b.y).randint(0, 2))
+                    for book in books:
+                        # Place on floor inside the building
+                        bx = b.x + b.w // 2
+                        by = b.y + b.h // 2
+                        if lm.in_bounds(bx, by):
+                            lm.tiles[by][bx].ground_items.append(book)
+                except Exception:
+                    pass
+
+
+# ============================================================================
+#  CONVENIENCE: generate town for a world location
+# ============================================================================
+
+def generate_town_layout(local_map, world_map, wx: int, wy: int
+                          ) -> Optional[SettlementLayout]:
+    """
+    Check if (wx, wy) has a named location; if so, generate and apply
+    the town layout.  Returns the layout or None.
+
+    Call this after base terrain generation in LocalMap._generate() or
+    in Engine._ensure_local().
+    """
+    loc = world_map.get_location_at(wx, wy)
+    if not loc:
+        return None
+
+    stype = classify_settlement(loc.location_type, loc.population)
+    seed = world_map.seed + wx * 997 + wy * 100003
+    gen = TownGenerator(seed=seed)
+    return gen.generate(local_map, stype, loc.name)

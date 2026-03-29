@@ -200,14 +200,24 @@ def _show_ledger(engine, console, ctx, biz):
         elif tab == 2:  # Inventory
             console.print(X + 2, cy, "Business inventory:", fg=(180, 180, 180), bg=BG)
             cy += 1
-            console.print(X + 2, cy, f"Stock value: ${biz.stock_value:.2f}", fg=(200, 200, 200), bg=BG)
+            total_val = sum(getattr(i, 'base_value', 0) * getattr(i, 'quantity', 1)
+                           for i in biz.inventory)
+            console.print(X + 2, cy, f"Items: {len(biz.inventory)}  Value: ${total_val:.2f}",
+                          fg=(200, 200, 200), bg=BG)
             cy += 1
-            if biz.custom_products:
-                for prod in biz.custom_products[:10]:
-                    console.print(X + 4, cy, f"- {prod}", fg=(200, 200, 200), bg=BG)
-                    cy += 1
-            else:
-                console.print(X + 2, cy, "(No specific products tracked)", fg=(120, 120, 120), bg=BG)
+            for item in biz.inventory[:12]:
+                qty = f" x{item.quantity}" if getattr(item, 'stackable', False) and item.quantity > 1 else ""
+                console.print(X + 4, cy,
+                    f"{item.name}{qty}  ${item.base_value:.2f}",
+                    fg=(200, 200, 200), bg=BG)
+                cy += 1
+            if len(biz.inventory) > 12:
+                console.print(X + 4, cy, f"...and {len(biz.inventory)-12} more", fg=(120, 120, 120), bg=BG)
+                cy += 1
+            cy += 1
+            if is_present:
+                console.print(X + 2, cy, "[T] Transfer item TO business  [G] Take FROM business",
+                              fg=(140, 140, 140), bg=BG)
 
         elif tab == 3:  # Finances
             console.print(X + 2, cy, "Financial History:", fg=(180, 180, 180), bg=BG)
@@ -331,6 +341,37 @@ def _show_ledger(engine, console, ctx, biz):
                             f"You give {len(biz.pending_orders)} instructions directly.",
                             "normal")
                         biz.clear_pending_orders()
+                    break
+
+                # Transfer item TO business (T key on Inventory tab)
+                if sym == K.t and tab == 2 and is_present:
+                    from src.menus import pick_from_list
+                    p_items = engine.player.inventory
+                    if not p_items:
+                        engine.add_message("Nothing to transfer.", "advisory")
+                        break
+                    labels = [i.display_name() for i in p_items]
+                    idx = pick_from_list(console, ctx, "Transfer to business?", labels)
+                    if idx is not None:
+                        item = p_items[idx]
+                        engine.player.inventory.remove(item)
+                        biz.inventory.append(item)
+                        engine.add_message(f"Transferred {item.name} to business.", "normal")
+                    break
+
+                # Take item FROM business (G key on Inventory tab)
+                if sym == K.g and tab == 2 and is_present:
+                    from src.menus import pick_from_list
+                    if not biz.inventory:
+                        engine.add_message("Business has no items.", "advisory")
+                        break
+                    labels = [i.display_name() for i in biz.inventory]
+                    idx = pick_from_list(console, ctx, "Take from business?", labels)
+                    if idx is not None:
+                        item = biz.inventory[idx]
+                        biz.inventory.remove(item)
+                        engine.player.inventory.append(item)
+                        engine.add_message(f"Took {item.name} from business.", "normal")
                     break
 
                 # Clear orders (X key)

@@ -772,6 +772,14 @@ class Engine:
             if event:
                 self.add_message(f"[{biz_name}] {event.description}", "advisory")
 
+        # Shipment arrivals
+        for biz_name, msg in self.business_mgr.resolve_shipments(current_day, self.world):
+            self.add_message(f"[{biz_name}] {msg}", "advisory")
+            # Send as letter too
+            self.writing.mail.send_letter(
+                sender=f"Freight Agent, {biz_name}",
+                recipient=p.name, body=msg)
+
         # Manager weekly reports → mail
         for biz_name, report in self.business_mgr.get_pending_reports(current_day):
             self.writing.mail.send_letter(

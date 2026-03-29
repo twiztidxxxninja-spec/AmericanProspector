@@ -360,6 +360,9 @@ class BusinessEntity:
         # Market knowledge (prices player has learned)
         self.known_prices: Dict[str, Dict[str, float]] = {}  # item_id → {location: price}
 
+        # Active shipments in transit
+        self.shipments: List[Dict] = []  # each is a ship_goods() result dict
+
     # ── Properties ─────────────────────────────────────────────────────
 
     @property
@@ -682,6 +685,18 @@ class BusinessEntity:
                  "productivity": e.productivity}
                 for e in self.employees
             ],
+            # Remote management
+            "manager_npc_id": self.manager_npc_id,
+            "standing_orders": self.standing_orders,
+            "pending_orders": self.pending_orders,
+            "last_report_day": self.last_report_day,
+            "last_update_day": self.last_update_day,
+            "paused": self.paused,
+            "known_prices": self.known_prices,
+            # Inventory
+            "inventory": [_serialize_biz_item(i) for i in self.inventory],
+            # Active shipments
+            "shipments": getattr(self, 'shipments', []),
         }
 
     @classmethod
@@ -690,11 +705,33 @@ class BusinessEntity:
         for k, v in d.items():
             if k == "employees":
                 biz.employees = [Employee(**ed) for ed in v]
+            elif k == "inventory":
+                biz.inventory = [_deserialize_biz_item(i) for i in v]
             elif k not in ("history", "events"):
                 setattr(biz, k, v)
         biz.history = []
         biz.events = []
+        # Ensure new fields exist on old saves
+        for attr, default in [("manager_npc_id", ""), ("standing_orders", []),
+                              ("pending_orders", []), ("last_report_day", 0),
+                              ("last_update_day", 0), ("paused", False),
+                              ("known_prices", {}), ("inventory", []),
+                              ("shipments", [])]:
+            if not hasattr(biz, attr):
+                setattr(biz, attr, default)
         return biz
+
+
+def _serialize_biz_item(item) -> dict:
+    """Serialize a business inventory item."""
+    from src.save_load import _serialize_item
+    return _serialize_item(item)
+
+
+def _deserialize_biz_item(d: dict):
+    """Deserialize a business inventory item."""
+    from src.save_load import _deserialize_item
+    return _deserialize_item(d)
 
 
 # ============================================================================
@@ -774,6 +811,47 @@ class BusinessManager:
             results.append((biz.name, finance, event))
         return results
 
+    def resolve_shipments(self, current_day: int, world_map) -> List[Tuple[str, str]]:
+        """Check for shipments that have arrived. Returns list of (biz_name, message)."""
+        import random
+        results = []
+        for biz in self.businesses.values():
+            arrived = []
+            for i, ship in enumerate(biz.shipments):
+                if current_day >= ship.get("arrival_day", 99999):
+                    arrived.append(i)
+            # Process in reverse to not mess up indices
+            for i in reversed(arrived):
+                ship = biz.shipments.pop(i)
+                rng = random.Random(current_day + i)
+                # Risk checks
+                if rng.random() < ship.get("risk_robbery", 0):
+                    results.append((biz.name,
+                        f"ROBBERY: Shipment to ({ship['dest_wx']},{ship['dest_wy']}) "
+                        f"was robbed! {len(ship.get('items',[]))} items lost."))
+                    continue
+                if rng.random() < ship.get("risk_accident", 0):
+                    # Partial loss
+                    items = ship.get("items", [])
+                    lost = len(items) // 3
+                    results.append((biz.name,
+                        f"ACCIDENT: Shipment damaged in transit. "
+                        f"{lost} items lost, rest arrived."))
+                    # Sell surviving items at destination prices
+                    surviving_value = sum(getattr(it, 'base_value', 1) for it in items[lost:])
+                    biz.cash_reserve += surviving_value * 1.5  # destination premium
+                    continue
+                # Successful delivery
+                items = ship.get("items", [])
+                total_value = sum(getattr(it, 'base_value', 1) for it in items)
+                # Destination premium (items worth more at destination)
+                sell_value = total_value * 2.0  # rough 2x markup at destination
+                biz.cash_reserve += sell_value
+                results.append((biz.name,
+                    f"Shipment arrived! {len(items)} items sold for "
+                    f"${sell_value:.2f} at destination."))
+        return results
+
     def get_pending_reports(self, current_day: int) -> List[Tuple[str, str]]:
         """Get weekly reports ready to send as letters.
         Returns list of (business_name, report_text)."""
@@ -836,7 +914,7 @@ class BusinessManager:
 
         arrival_day = current_day + travel_days
 
-        return {
+        shipment = {
             "items": items,
             "dest_wx": dest_wx, "dest_wy": dest_wy,
             "method": method,
@@ -848,6 +926,8 @@ class BusinessManager:
             "total_weight": total_weight,
             "dist_miles": dist_miles,
         }
+        biz.shipments.append(shipment)
+        return shipment
 
     def total_empire_value(self) -> float:
         """Total value of all business assets + cash reserves."""

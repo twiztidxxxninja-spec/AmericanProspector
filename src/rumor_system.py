@@ -574,6 +574,12 @@ def generate_rumor(player: "Player", npc: "NPC",
     if rng is None:
         rng = random.Random()
 
+    if world_map is None:
+        return Rumor(
+            text="\"I got nothing for you. Ask someone else.\"",
+            category="none", specificity="vague",
+        )
+
     rel = npc.relationship
 
     # Specificity by relationship + NPC knowledge depth

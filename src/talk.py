@@ -375,9 +375,9 @@ def talk_menu(con: tcod.console.Console, ctx,
         player_name = getattr(player, "name", "")
         current_day = kwargs.get("current_day", 0)
         # Check if this town has mail for the player
-        world_map = kwargs.get("world_map")
-        if world_map:
-            loc = world_map.get_location_at(
+        _wm = world_map or kwargs.get("world_map")
+        if _wm:
+            loc = _wm.get_location_at(
                 getattr(player, "world_x", 0), getattr(player, "world_y", 0))
             if loc:
                 available = writing_mgr.mail.check_mail(loc.name, current_day, player_name)

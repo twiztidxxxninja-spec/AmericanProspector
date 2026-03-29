@@ -169,12 +169,17 @@ def _enter_poker(engine: "Engine", console, ctx) -> None:
                       fg=(200, 200, 200))
         y += 2
 
+        # Check if player has cheating tools
+        has_marked = any("cheat" in getattr(i, "tool_tags", []) for i in player.inventory)
+
         # Options
         console.print(4, y,     "[1] Call — match the bet (${:.2f})".format(ante), fg=(200, 200, 200))
         console.print(4, y + 1, "[2] Raise — double the pot (${:.2f})".format(ante * 2), fg=(200, 200, 200))
         console.print(4, y + 2, "[3] Fold — lose ante, keep the rest", fg=(200, 200, 200))
         console.print(4, y + 3, "[4] Bluff — Charisma check, win big or get caught", fg=(200, 200, 200))
-        console.print(4, y + 4, "[ESC] Leave the table", fg=(140, 140, 140))
+        if has_marked:
+            console.print(4, y + 4, "[5] Cheat — use marked cards/loaded dice", fg=(255, 100, 100))
+        console.print(4, y + 5, "[ESC] Leave the table", fg=(140, 140, 140))
 
         # Message log
         log_y = 38
@@ -201,6 +206,8 @@ def _enter_poker(engine: "Engine", console, ctx) -> None:
                     action = "fold"
                 elif sym in (K.N4, K.KP_4):
                     action = "bluff"
+                elif sym in (K.N5, K.KP_5) and has_marked:
+                    action = "cheat"
                 break
 
         if action == "leave":
@@ -292,6 +299,57 @@ def _enter_poker(engine: "Engine", console, ctx) -> None:
                 # Reputation hit if high stakes
                 if ante >= 5:
                     add_msg(f"  Word gets around that you're a cheat.")
+
+        elif action == "cheat":
+            # Use marked cards / loaded dice to guarantee a win
+            # Detection chance: opponents roll vs player's Charisma + Agility
+            detect_roll = rng.randint(1, 20) + best_opp_player["aggression"] * 5
+            stealth_roll = rng.randint(1, 20) + cha // 3 + player.attributes.get("agility", 10) // 4
+
+            if stealth_roll > detect_roll:
+                # Cheating succeeds — auto-win with a "natural" looking hand
+                player_hand = rng.randint(5, 8)  # flush to four of a kind
+                player.cash += pot
+                total_won += pot - ante
+                cheat_msgs = [
+                    f"Round {round_num}: You palm a card under the table. "
+                    f"Show {HAND_NAMES[player_hand]}. ${pot:.2f} yours.",
+                    f"Round {round_num}: A little sleight of hand. "
+                    f"{HAND_NAMES[player_hand]}. Nobody notices. ${pot:.2f}.",
+                    f"Round {round_num}: You switch the deck. "
+                    f"Your hand improves dramatically. ${pot:.2f}.",
+                ]
+                add_msg(rng.choice(cheat_msgs))
+            else:
+                # CAUGHT CHEATING — this is very bad
+                penalty = pot * 2
+                total_lost += ante + penalty
+                player.cash = max(0, player.cash - penalty)
+                caught_msgs = [
+                    f"Round {round_num}: {best_opp_player['name']} grabs your wrist. "
+                    f"\"What's that in your sleeve?\" The table goes silent.",
+                    f"Round {round_num}: \"CHEAT!\" {best_opp_player['name']} flips the table. "
+                    f"Cards scatter. Everyone stares at you.",
+                    f"Round {round_num}: {best_opp_player['name']} catches the marked card. "
+                    f"\"You son of a bitch.\" Hands go to guns.",
+                ]
+                add_msg(rng.choice(caught_msgs))
+                add_msg(f"  You lose ${penalty:.2f}. Your reputation takes a hit.")
+
+                # Reputation and legal consequences
+                lmap = engine.current_local
+                region = lmap._region_name if lmap else ""
+                engine.reputation.adjust(region, -25)
+                engine._record_gossip(f"Caught cheating at cards", -0.7)
+
+                # 30% chance someone goes hostile
+                if rng.random() < 0.3:
+                    add_msg(f"  {best_opp_player['name']} goes for a weapon!")
+                    # Make a nearby NPC hostile
+                    for n in engine._tile_npcs():
+                        if n.alive and n.combat_state == "neutral":
+                            n.combat_state = "hostile"
+                            break
 
         # Advance time (30 min per round)
         engine.time.advance_seconds(30 * 60)
@@ -580,17 +638,312 @@ def enter_faro(engine: "Engine", console, ctx) -> None:
 
 
 # ============================================================================
+#  PLAYER AS HOUSE — run a gambling table
+# ============================================================================
+
+_CUSTOMER_NAMES = [
+    "Dusty Pete", "One-Eyed Jack", "Whiskey Tom", "Big Frank", "Slim",
+    "Copper John", "Dutch", "Salty", "Red", "Missouri Bill",
+    "Lucky", "Digger", "Bones", "Tex", "The Kid",
+    "Old Timer", "Preach", "Doc", "Fancy Dan", "Shorty",
+]
+
+
+def enter_house_mode(engine: "Engine", console, ctx) -> None:
+    """Player runs a gambling table. NPCs come to play, house takes a cut.
+    Player can cheat, but if caught there are consequences.
+    If player can't pay a winner, things get ugly."""
+    player = engine.player
+    rng = random.Random()
+
+    # Need a card table or faro layout
+    has_table = any("furniture" in getattr(i, "tool_tags", [])
+                    for i in player.inventory)
+    has_cards = any("gamble" in getattr(i, "tool_tags", [])
+                    for i in player.inventory)
+    has_cheat_tools = any("cheat" in getattr(i, "tool_tags", [])
+                          for i in player.inventory)
+
+    if not has_table:
+        engine.add_message("You need a card table to run a gambling operation.", "advisory")
+        return
+    if not has_cards:
+        engine.add_message("You need playing cards or a faro layout.", "advisory")
+        return
+
+    cha = player.attributes.get("charisma", 10)
+    intel = player.attributes.get("intelligence", 10)
+    house_bank = min(player.cash, 100.0)  # amount player puts up as bank
+    if house_bank < 5:
+        engine.add_message("You need at least $5 to bank a game.", "advisory")
+        return
+
+    messages = []
+    total_profit = 0.0
+    round_num = 0
+    cheat_suspicion = 0  # builds up if player cheats repeatedly
+
+    # Generate customers for the session
+    n_customers = rng.randint(3, 6)
+    customers = []
+    for _ in range(n_customers):
+        name = rng.choice(_CUSTOMER_NAMES)
+        cash = rng.uniform(5, 50)
+        customers.append({"name": name, "cash": cash, "mood": "neutral",
+                          "suspicion": 0, "rounds_played": 0})
+
+    def add_msg(text):
+        messages.append(text)
+        if len(messages) > 20:
+            messages.pop(0)
+
+    add_msg(f"You set up the table. {n_customers} men sit down.")
+    add_msg(f"House bank: ${house_bank:.2f}. Your cut: 10% of every pot.")
+
+    while True:
+        round_num += 1
+
+        # Customers may leave if mood is bad
+        customers = [c for c in customers if c["mood"] != "left"]
+        if not customers:
+            add_msg("Everyone's left the table.")
+            break
+
+        # ── Render ────────────────────────────────────────────────
+        console.clear()
+        console.draw_rect(0, 0, 120, 1, ord(" "), fg=(255, 255, 255), bg=(50, 40, 20))
+        console.print(2, 0, f"THE HOUSE  —  Round {round_num}  —  Bank: ${house_bank:.2f}  —  Cash: ${player.cash:.2f}",
+                      fg=(255, 220, 140), bg=(50, 40, 20))
+
+        y = 3
+        console.print(4, y, "── Customers ──", fg=(180, 160, 120))
+        y += 1
+        for c in customers:
+            mood_color = {"neutral": (200, 200, 200), "happy": (100, 255, 100),
+                          "angry": (255, 100, 100), "suspicious": (255, 200, 100)
+                          }.get(c["mood"], (180, 180, 180))
+            console.print(4, y, f"  {c['name']:15s}  ${c['cash']:6.2f}  [{c['mood']}]",
+                          fg=mood_color)
+            y += 1
+
+        y += 1
+        console.print(4, y, f"Profit so far: ${total_profit:.2f}", fg=(200, 200, 200))
+        if cheat_suspicion > 0:
+            susp_color = (255, 200, 100) if cheat_suspicion < 3 else (255, 80, 80)
+            console.print(4, y + 1, f"Suspicion level: {'*' * cheat_suspicion}",
+                          fg=susp_color)
+        y += 3
+
+        console.print(4, y,     "[1] Deal fair — take house cut (10%)", fg=(200, 200, 200))
+        console.print(4, y + 1, "[2] Rig the game — tilt odds to house (Charisma check)", fg=(200, 200, 200))
+        if has_cheat_tools:
+            console.print(4, y + 2, "[3] Cheat — use marked cards (big profit, risky)",
+                          fg=(255, 120, 120))
+        console.print(4, y + 3, "[4] Close up — end the session", fg=(140, 140, 140))
+        console.print(4, y + 4, "[ESC] Walk away", fg=(140, 140, 140))
+
+        log_y = 38
+        for i, msg in enumerate(messages[-6:]):
+            console.print(4, log_y + i, msg[:110], fg=(180, 180, 160))
+
+        ctx.present(console)
+
+        # Input
+        action = None
+        for event in tcod.event.wait():
+            if isinstance(event, tcod.event.Quit):
+                raise SystemExit()
+            if isinstance(event, tcod.event.KeyDown):
+                sym = event.sym
+                K = tcod.event.KeySym
+                if sym == K.ESCAPE or sym in (K.N4, K.KP_4):
+                    action = "close"
+                elif sym in (K.N1, K.KP_1):
+                    action = "fair"
+                elif sym in (K.N2, K.KP_2):
+                    action = "rig"
+                elif sym in (K.N3, K.KP_3) and has_cheat_tools:
+                    action = "cheat_house"
+                break
+
+        if action == "close":
+            break
+
+        # ── Resolve round ─────────────────────────────────────────
+        # Each customer plays a hand against the house
+        round_pot = 0.0
+        round_payout = 0.0
+
+        for c in customers:
+            if c["mood"] == "left":
+                continue
+            c["rounds_played"] += 1
+            bet = min(c["cash"], rng.uniform(1, 8))
+            c["cash"] -= bet
+            round_pot += bet
+
+            # Customer win chance: normally ~45% (house edge)
+            if action == "fair":
+                win_chance = 0.45
+            elif action == "rig":
+                # Rig: Charisma check to shift odds
+                rig_roll = rng.randint(1, 20) + cha // 3
+                if rig_roll >= 12:
+                    win_chance = 0.35  # tilted
+                else:
+                    win_chance = 0.45  # failed to rig
+                    cheat_suspicion += 0.3
+            elif action == "cheat_house":
+                win_chance = 0.20  # heavily rigged
+                cheat_suspicion += 1
+
+            if rng.random() < win_chance:
+                # Customer wins — house must pay out
+                payout = bet * 2
+                round_payout += payout
+                c["cash"] += payout
+                c["mood"] = "happy"
+                add_msg(f"  {c['name']} wins ${payout:.2f}!")
+            else:
+                c["mood"] = "neutral"
+
+            # Suspicion check per customer
+            if cheat_suspicion > 2 and rng.random() < cheat_suspicion * 0.1:
+                c["suspicion"] += 1
+                c["mood"] = "suspicious"
+
+        # House profit = pot - payouts
+        house_cut = round_pot * 0.10  # standard house cut
+        if action == "fair":
+            profit = round_pot - round_payout
+        else:
+            profit = round_pot - round_payout  # cheating just reduces payouts
+
+        house_bank += profit
+        total_profit += profit
+        player.cash += house_cut  # house fee is separate from wins/losses
+
+        if profit >= 0:
+            add_msg(f"Round {round_num}: Pot ${round_pot:.2f}, "
+                    f"payouts ${round_payout:.2f}. House profit: ${profit:.2f}")
+        else:
+            add_msg(f"Round {round_num}: Pot ${round_pot:.2f}, "
+                    f"payouts ${round_payout:.2f}. House LOSS: ${abs(profit):.2f}")
+
+        # ── Can't pay check ───────────────────────────────────────
+        if house_bank < 0:
+            deficit = abs(house_bank)
+            if player.cash >= deficit:
+                player.cash -= deficit
+                house_bank = 0
+                add_msg(f"Bank ran dry! You cover ${deficit:.2f} from your own pocket.")
+            else:
+                # CAN'T PAY — extremely bad
+                add_msg(f"THE BANK IS EMPTY. You can't cover ${deficit:.2f}!")
+                add_msg(f"The table erupts. Men are on their feet.")
+                angry_msgs = [
+                    "\"You owe me money, you crook!\"",
+                    "\"Where's my winnings?!\"",
+                    "\"This whole game was a scam!\"",
+                ]
+                for c in customers:
+                    if c["mood"] == "happy":
+                        add_msg(f"{c['name']} shouts: {rng.choice(angry_msgs)}")
+
+                # Reputation destruction
+                lmap = engine.current_local
+                region = lmap._region_name if lmap else ""
+                engine.reputation.adjust(region, -40)
+                engine._record_gossip("Ran a crooked game and couldn't pay", -0.9)
+                engine.legal.record_crime(
+                    "fraud", engine.time.total_minutes // 1440,
+                    engine.player.world_x, engine.player.world_y, region,
+                    nearby_npcs=[])
+
+                # Some customers may attack
+                for n in engine._tile_npcs():
+                    if n.alive and n.combat_state == "neutral" and rng.random() < 0.5:
+                        n.combat_state = "hostile"
+
+                add_msg("This is going to get ugly.")
+                break
+
+        # ── Suspicion consequences ────────────────────────────────
+        if cheat_suspicion >= 4:
+            suspicious_customers = [c for c in customers if c["suspicion"] >= 2]
+            if suspicious_customers:
+                accuser = rng.choice(suspicious_customers)
+                add_msg(f"{accuser['name']} stands up: \"This game is rigged!\"")
+                add_msg(f"\"I've been watching you. Those cards are marked!\"")
+
+                # Charisma check to talk your way out
+                talk_roll = rng.randint(1, 20) + cha // 3
+                if talk_roll >= 15:
+                    add_msg("You smile and say: \"Settle down. You're just having bad luck.\"")
+                    add_msg(f"{accuser['name']} sits back down, unconvinced but quiet.")
+                    cheat_suspicion = max(0, cheat_suspicion - 2)
+                else:
+                    add_msg(f"{accuser['name']} flips the table!")
+                    lmap = engine.current_local
+                    region = lmap._region_name if lmap else ""
+                    engine.reputation.adjust(region, -30)
+                    engine._record_gossip("Caught running a crooked game", -0.8)
+                    for c in customers:
+                        c["mood"] = "left"
+                    # One of them may fight
+                    for n in engine._tile_npcs():
+                        if n.alive and n.combat_state == "neutral" and rng.random() < 0.4:
+                            n.combat_state = "hostile"
+                            break
+                    break
+
+        # Customers with no money leave
+        for c in customers:
+            if c["cash"] <= 0.5:
+                c["mood"] = "left"
+                add_msg(f"  {c['name']} is tapped out. Leaves the table.")
+
+        # New customer may join
+        if rng.random() < 0.2 and len(customers) < 8:
+            new_name = rng.choice([n for n in _CUSTOMER_NAMES
+                                    if n not in [c["name"] for c in customers]])
+            new_cash = rng.uniform(5, 40)
+            customers.append({"name": new_name, "cash": new_cash,
+                              "mood": "neutral", "suspicion": 0, "rounds_played": 0})
+            add_msg(f"  {new_name} sits down with ${new_cash:.2f}.")
+
+        engine.time.advance_seconds(20 * 60)
+
+    # Session summary
+    if total_profit > 0:
+        engine.add_message(
+            f"You close up the table. Profit: ${total_profit:.2f} over {round_num} rounds.",
+            "normal")
+        engine.player.gain_skill_xp("trading", 5.0)
+    else:
+        engine.add_message(
+            f"You fold up the table. Loss: ${abs(total_profit):.2f}. "
+            f"The house doesn't always win.", "normal")
+
+
+# ============================================================================
 #  GAME SELECTION MENU
 # ============================================================================
 
 def enter_gambling_mode(engine: "Engine", console, ctx) -> None:
-    """Choose which game to play."""
+    """Choose which game to play, or run the house."""
     from src.menus import pick_from_list
+
+    has_table = any("furniture" in getattr(i, "tool_tags", [])
+                    for i in engine.player.inventory)
+
     games = [
         "Poker — bluff, read, raise",
         "Twenty-One (Blackjack) — hit or stand",
         "Faro — pick a card, beat the bank",
     ]
+    if has_table:
+        games.append("Run the house — you're the dealer")
     idx = pick_from_list(console, ctx, "What's your game?", games)
     if idx is None:
         return
@@ -600,3 +953,5 @@ def enter_gambling_mode(engine: "Engine", console, ctx) -> None:
         enter_blackjack(engine, console, ctx)
     elif idx == 2:
         enter_faro(engine, console, ctx)
+    elif idx == 3:
+        enter_house_mode(engine, console, ctx)

@@ -458,6 +458,47 @@ ITEM_TEMPLATES: Dict[str, dict] = {
         "damage_min": 5, "damage_max": 12, "tool_tags": ["cut"],
     },
 
+    # ── Gambling Items ─────────────────────────────────────────────────────
+    "playing_cards": {
+        "id": "playing_cards", "name": "Playing Cards", "weight": 0.2,
+        "category": "misc",
+        "description": "A deck of 52 playing cards. Well-worn but serviceable.",
+        "base_value": 0.50, "tool_tags": ["gamble"],
+    },
+    "marked_cards": {
+        "id": "marked_cards", "name": "Marked Cards", "weight": 0.2,
+        "category": "misc",
+        "description": "A deck with subtle markings on the backs. "
+                       "For the dishonest gambler.",
+        "base_value": 2.00, "tool_tags": ["gamble", "cheat"],
+    },
+    "dice_set": {
+        "id": "dice_set", "name": "Dice Set", "weight": 0.1,
+        "category": "misc",
+        "description": "A pair of bone dice. Fair — as far as you know.",
+        "base_value": 0.25, "tool_tags": ["gamble"],
+    },
+    "loaded_dice": {
+        "id": "loaded_dice", "name": "Loaded Dice", "weight": 0.1,
+        "category": "misc",
+        "description": "Weighted dice. Subtle enough to fool most people.",
+        "base_value": 1.50, "tool_tags": ["gamble", "cheat"],
+    },
+    "gambling_table": {
+        "id": "gambling_table", "name": "Folding Card Table", "weight": 15.0,
+        "category": "misc",
+        "description": "A portable card table with green felt. "
+                       "Set up shop anywhere there are men with money.",
+        "base_value": 8.00, "tool_tags": ["gamble", "furniture"],
+    },
+    "faro_layout": {
+        "id": "faro_layout", "name": "Faro Layout", "weight": 3.0,
+        "category": "misc",
+        "description": "An oilcloth faro layout showing all 13 card ranks. "
+                       "Essential for running a faro bank.",
+        "base_value": 5.00, "tool_tags": ["gamble", "faro"],
+    },
+
     # ── Materials ──────────────────────────────────────────────────────────
     "rope_10ft": {
         "id": "rope_10ft", "name": "Rope (10 ft)", "weight": 1.0,

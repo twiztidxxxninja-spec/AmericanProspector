@@ -237,6 +237,9 @@ OCCUPATION_TO_MERCHANT: Dict[str, str] = {
     "Cobbler":            "general_store",
     "Brewmaster":         "saloon",
     "Madam":              "saloon",
+    "Trapper":            "general_store",
+    "Mountain Man":       "general_store",
+    "Fur Trader":         "general_store",
 }
 
 

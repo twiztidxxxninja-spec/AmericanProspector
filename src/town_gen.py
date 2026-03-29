@@ -189,6 +189,7 @@ _bd("bathhouse",      "Bathhouse",        8, 8, WOOD_WALL,   WOOD_FLOOR, "Attend
 _bd("freight_office", "Freight Office",   8, 6, WOOD_WALL,   WOOD_FLOOR, "Freight Agent")
 _bd("laundry",        "Laundry",          6, 5, WOOD_WALL,   WOOD_FLOOR, "Laundress")
 _bd("cobbler",        "Cobbler",          6, 5, WOOD_WALL,   WOOD_FLOOR, "Cobbler")
+_bd("fur_post",       "Fur Trading Post",12, 8, WOOD_WALL,   WOOD_FLOOR, "Fur Trader")
 # Outdoor features (no walls — placed as single terrain tiles)
 _bd("fire_pit",       "Fire Pit",         1, 1, 0, FIREPIT_T)
 _bd("well",           "Well",             1, 1, 0, WELL_TILE)
@@ -325,14 +326,15 @@ SETTLEMENT_BUILDINGS: Dict[str, dict] = {
     "trading_post": {
         "required": ["trading_store"],
         "pool": [
-            ("cabin",       1, 2),
+            ("fur_post",    0, 1),
+            ("cabin",       1, 3),
             ("corral",      1, 1),
             ("well",        1, 1),
             ("hitching_post", 1, 2),
             ("fire_pit",    1, 1),
         ],
         "layout": "compound",
-        "radius": 18,
+        "radius": 22,
     },
 }
 
@@ -1366,6 +1368,29 @@ class TownGenerator:
             for i in range(3):
                 _set(bx + bw - 2, by + 1 + i, LocalTerrain.BARREL_TILE)
             _set(bx + bw // 2, by + bh // 2, LocalTerrain.TABLE)  # scale
+
+        # ── Fur Trading Post ───────────────────────────────────────
+        elif key == "fur_post":
+            # Pelt display shelves
+            for iy in range(by + 1, by + bh - 1):
+                _set(bx + 1, iy, LocalTerrain.SHELF)
+                _set(bx + bw - 2, iy, LocalTerrain.SHELF)
+            for ix in range(bx + 2, bx + bw - 2):
+                _set(ix, by + 1, LocalTerrain.SHELF)
+            # Trade counter
+            counter_y = by + bh * 3 // 5
+            for ix in range(bx + 2, bx + bw - 2):
+                _set(ix, counter_y, LocalTerrain.BAR_COUNTER)
+            # Barrels for storing pelts
+            _set(bx + bw - 2, by + bh - 2, LocalTerrain.BARREL_TILE)
+            _set(bx + bw - 3, by + bh - 2, LocalTerrain.BARREL_TILE)
+            # Stock
+            _place_item(bx + 1, by + 2, "steel_trap", 3)
+            _place_item(bx + 1, by + 3, "castoreum", 2)
+            _place_item(bx + 1, by + 4, "skinning_knife")
+            _place_item(bx + bw - 2, by + 2, "rope_10ft", 5)
+            _place_item(bx + bw - 2, by + 3, "beaver_pelt")
+            _place_item(bx + bw - 2, by + 4, "wolf_pelt")
 
         # ── Laundry / Cobbler ─────────────────────────────────────
         elif key in ("laundry", "cobbler"):

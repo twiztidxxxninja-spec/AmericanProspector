@@ -635,27 +635,45 @@ def enter_combat_mode(engine: "Engine", console, ctx) -> None:
 
                     if hit_roll >= defense:
                         if kind == "npc":
-                            target.health -= dmg
+                            wkey = ""
+                            if dtype == "slash":
+                                wkey = "knife"  # sharp thrown = knife-type wound
+                            wound = target.wounds.apply_hit(
+                                dmg, dtype, weapon_key=wkey)
+                            from src.health_system import PART_HP
+                            hp_dmg = min(dmg, PART_HP.get(
+                                wound.part if hasattr(wound, 'part') else '', 100))
+                            target.health -= hp_dmg
                             _check_npc_morale(target)
                             engine._splatter_blood(lmap, target.local_x,
                                                    target.local_y, 1)
-                            add_msg(f"You hurl the {item.name} at {target.display_name()}. "
-                                    f"It connects with a thud.")
+                            if dtype == "slash":
+                                add_msg(f"The {item.name} buries itself in "
+                                        f"{target.display_name()}. {wound.description}")
+                            else:
+                                add_msg(f"You hurl the {item.name} at "
+                                        f"{target.display_name()}. It connects hard.")
                             if target.combat_state == "dead":
                                 add_msg(f"{target.name} drops.", "critical")
                                 engine.journal.log_enemy_killed(target.name)
                         else:
                             target.take_damage(float(dmg))
-                            add_msg(f"The {item.name} hits the "
-                                    f"{target.species.display_name}.")
+                            if dtype == "slash":
+                                add_msg(f"The {item.name} sticks in the "
+                                        f"{target.species.display_name}.")
+                            else:
+                                add_msg(f"The {item.name} hits the "
+                                        f"{target.species.display_name}.")
                     else:
                         add_msg(f"You throw the {item.name}. It misses.")
 
-                    # Item lands on the ground at target's position
-                    tx = getattr(target, 'local_x', px)
-                    ty = getattr(target, 'local_y', py)
-                    if lmap.in_bounds(tx, ty):
-                        lmap.tiles[ty][tx].ground_items.append(item)
+                    # Item lands on ground (miss or blunt hit) or lodges (sharp hit)
+                    if hit_roll < defense or dtype != "slash":
+                        tx = getattr(target, 'local_x', px)
+                        ty = getattr(target, 'local_y', py)
+                        if lmap.in_bounds(tx, ty):
+                            lmap.tiles[ty][tx].ground_items.append(item)
+                    # Sharp hits that connect: item is lodged in target (gone)
 
                     tick_time(ACTION_TIME["snap_shot"])
                     break

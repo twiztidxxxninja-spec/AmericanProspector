@@ -176,7 +176,8 @@ def player_attack_npc(player: "Player", npc: "NPC",
         npc.attributes["strength"] = max(1, npc.attributes.get("strength", 10) - 4)
 
     # Apply wound through the wound system (creates DetailedWound if available)
-    wound = npc.wounds.apply_hit(dmg, _weapon_damage_type(weapon_name))
+    wound = npc.wounds.apply_hit(dmg, _weapon_damage_type(weapon_name),
+                                 weapon_key=_weapon_key(weapon_name))
     # Body part HP caps — extremities can only absorb so much before the
     # damage "overflows" to the body. Excess becomes bleed damage, not HP loss.
     # A hand can't absorb a .50 cal — it's destroyed, but you're still alive.
@@ -275,6 +276,7 @@ def npc_attack_player(npc: "NPC", player: "Player",
     # Apply wound through the wound system (pass actual body part)
     wound = player.wounds.apply_hit(dmg, _weapon_damage_type(weapon_name),
                                       target_part=hit_part if worn else None,
+                                      weapon_key=_weapon_key(weapon_name),
                                       worn_equipment=worn)
     player.survival.health = max(0.0, player.survival.health - dmg)
     killed = player.survival.health <= 0 or not player.wounds.alive
@@ -368,6 +370,21 @@ def _check_npc_morale(npc: "NPC"):
 
 
 # ── NPC weapon profiles ────────────────────────────────────────────────────
+
+def _weapon_key(weapon_name: str) -> str:
+    """Map weapon display name to WEAPON_WOUND_MAP key for lodged objects."""
+    w = weapon_name.lower()
+    if "rifle" in w: return "rifle"
+    if "revolver" in w or "pistol" in w: return "revolver"
+    if "shotgun" in w: return "shotgun"
+    if "bowie" in w: return "bowie_knife"
+    if "knife" in w: return "knife"
+    if "pickaxe" in w: return "pickaxe"
+    if "hatchet" in w or "axe" in w: return "hatchet"
+    if "hammer" in w: return "hammer"
+    if "arrow" in w: return "arrow"
+    return ""
+
 
 def _weapon_damage_type(weapon_name: str) -> str:
     """Infer damage type from weapon name for the wound system."""

@@ -2565,6 +2565,14 @@ class Engine:
                 LocalTerrain.PIT, LocalTerrain.SPOIL_PILE)
 
         # ── Gambling ──────────────────────────────────────────────────────
+        # ── Business management ───────────────────────────────────────────
+        if "business" in a or "ledger" in a or "start a " in a and \
+           any(w in a for w in ("business", "company", "store", "shop",
+                                "saloon", "trading", "freight", "operation")):
+            from src.business_ui import open_business_ui
+            open_business_ui(self, self._console, self._ctx)
+            return
+
         # ── Set trap ──────────────────────────────────────────────────────
         if "set trap" in a or "set snare" in a or "place trap" in a or \
            "set deadfall" in a or "set steel" in a or "set bear" in a:

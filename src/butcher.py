@@ -175,7 +175,7 @@ _SPECIES_EXTRAS = {
     # Snakes and birds override base anatomy entirely
     "rattlesnake": {
         FAST:      [("snake_meat",       "Snake Meat",       1, 1, 0.3,  18.0)],
-        NORMAL:    [("small_hide",       "Rattlesnake Hide", 1, 1, 0.1,  None),
+        NORMAL:    [("raw_hide",         "Skin",             1, 1, 0.1,  None),
                     ("rattlesnake_rattle","Rattlesnake Rattle",1,1,0.01, None)],
         EXTENSIVE: [],
     },

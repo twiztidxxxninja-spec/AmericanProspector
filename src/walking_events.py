@@ -70,6 +70,8 @@ def roll_walking_event(engine: "Engine", lmap: "LocalMap",
     events.append((_find_abandoned_camp, 2))
     events.append((_find_prospector_note, 1))
     events.append((_encounter_injured_traveler, 1))
+    if period in ("night", "dusk"):
+        events.append((_robbery_encounter, 2))
 
     # ── Time-specific ─────────────────────────────────────────────
     if period == "night":
@@ -359,6 +361,81 @@ def _encounter_injured_traveler(engine, lmap, px, py, terrain, period, season, r
            f"He croaks: \"Water... please.\" He's in bad shape. "
            f"You could help, or keep walking.")
     return msg, "advisory"
+
+
+def _robbery_encounter(engine, lmap, px, py, terrain, period, season, rng):
+    """Bandit encounter — player can lose items or fight back."""
+    p = engine.player
+    firearms_skill = p.skills.get("firearms", 0)
+    has_weapon = any(getattr(i, "weapon_type", "") == "firearm"
+                     for i in p.inventory)
+
+    # Bandit strength varies
+    bandit_type = rng.choice([
+        ("a lone highwayman", 1),
+        ("two road agents", 2),
+        ("a desperate-looking drifter", 1),
+    ])
+    desc, num_bandits = bandit_type
+
+    # Resolution based on player readiness
+    if has_weapon and firearms_skill >= 5:
+        # Player is armed and skilled — bandits back off
+        msgs = [
+            f"A figure steps out of the brush — {desc}. "
+            f"\"Stand and deliver!\" Then they see your rifle. "
+            f"\"...Never mind.\" They fade back into the trees.",
+            f"{desc.capitalize()} blocks the trail ahead. "
+            f"You draw without breaking stride. "
+            f"They reconsider their life choices and let you pass.",
+        ]
+        p.gain_skill_xp("firearms", 2.0)
+        return rng.choice(msgs), "advisory"
+
+    elif has_weapon:
+        # Armed but not skilled — tense standoff, lose some cash
+        cash_lost = min(p.cash, rng.uniform(2, 10))
+        p.cash -= cash_lost
+        p.gain_skill_xp("firearms", 1.0)
+        return (f"{desc.capitalize()} appears with a gun drawn. "
+                f"\"Your money or your life.\" You pay ${cash_lost:.2f} "
+                f"and walk away breathing. Could've been worse.",
+                "warning")
+
+    else:
+        # Unarmed — they take what they want
+        stolen_items = []
+        # Take cash
+        cash_lost = min(p.cash, rng.uniform(5, 25))
+        p.cash -= cash_lost
+
+        # Take a random valuable item
+        valuables = sorted(
+            [i for i in p.inventory if i.base_value > 1.0],
+            key=lambda i: -i.base_value)
+        if valuables:
+            stolen = valuables[0]
+            p.inventory.remove(stolen)
+            stolen_items.append(stolen.name)
+
+        # Take gold dust
+        gold_lost = 0.0
+        if p.gold_oz > 0.01:
+            gold_lost = min(p.gold_oz, rng.uniform(0.05, 0.2))
+            p.gold_oz -= gold_lost
+
+        parts = [f"${cash_lost:.2f}"]
+        if stolen_items:
+            parts.append(stolen_items[0])
+        if gold_lost > 0:
+            parts.append(f"{gold_lost:.3f} oz gold dust")
+        taken = ", ".join(parts)
+
+        return (f"{desc.capitalize()} steps out of the darkness. "
+                f"A gun in your face. \"Empty your pockets.\" "
+                f"They take {taken} and disappear into the night. "
+                f"You're alive. That's something.",
+                "critical")
 
 
 def _discover_mineral_outcrop(engine, lmap, px, py, terrain, period, season, rng):

@@ -724,6 +724,17 @@ class Engine:
                         burn_dmg = 8.0 * minutes
                         self.player.survival.health -= burn_dmg
                         self.add_message("You're in the fire! MOVE!", "critical")
+                        # Fire destroys items in player inventory
+                        import random as _frng
+                        burnable = [i for i in self.player.inventory
+                                    if i.category in ("food", "material", "misc")
+                                    and i.weight < 5.0]
+                        if burnable and _frng.random() < 0.3:
+                            burned = _frng.choice(burnable)
+                            self.player.inventory.remove(burned)
+                            self.add_message(
+                                f"Your {burned.name} catches fire and burns!",
+                                "critical")
                     else:
                         # Heat damage from nearby fire
                         fire_tiles = lmap._fire.get_fire_tiles()
@@ -739,6 +750,16 @@ class Engine:
                             self.add_message(
                                 "The heat is intense. You're too close to the fire.",
                                 "advisory")
+                    # Burn ground items in fire tiles
+                    for (fx, fy) in lmap._fire.get_fire_tiles():
+                        tile = lmap.tile_at(fx, fy)
+                        if tile.ground_items:
+                            import random as _grng
+                            for gi in list(tile.ground_items):
+                                if gi.category in ("food", "material", "misc") \
+                                        and _grng.random() < 0.5:
+                                    tile.ground_items.remove(gi)
+
                     # NPC fire damage + flee
                     fire_tiles = lmap._fire.get_fire_tiles()
                     for npc in self._tile_npcs():
@@ -4512,6 +4533,68 @@ class Engine:
 
         return fall_dist
 
+    def _river_crossing_check(self, lmap):
+        """When player steps into water, chance to lose/soak items."""
+        import random as _rng
+        p = self.player
+        if not p.inventory:
+            return
+
+        # Shallow crossing: low risk. Deep water (surrounded by water): high risk
+        from src.local_map import LocalTerrain as _LT
+        water_adj = 0
+        for dx in range(-1, 2):
+            for dy in range(-1, 2):
+                nx, ny = p.local_x + dx, p.local_y + dy
+                if lmap.in_bounds(nx, ny) and lmap.tile_at(nx, ny).terrain == _LT.WATER:
+                    water_adj += 1
+
+        # Risk scales with water depth (more adjacent water = deeper)
+        if water_adj <= 2:
+            return  # shallow edge, no risk
+
+        risk = 0.03 * water_adj  # ~9-24% in deep water
+
+        if _rng.random() < risk:
+            # Something gets wet or lost
+            droppable = [i for i in p.inventory
+                         if i.weight > 0.5 and i.category != "misc"
+                         and not getattr(i, 'extra', {}).get('carry_capacity_lb')]
+
+            if not droppable:
+                return
+
+            roll = _rng.random()
+            item = _rng.choice(droppable)
+
+            if roll < 0.4:
+                # Item gets soaked — food spoils faster
+                if item.perishable and item.days_until_spoil:
+                    item.days_until_spoil = max(1, item.days_until_spoil // 2)
+                    self.add_message(
+                        f"Your {item.name} got soaked crossing the water!",
+                        "warning")
+                else:
+                    self.add_message(
+                        f"Your {item.name} got wet. No real damage.",
+                        "normal")
+            elif roll < 0.7:
+                # Item dropped in water — lost
+                p.inventory.remove(item)
+                self.add_message(
+                    f"Your {item.name} slips from your pack and sinks "
+                    f"into the current. Gone.",
+                    "warning")
+            else:
+                # Gold dust lost
+                if p.gold_oz > 0.01:
+                    lost = min(p.gold_oz * 0.1, p.gold_oz)
+                    p.gold_oz -= lost
+                    self.add_message(
+                        f"Your gold pouch dips into the water — "
+                        f"{lost:.3f} oz of dust washes away!",
+                        "warning")
+
     def _record_gossip(self, content: str, severity: float) -> None:
         """Add a gossip entry for the current region."""
         region = ""
@@ -5478,6 +5561,14 @@ class Engine:
                     self.animal_mgr.move_animals(
                         self.player.local_x, self.player.local_y, lmap)
                 self.recompute_fov()
+
+                # River crossing risk — items can get wet or lost
+                from src.local_map import LocalTerrain as _LT
+                new_terrain = lmap.tile_at(
+                    self.player.local_x, self.player.local_y).terrain
+                if new_terrain == _LT.WATER:
+                    self._river_crossing_check(lmap)
+
                 # Random walking event (very rare on local movement)
                 from src.walking_events import roll_walking_event
                 evt = roll_walking_event(self, lmap,

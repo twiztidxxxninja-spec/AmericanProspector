@@ -2665,6 +2665,11 @@ class Engine:
             else:
                 actions.append("Check traps")
 
+        # Clean fish — when player has fresh fish and a knife
+        has_fresh_fish = any(i.id == "fresh_fish" for i in self.player.inventory)
+        if has_fresh_fish:
+            actions.append("Clean fish")
+
         # Medical — show when wounded or sick
         if self.player.wounds.active_wounds:
             actions.append("Inspect wounds")
@@ -3105,6 +3110,37 @@ class Engine:
                     self.add_message(
                         f"  Mercury: {self.player.survival.mercury_symptoms}",
                         "warning")
+            self.advance_time(5)
+            return
+
+        # ── Clean fish ────────────────────────────────────────────────────
+        if "clean" in a and "fish" in a:
+            fish_items = [i for i in self.player.inventory if i.id == "fresh_fish"]
+            if not fish_items:
+                self.add_message("No fresh fish to clean.", "normal")
+                return
+            has_knife = any(any(t in getattr(i, "tool_tags", [])
+                               for t in ("cut", "butcher"))
+                           for i in self.player.inventory)
+            if not has_knife:
+                self.add_message("You need a knife to clean fish.", "advisory")
+                return
+            fish = fish_items[0]
+            fish_name = fish.name
+            self.player.inventory.remove(fish)
+            from src.items import make_item
+            # Fillets
+            for _ in range(2):
+                fillet = make_item("fish_fillet")
+                fillet.name = fish_name.replace("Fresh ", "") + " Fillet"
+                self.player.inventory.append(fillet)
+            # Guts (bait)
+            guts = make_item("fish_guts")
+            self.player.inventory.append(guts)
+            self.add_message(
+                f"You gut and fillet the {fish_name}. "
+                f"2 fillets + fish guts (bait).", "normal")
+            self.player.gain_skill_xp("survival", 1.0)
             self.advance_time(5)
             return
 

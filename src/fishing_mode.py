@@ -21,7 +21,10 @@ BAIT_ITEMS = {
     "insect":        (0.12, {"trout", "bass", "perch"}),
     "fresh_venison": (0.20, {"catfish", "pike", "eel"}),    # blood/meat = catfish bait
     "fresh_fish":    (0.15, {"bass", "pike", "catfish", "sturgeon"}),  # cut bait
+    "fish_guts":     (0.25, {"catfish", "eel", "pike", "sturgeon", "bass"}),  # best bait
+    "fish_fillet":   (0.15, {"bass", "pike", "catfish"}),   # cut bait
     "wild_berries":  (0.05, {"trout", "sucker"}),
+    "castoreum_lure":(0.20, {"trout", "bass", "pike", "walleye"}),  # trapping lure works for fish too
 }
 
 # Method definitions with what they can realistically catch

@@ -171,6 +171,19 @@ ITEM_TEMPLATES: Dict[str, dict] = {
         "description": "Rendered fat mixed with dried meat and berries. Dense trail ration.",
         "base_value": 0.15, "stackable": True, "perishable": False,
     },
+    "fish_fillet": {
+        "id": "fish_fillet", "name": "Fish Fillet", "weight": 0.3,
+        "category": "food", "nutrition": 20.0,
+        "description": "Clean fish fillet. Cook, smoke, or dry.",
+        "base_value": 0.04, "stackable": True, "perishable": True, "days_until_spoil": 2,
+    },
+    "fish_guts": {
+        "id": "fish_guts", "name": "Fish Guts", "weight": 0.2,
+        "category": "material",
+        "description": "Fish entrails. Excellent bait for catfish and crab. "
+                       "Also attracts bears — don't leave near camp.",
+        "base_value": 0.01, "stackable": True, "perishable": True, "days_until_spoil": 1,
+    },
     "dip_net": {
         "id": "dip_net", "name": "Dip Net", "weight": 1.0,
         "category": "tool",

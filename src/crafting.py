@@ -256,6 +256,19 @@ RECIPES: List[Recipe] = [
     ),
     # ── Food Preservation ──────────────────────────────────────────────
     Recipe(
+        id="clean_fish", name="Clean Fish",
+        description="Gut, scale, and fillet a fresh fish. "
+                    "Produces clean fillets and fish guts for bait.",
+        materials=[("fresh_fish", 1)],
+        tool_required="cut", skill="survival", difficulty=3, time_minutes=5,
+        output_custom={"id": "fish_fillet", "name": "Fish Fillet", "weight": 0.3,
+                       "category": "food", "nutrition": 20.0, "base_value": 0.04,
+                       "stackable": True, "perishable": True, "days_until_spoil": 2,
+                       "description": "Clean fish fillet. Cook, smoke, or dry."},
+        output_qty=2,
+        category="food",
+    ),
+    Recipe(
         id="smoke_meat", name="Smoked Meat",
         description="Hang fresh meat over a smoky fire. Takes hours but keeps for weeks. "
                     "Requires a campfire or drying rack nearby.",
@@ -330,8 +343,19 @@ RECIPES: List[Recipe] = [
         category="food",
     ),
     Recipe(
-        id="cook_fish", name="Cooked Fish",
-        description="Pan-fry or roast fish. Quick meal.",
+        id="cook_fillet", name="Cooked Fish Fillet",
+        description="Pan-fry a cleaned fillet. Quick and nourishing.",
+        materials=[("fish_fillet", 1)],
+        skill="survival", difficulty=2, time_minutes=8,
+        output_custom={"id": "cooked_fish", "name": "Cooked Fish Fillet", "weight": 0.25,
+                       "category": "food", "nutrition": 20.0, "base_value": 0.08,
+                       "perishable": True, "days_until_spoil": 2,
+                       "description": "Crispy pan-fried fillet."},
+        category="food",
+    ),
+    Recipe(
+        id="cook_fish", name="Cooked Fish (whole)",
+        description="Roast a whole fish over the fire. No cleaning needed.",
         materials=[("fresh_fish", 1)],
         skill="survival", difficulty=2, time_minutes=10,
         output_custom={"id": "cooked_fish", "name": "Cooked Fish", "weight": 0.4,

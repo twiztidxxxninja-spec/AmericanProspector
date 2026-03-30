@@ -812,6 +812,38 @@ class Engine:
                 body=report,
             )
 
+        # Settlement events (daily roll when player is in a settlement)
+        if self.current_local and hasattr(self.current_local, 'town_layout') \
+                and self.current_local.town_layout:
+            from src.settlement_events import roll_settlement_event
+            stype = self.current_local.town_layout.settlement_type
+            season = self.time.season
+            evt = roll_settlement_event(self, stype, season, self.time.year)
+            if evt:
+                self.add_message(evt.message, evt.severity)
+                if evt.reputation_delta and region:
+                    self.reputation.adjust(region, evt.reputation_delta)
+                if evt.health_delta:
+                    p.survival.health = max(0, min(100,
+                        p.survival.health + evt.health_delta))
+                if evt.cash_delta:
+                    p.cash += evt.cash_delta
+                # Store price effect for trade system
+                if evt.price_mult != 1.0 and evt.price_duration > 0:
+                    if not hasattr(self, '_settlement_price_effects'):
+                        self._settlement_price_effects = []
+                    self._settlement_price_effects.append({
+                        "mult": evt.price_mult,
+                        "expires": current_day + evt.price_duration,
+                    })
+
+        # Expire old settlement price effects
+        if hasattr(self, '_settlement_price_effects'):
+            self._settlement_price_effects = [
+                e for e in self._settlement_price_effects
+                if e["expires"] > current_day
+            ]
+
         # Legal sentence serving
         msg = self.legal.tick_sentence(current_day)
         if msg:

@@ -257,16 +257,37 @@ STOCK_POOLS: Dict[str, Dict[str, float]] = {
         "dried_beans": 0.9, "pemican": 0.4,
         "rope_10ft": 0.9, "bedroll": 0.6, "canvas_tent": 0.3,
         "water_quart": 0.5,
+        # Crafting materials
+        "flour": 0.9, "salt": 0.9, "coffee_beans": 0.8,
+        "canvas": 0.5, "nails": 0.7, "iron_bar": 0.4,
+        "corn": 0.6, "molasses": 0.4,
+        # Storage
+        "rucksack": 0.4, "belt_pouch": 0.6,
+        "prospector_pack": 0.2, "ore_sack": 0.5,
+        # Medical
+        "laudanum": 0.3,
+        # Ammo
+        "rifle_ball": 0.9, "revolver_ball": 0.7,
+        "shotgun_shell": 0.5,
+        # Wool blanket & tobacco
+        "wool_blanket": 0.4, "tobacco": 0.6,
     },
     "blacksmith": {
         "pickaxe": 0.9, "shovel": 0.9, "hand_axe": 0.8,
-        "hunting_knife": 0.7,
+        "hunting_knife": 0.7, "skinning_knife": 0.5,
+        "iron_bar": 0.8, "nails": 0.9,
+        "steel_trap": 0.4,
     },
     "saloon": {
         "hardtack": 0.5, "jerky": 0.6,
+        "whiskey": 0.9, "tobacco": 0.7,
+        "playing_cards": 0.3,
     },
     "gun_shop": {
-        "percussion_rifle": 0.7, "bowie_knife": 0.8,
+        "percussion_rifle": 0.7, "percussion_revolver": 0.5,
+        "shotgun": 0.3, "bowie_knife": 0.8,
+        "rifle_ball": 1.0, "revolver_ball": 0.9,
+        "shotgun_shell": 0.8,
     },
 }
 

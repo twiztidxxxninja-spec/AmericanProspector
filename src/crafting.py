@@ -421,7 +421,21 @@ RECIPES: List[Recipe] = [
         output_qty=2, category="food",
     ),
 
-    # Step 2: Beer/Mead + Still → Whiskey/Spirits (distillation)
+    Recipe(
+        id="brew_wine", name="Wine",
+        description="Ferment berries into wine. Simple, no grain needed. "
+                    "Just berries, time, and a barrel.",
+        materials=[("wild_berries", 6)],
+        skill="chemistry", difficulty=6, time_minutes=360,
+        output_custom={"id": "wine", "name": "Berry Wine", "weight": 1.0,
+                       "category": "drink", "base_value": 0.75, "hydration": 8.0,
+                       "stackable": True, "perishable": True, "days_until_spoil": 60,
+                       "extra": {"warmth_bonus": 10, "aim_penalty": -2, "courage_bonus": 3},
+                       "description": "Dark berry wine. Not French, but it'll do."},
+        output_qty=3, category="food",
+    ),
+
+    # Step 2: Beer/Mead/Wine + Still → Whiskey/Spirits (distillation)
     Recipe(
         id="distill_grain_whiskey", name="Grain Whiskey",
         description="Distill grain beer through a copper still. Standard frontier whiskey.",

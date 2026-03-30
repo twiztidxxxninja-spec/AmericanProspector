@@ -201,6 +201,50 @@ ITEM_TEMPLATES: Dict[str, dict] = {
         "description": "Dried corn. Eat it, grind it, or ferment it into corn whiskey.",
         "base_value": 0.15, "stackable": True,
     },
+    # ── Brewing intermediates (outputs of fermentation, inputs to distillation)
+    "beer": {
+        "id": "beer", "name": "Grain Beer", "weight": 1.0,
+        "category": "drink", "hydration": 10.0,
+        "description": "Cloudy frontier beer from grain.",
+        "base_value": 0.25, "stackable": True, "perishable": True, "days_until_spoil": 14,
+    },
+    "corn_beer": {
+        "id": "corn_beer", "name": "Corn Beer", "weight": 1.0,
+        "category": "drink", "hydration": 10.0,
+        "description": "Sweet corn beer.",
+        "base_value": 0.30, "stackable": True, "perishable": True, "days_until_spoil": 14,
+    },
+    "berry_beer": {
+        "id": "berry_beer", "name": "Berry Beer", "weight": 1.0,
+        "category": "drink", "hydration": 10.0,
+        "description": "Fruity tart berry beer.",
+        "base_value": 0.35, "stackable": True, "perishable": True, "days_until_spoil": 10,
+    },
+    "mead": {
+        "id": "mead", "name": "Mead", "weight": 1.0,
+        "category": "drink", "hydration": 8.0,
+        "description": "Golden honey mead. Sweet and strong.",
+        "base_value": 1.00, "stackable": True, "perishable": True, "days_until_spoil": 30,
+    },
+    "bowstring": {
+        "id": "bowstring", "name": "Bowstring", "weight": 0.05,
+        "category": "material",
+        "description": "Twisted sinew cord. String a bow with this.",
+        "base_value": 0.50, "stackable": True,
+    },
+    "gut_string": {
+        "id": "gut_string", "name": "Gut String", "weight": 0.1,
+        "category": "material",
+        "description": "Twisted intestine cord. Strong for snares and bindings.",
+        "base_value": 0.40, "stackable": True,
+    },
+    "hoof_glue": {
+        "id": "hoof_glue", "name": "Hoof Glue", "weight": 0.5,
+        "category": "material",
+        "description": "Strong hide glue from boiled hooves. Repairs and woodwork.",
+        "base_value": 0.30, "stackable": True,
+    },
+
     "molasses": {
         "id": "molasses", "name": "Molasses", "weight": 2.0,
         "category": "food", "nutrition": 8.0,

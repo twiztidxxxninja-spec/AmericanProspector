@@ -214,17 +214,54 @@ def _find_tracks(engine, lmap, px, py, terrain, period, season, rng):
 def _find_item(engine, lmap, px, py, terrain, period, season, rng):
     """Occasionally find a small item on the ground."""
     from src.items import make_item
+    from src.local_map import LocalTerrain
+
+    # Terrain-specific finds
     finds = [
         ("rope_10ft", "A coil of rope, half-buried in the dirt. Still good."),
         ("rifle_ball", "A lead ball in the mud. Unfired. Somebody dropped it."),
         ("hardtack", "A tin of hardtack wedged under a rock. Still sealed."),
     ]
+
+    # Forest: berries, mint, brush, juniper
+    if terrain in (LocalTerrain.PINE, LocalTerrain.OAK, LocalTerrain.CEDAR,
+                   LocalTerrain.MAPLE, LocalTerrain.CHESTNUT):
+        finds.extend([
+            ("wild_berries", "Berry bushes heavy with fruit. You pick a handful."),
+            ("wild_berries", "Ripe berries growing along the trail."),
+            ("wild_mint", "Wild mint growing near the water. You gather some."),
+            ("juniper_berries", "Juniper bush with blue berries. You strip a branch."),
+            ("brush_bundle", "Dry brush and bark. Useful for cordage or kindling."),
+        ])
+
+    # Near water: clay, brush, mint
+    if terrain in (LocalTerrain.MUD, LocalTerrain.SAND):
+        finds.extend([
+            ("clay", "Thick clay in the bank. Scoop some — good for pottery."),
+            ("clay", "Fine river clay. Smooth, workable."),
+            ("brush_bundle", "Driftwood and brush piled against the bank."),
+        ])
+
+    # Grass/ground: brush, berries
+    if terrain in (LocalTerrain.GRASS, LocalTerrain.GROUND):
+        finds.extend([
+            ("brush_bundle", "Dry brush. Good for cordage or fire."),
+            ("wild_berries", "Low bushes with berries. You pick some."),
+            ("wild_mint", "A patch of wild mint. Fresh smell."),
+        ])
+
+    # Spring/summer bonus: honey
+    if season in ("spring", "summer") and rng.random() < 0.15:
+        finds.append(
+            ("wild_honey", "A bee tree! You smoke the hive and take a comb of honey."))
+
     item_id, msg = rng.choice(finds)
     try:
         item = make_item(item_id)
         tile = lmap.tile_at(px, py)
         tile.ground_items.append(item)
-        return msg + " [P] to pick up.", "advisory"
+        engine.player.gain_skill_xp("survival", 0.5)
+        return msg, "advisory"
     except Exception:
         return msg, "normal"
 

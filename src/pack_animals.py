@@ -103,6 +103,10 @@ class PackAnimal:
     fatigue: float = 100.0          # 0-100, collapses at 0
     condition: float = 100.0        # overall, degrades from overload/injury
     inventory: List["Item"] = field(default_factory=list)
+    # Map position (follows player)
+    local_x: int = 0
+    local_y: int = 0
+    local_z: int = 0
 
     @property
     def species(self) -> AnimalSpecies:
@@ -252,6 +256,42 @@ class PackAnimal:
 
     # ── Serialization ────────────────────────────────────────────────
 
+    def move_toward(self, target_x: int, target_y: int, local_map,
+                    rng: random.Random):
+        """Move one step toward target position. Called each player move."""
+        if not self.alive or not self.can_travel:
+            return
+        dx = target_x - self.local_x
+        dy = target_y - self.local_y
+        dist = max(abs(dx), abs(dy))
+        # Only move if more than 3 tiles away, stay within ~8 tiles
+        if dist <= 3:
+            return
+        # Normalize to single step
+        sx = (1 if dx > 0 else -1 if dx < 0 else 0)
+        sy = (1 if dy > 0 else -1 if dy < 0 else 0)
+        # Add slight wander
+        if rng.random() < 0.2:
+            sx += rng.choice([-1, 0, 1])
+            sy += rng.choice([-1, 0, 1])
+        nx, ny = self.local_x + sx, self.local_y + sy
+        if local_map and local_map.in_bounds(nx, ny) and local_map.is_passable(nx, ny):
+            self.local_x = nx
+            self.local_y = ny
+
+    def place_near(self, x: int, y: int, local_map, rng: random.Random):
+        """Place animal near a position (on spawn or map entry)."""
+        for _ in range(20):
+            ox = x + rng.randint(-5, 5)
+            oy = y + rng.randint(-5, 5)
+            if local_map and local_map.in_bounds(ox, oy) and local_map.is_passable(ox, oy):
+                self.local_x = ox
+                self.local_y = oy
+                return
+        # Fallback — just put them at player position
+        self.local_x = x
+        self.local_y = y
+
     def to_dict(self) -> dict:
         from src.save_load import _serialize_item
         return {
@@ -262,6 +302,9 @@ class PackAnimal:
             "hunger": self.hunger,
             "fatigue": self.fatigue,
             "condition": self.condition,
+            "local_x": self.local_x,
+            "local_y": self.local_y,
+            "local_z": self.local_z,
             "inventory": [_serialize_item(i) for i in self.inventory],
         }
 
@@ -277,6 +320,9 @@ class PackAnimal:
             fatigue=d.get("fatigue", 100),
             condition=d.get("condition", 100),
         )
+        animal.local_x = d.get("local_x", 0)
+        animal.local_y = d.get("local_y", 0)
+        animal.local_z = d.get("local_z", 0)
         animal.inventory = [_deserialize_item(i) for i in d.get("inventory", [])]
         return animal
 
@@ -342,6 +388,22 @@ class PackAnimalManager:
         """Player has at least one rideable animal in good shape."""
         return any(a.species.rideable and a.can_travel
                    for a in self.animals)
+
+    def move_animals(self, player_x: int, player_y: int, local_map,
+                     rng: random.Random = None):
+        """Move all animals one step toward the player. Called on player move."""
+        if rng is None:
+            rng = random.Random()
+        for a in self.animals:
+            a.move_toward(player_x, player_y, local_map, rng)
+
+    def place_all_near(self, x: int, y: int, local_map,
+                       rng: random.Random = None):
+        """Place all animals near a position (on map entry)."""
+        if rng is None:
+            rng = random.Random()
+        for a in self.animals:
+            a.place_near(x, y, local_map, rng)
 
     def tick_hourly(self, is_traveling: bool, terrain: str = "grass"):
         for a in self.animals:

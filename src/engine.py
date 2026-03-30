@@ -1244,7 +1244,8 @@ class Engine:
 
     def _open_inventory(self):
         from src.ui_inventory import open_inventory
-        open_inventory(self._console, self._ctx, self.player)
+        open_inventory(self._console, self._ctx, self.player,
+                       animal_mgr=self.animal_mgr)
 
     def _open_character(self):
         from src.ui_character import open_character
@@ -5090,6 +5091,11 @@ class Engine:
             if self.state == GameState.LOCAL_MAP:
                 self.add_message("Local map.", "normal")
                 self.recompute_fov()
+                # Place pack animals near player
+                if self.animal_mgr.animals and self.current_local:
+                    self.animal_mgr.place_all_near(
+                        self.player.local_x, self.player.local_y,
+                        self.current_local)
             else:
                 self.add_message(f"{name} view.", "normal")
         else:
@@ -5339,6 +5345,10 @@ class Engine:
                 # Gravity check — if stepped into open air, fall
                 self._apply_gravity(self.player, lmap)
                 self.time.advance_seconds(cost_secs)
+                # Pack animals follow player
+                if self.animal_mgr.animals:
+                    self.animal_mgr.move_animals(
+                        self.player.local_x, self.player.local_y, lmap)
                 self.recompute_fov()
                 # Random walking event (very rare on local movement)
                 from src.walking_events import roll_walking_event
@@ -5525,7 +5535,9 @@ class Engine:
                 # Fire rendering
                 if hasattr(lmap, '_fire') and lmap._fire and lmap._fire.active:
                     self.renderer.draw_fire(lmap._fire, lmap, self.player)
-                self.renderer.draw_pack_animals(self.player)
+                self.renderer.draw_animals_on_map(self.player, lmap,
+                                                     self.animal_mgr)
+                self.renderer.draw_pack_animals(self.player, self.animal_mgr)
                 # Time/date in sidebar
                 console.print(
                     82, 46,

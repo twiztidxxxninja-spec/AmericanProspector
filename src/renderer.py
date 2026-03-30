@@ -1039,26 +1039,80 @@ class Renderer:
         # time passed in via game state — for now placeholder
         self.con.print(x, y, "─" * (SIDE_WIDTH - 2), fg=DGREY, bg=BLACK)
 
-    def draw_pack_animals(self, player: Player):
+    def draw_pack_animals(self, player: Player, animal_mgr=None):
         """Show pack animal status in sidebar below the nearby-NPC list."""
-        if not player.pack_animals:
+        # Use new system if available
+        animals = []
+        if animal_mgr and animal_mgr.animals:
+            animals = animal_mgr.animals
+        elif player.pack_animals:
+            # Legacy fallback
+            x = SIDE_X
+            y = 48
+            self.con.print(x, y, "── Animals ─────────────────", fg=GREY, bg=BLACK)
+            y += 1
+            for pa in player.pack_animals:
+                cond = pa.get("condition", 100)
+                name = pa.get("name", "?")[:8]
+                self.con.print(x, y, f"{name} {cond}%"[:SIDE_WIDTH - 2],
+                               fg=GREEN, bg=BLACK)
+                y += 1
             return
+
+        if not animals:
+            return
+
         x = SIDE_X
-        y = 48   # bottom two rows before screen edge
+        y = 48
         self.con.print(x, y, "── Animals ─────────────────", fg=GREY, bg=BLACK)
         y += 1
-        for pa in player.pack_animals:
-            cond = pa.get("condition", 100)
-            cap  = pa.get("carrying_capacity_lb", 0.0)
-            name = pa.get("name", "?")[:8]
-            tid  = pa.get("type_id", "animal")[:4]
-            color = GREEN if cond >= 70 else (YELLOW if cond >= 40 else RED)
-            cap_str = f"{cap:.0f}lb" if cap > 0 else "  --"
-            line = f"{name:<8} {tid:<4} {cond:>3}%  {cap_str}"
-            self.con.print(x, y, line[:SIDE_WIDTH - 2], fg=color, bg=BLACK)
-            y += 1
+        for a in animals:
             if y >= SCREEN_HEIGHT - 1:
                 break
+            hp_color = GREEN if a.health > 60 else YELLOW if a.health > 30 else RED
+            load_pct = int(a.current_load / max(1, a.carry_capacity) * 100)
+            load_color = RED if a.overloaded else GREY
+            line = f"{a.name[:8]:<8} {a.species.name[:4]:<4} "
+            self.con.print(x, y, line, fg=hp_color, bg=BLACK)
+            # Mini bars
+            bar_x = x + len(line)
+            self.con.print(bar_x, y, f"H{a.health:.0f} F{a.fatigue:.0f} L{load_pct}%",
+                           fg=load_color, bg=BLACK)
+            y += 1
+
+    def draw_animals_on_map(self, player: Player, local_map: LocalMap,
+                            animal_mgr=None):
+        """Render pack animals at their map positions."""
+        if not animal_mgr or not animal_mgr.animals:
+            return
+        cam_x = player.local_x - VIEWPORT_W // 2
+        cam_y = player.local_y - VIEWPORT_H // 2
+
+        for a in animal_mgr.animals:
+            if not a.alive:
+                continue
+            if a.local_z != player.local_z:
+                continue
+            sx = a.local_x - cam_x
+            sy = a.local_y - cam_y
+            if not (0 <= sx < VIEWPORT_W and 0 <= sy < VIEWPORT_H):
+                continue
+            if not local_map.in_bounds(a.local_x, a.local_y):
+                continue
+            tile = local_map.tile_at(a.local_x, a.local_y)
+            if not tile.visible:
+                continue
+            _, _, bg = LOCAL_GLYPH.get(tile.terrain, (".", WHITE, BLACK))
+            self.con.print(sx, sy + 1, a.species.glyph,
+                           fg=a.species.color, bg=bg)
+
+            # Name label when close
+            dist = max(abs(a.local_x - player.local_x),
+                       abs(a.local_y - player.local_y))
+            if dist <= 3:
+                lx = max(0, min(sx - len(a.name) // 2, VIEWPORT_W - len(a.name)))
+                self.con.print(lx, sy, a.name[:12],
+                               fg=(180, 160, 100), bg=(0, 0, 0))
 
     def draw_npc_sidebar(self, npcs, player: Player):
         """Render visible-NPC list in the lower sidebar panel."""

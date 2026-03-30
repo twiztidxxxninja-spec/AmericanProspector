@@ -282,11 +282,147 @@ def _handle_hands(sym, state: MenuState, ctx: dict) -> bool:
 #  PUBLIC: open the inventory menu
 # ============================================================================
 
-def open_inventory(con, ctx, player) -> None:
+def open_inventory(con, ctx, player, animal_mgr=None) -> None:
     tabs = [
         MenuTab("Items", _draw_items, _handle_items),
         MenuTab("Clothing", _draw_clothing, _handle_clothing),
         MenuTab("Hands", _draw_hands, _handle_hands),
     ]
+    if animal_mgr and animal_mgr.animals:
+        tabs.append(MenuTab("Animals", _draw_animals, _handle_animals))
     menu = TabbedMenu("INVENTORY", tabs, width=72, height=40)
-    menu.run(con, ctx, player=player)
+    menu.run(con, ctx, player=player, animal_mgr=animal_mgr)
+
+
+# ============================================================================
+#  TAB 4: PACK ANIMALS
+# ============================================================================
+
+def _draw_animals(con, x, y, w, h, state: MenuState, ctx: dict):
+    player = ctx.get("player")
+    animal_mgr = ctx.get("animal_mgr")
+    if not animal_mgr or not animal_mgr.animals:
+        con.print(x + 1, y, "No pack animals.", fg=GREY, bg=BG)
+        return
+
+    animals = animal_mgr.animals
+    # Show selected animal's details
+    sel_animal = state.selected if state.selected < len(animals) else 0
+    state.selected = min(state.selected, len(animals) - 1)
+
+    # Animal list (left column)
+    con.print(x + 1, y, "YOUR ANIMALS", fg=YELLOW, bg=BG)
+    y += 1
+    for i, a in enumerate(animals):
+        sel = (i == state.selected)
+        status = ""
+        if not a.can_travel:
+            status = " [EXHAUSTED]"
+        elif a.overloaded:
+            status = " [OVERLOADED]"
+
+        hp_color = GREEN if a.health > 60 else ORANGE if a.health > 30 else RED
+        line = (f"{a.name} ({a.species.name}) "
+                f"HP:{a.health:.0f} HGR:{a.hunger:.0f} FTG:{a.fatigue:.0f}"
+                f"{status}")
+        draw_list_item(con, x + 1, y + i, w - 2, line, sel)
+
+    # Detail panel for selected animal
+    dy = y + len(animals) + 1
+    a = animals[state.selected]
+    draw_separator(con, x, dy - 1, w)
+    con.print(x + 1, dy, f"{a.name} the {a.species.name}", fg=CYAN, bg=BG)
+    dy += 1
+    con.print(x + 1, dy,
+              f"Load: {a.current_load:.1f} / {a.carry_capacity:.0f} lb",
+              fg=ORANGE if a.overloaded else GREEN, bg=BG)
+    dy += 1
+
+    # Animal inventory
+    con.print(x + 1, dy, "Carrying:", fg=GREY, bg=BG)
+    dy += 1
+    if a.inventory:
+        for item in a.inventory[:8]:
+            qty = f" x{item.quantity}" if getattr(item, 'stackable', False) and item.quantity > 1 else ""
+            con.print(x + 3, dy, f"{item.name}{qty} ({item.weight:.1f}lb)",
+                      fg=WHITE, bg=BG)
+            dy += 1
+        if len(a.inventory) > 8:
+            con.print(x + 3, dy, f"...and {len(a.inventory)-8} more",
+                      fg=DGREY, bg=BG)
+            dy += 1
+    else:
+        con.print(x + 3, dy, "(empty)", fg=DGREY, bg=BG)
+        dy += 1
+
+    dy += 1
+    con.print(x + 1, dy,
+              "[T] Load item onto animal  [U] Unload from animal  [F] Feed",
+              fg=DGREY, bg=BG)
+
+
+def _handle_animals(sym, state: MenuState, ctx: dict) -> bool:
+    K = tcod.event.KeySym
+    player = ctx.get("player")
+    animal_mgr = ctx.get("animal_mgr")
+    if not animal_mgr or not animal_mgr.animals:
+        return False
+
+    animals = animal_mgr.animals
+    count = len(animals)
+
+    if sym in (K.UP, K.KP_8):
+        state.selected = max(0, state.selected - 1)
+        return True
+    if sym in (K.DOWN, K.KP_2):
+        state.selected = min(count - 1, state.selected + 1)
+        return True
+
+    animal = animals[state.selected] if state.selected < count else None
+    if not animal:
+        return False
+
+    if sym == K.t and player:
+        # Transfer item from player to animal
+        if not player.inventory:
+            return True
+        # Pick heaviest transferable item automatically
+        # (In a full UI you'd show a list, but for now pick the heaviest)
+        transferable = sorted(player.inventory,
+                              key=lambda i: i.weight * getattr(i, 'quantity', 1),
+                              reverse=True)
+        if transferable:
+            item = transferable[0]
+            player.inventory.remove(item)
+            animal.inventory.append(item)
+            state.result = ("loaded", item.name, animal.name)
+        return True
+
+    if sym == K.u:
+        # Unload item from animal to player
+        if not animal.inventory:
+            return True
+        item = animal.inventory[0]
+        animal.inventory.remove(item)
+        player.inventory.append(item)
+        state.result = ("unloaded", item.name, animal.name)
+        return True
+
+    if sym == K.f and player:
+        # Feed animal from player inventory
+        food_items = [i for i in player.inventory
+                      if getattr(i, 'nutrition', 0) > 0
+                      or any(w in i.name.lower()
+                             for w in ("hay", "oats", "grain", "corn", "apple"))]
+        if food_items:
+            food = food_items[0]
+            msg = animal.feed(food)
+            if "won't eat" not in msg:
+                if food.stackable and food.quantity > 1:
+                    food.quantity -= 1
+                else:
+                    player.inventory.remove(food)
+            state.result = ("fed", msg)
+        return True
+
+    return False

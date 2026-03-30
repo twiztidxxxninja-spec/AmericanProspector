@@ -32,12 +32,26 @@ def main():
     except Exception:
         pass  # no internet, no tkinter, whatever — just start the game
 
-    # Download LLM on first run if missing
-    from src.model_downloader import ensure_model, model_path
-    ensure_model()
+    # Check if using API mode — skip model download if so
+    import json as _json
+    _cfg = {}
+    try:
+        with open("config.json") as _f:
+            _cfg = _json.load(_f)
+    except Exception:
+        pass
+
+    llm_mode = _cfg.get("llm_mode", "local")
+    if llm_mode == "local":
+        # Download LLM on first run if missing
+        from src.model_downloader import ensure_model, model_path
+        ensure_model()
+        _model = model_path()
+    else:
+        _model = ""  # API mode — no local model needed
 
     from src.engine import Engine
-    engine = Engine(llm_model_path=model_path())
+    engine = Engine(llm_model_path=_model)
     engine.run()
 
 

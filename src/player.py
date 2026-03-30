@@ -211,12 +211,16 @@ class Player:
     def carry_capacity(self) -> float:
         """Max carry weight in pounds (player + healthy pack animals)."""
         base = 50.0 + self.attributes["strength"] * 5.0
-        for pa in self.pack_animals:
-            cond  = pa.get("condition", 100) / 100.0
-            cap   = pa.get("carrying_capacity_lb", 0.0)
-            # Animal carries less as condition drops; useless below 20% condition
-            if cond > 0.2:
-                base += cap * cond
+        # New pack animal system (via engine.animal_mgr)
+        if hasattr(self, '_animal_mgr') and self._animal_mgr:
+            base += self._animal_mgr.total_carry_capacity
+        else:
+            # Legacy dict-based fallback
+            for pa in self.pack_animals:
+                cond  = pa.get("condition", 100) / 100.0
+                cap   = pa.get("carrying_capacity_lb", 0.0)
+                if cond > 0.2:
+                    base += cap * cond
         return base
 
     @property

@@ -161,6 +161,13 @@ def save_game(engine: "Engine", slot: str = "autosave") -> str:
         except Exception:
             pass
 
+    # Pack animals
+    if hasattr(engine, "animal_mgr") and engine.animal_mgr:
+        try:
+            data["pack_animals"] = engine.animal_mgr.to_dict()
+        except Exception:
+            pass
+
     # Settlement price effects
     if hasattr(engine, "_settlement_price_effects"):
         data["settlement_price_effects"] = engine._settlement_price_effects
@@ -315,6 +322,12 @@ def load_game(engine: "Engine", slot: str = "autosave") -> bool:
     if "traps" in data:
         from src.trapping import TrapManager
         engine.trap_mgr = TrapManager.from_dict(data["traps"])
+
+    # Pack animals
+    if "pack_animals" in data:
+        from src.pack_animals import PackAnimalManager
+        engine.animal_mgr = PackAnimalManager.from_dict(data["pack_animals"])
+        engine.player._animal_mgr = engine.animal_mgr
 
     # Settlement price effects
     if "settlement_price_effects" in data:

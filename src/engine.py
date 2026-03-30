@@ -126,6 +126,9 @@ class Engine:
         self.writing         = WritingManager()
         from src.trapping import TrapManager
         self.trap_mgr        = TrapManager()
+        from src.pack_animals import PackAnimalManager
+        self.animal_mgr      = PackAnimalManager()
+        self.player._animal_mgr = self.animal_mgr
         self.music           = MusicManager("music")
 
         # Start on local map at Sacramento (center patch of world tile)
@@ -834,6 +837,18 @@ class Engine:
                 e for e in self._settlement_price_effects
                 if e["expires"] > current_day
             ]
+
+        # Pack animal daily care
+        if self.animal_mgr.animals:
+            from src.local_map import LocalTerrain
+            on_grass = False
+            if self.current_local:
+                t = self.current_local.tile_at(
+                    self.player.local_x, self.player.local_y).terrain
+                on_grass = t in (LocalTerrain.GRASS, LocalTerrain.GROUND)
+            for msg in self.animal_mgr.tick_daily(
+                    on_grass, self.player.inventory, random.Random()):
+                self.add_message(msg, "advisory")
 
         # Legal sentence serving
         msg = self.legal.tick_sentence(current_day)
@@ -2081,6 +2096,7 @@ class Engine:
             trade_engine=self.trade,
             settlement_layout=s_layout,
             legal=self.legal,
+            animal_mgr=self.animal_mgr,
         )
         for line in log[-4:]:   # last 4 exchanges into message log
             self.add_message(line, "normal")

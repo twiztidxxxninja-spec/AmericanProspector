@@ -179,6 +179,9 @@ def _npc_response(npc: "NPC", topic: str, player: "Player") -> str:
     if topic == "buy_lot":
         return "__BUY_LOT__"
 
+    if topic == "livery":
+        return "__LIVERY__"
+
     if topic == "ask_gold":
         if "placer" in npc.knowledge or "geology" in npc.knowledge:
             npc.adjust_relationship(2)
@@ -514,6 +517,10 @@ def talk_menu(con: tcod.console.Console, ctx,
     # Land Agent — buy a lot
     if npc.occupation == "Land Agent":
         PRESET_TOPICS.append(("Buy a town lot", "buy_lot"))
+
+    # Teamster / livery — buy/sell animals
+    if npc.occupation in ("Teamster", "Stable Hand", "Livery Keeper"):
+        PRESET_TOPICS.append(("Buy / sell animals", "livery"))
 
     # Companion system
     from src.companions import CompanionManager
@@ -880,6 +887,24 @@ def talk_menu(con: tcod.console.Console, ctx,
                     elif resp == "__BUY_LOT__":
                         resp = _handle_buy_lot(
                             con, ctx, npc, player, kwargs)
+                    elif resp == "__LIVERY__":
+                        animal_mgr = kwargs.get("animal_mgr")
+                        if animal_mgr:
+                            w_map = world_map or kwargs.get("world_map")
+                            region = w_map.get_region(player.world_x, player.world_y) if w_map else ""
+                            loc = w_map.get_location_at(player.world_x, player.world_y) if w_map else None
+                            stype = "small_town"
+                            if loc:
+                                from src.town_gen import classify_settlement
+                                stype = classify_settlement(loc.location_type, loc.population)
+                            from src.pack_animals import open_livery_ui
+                            msgs = open_livery_ui(con, ctx, player, animal_mgr,
+                                                   region, stype)
+                            for m in msgs:
+                                log.append(m)
+                            resp = ""
+                        else:
+                            resp = f'"Sorry, can\'t help you with animals right now."'
 
                     if resp:
                         log.append(resp)

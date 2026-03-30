@@ -1,8 +1,120 @@
 # American Prospector
 
-A hard, comprehensive prospecting simulator set in America 1849-2000. Single character, tile-based, time-driven survival + prospecting RPG. Built with Python + python-tcod + llama-cpp-python for local AI.
+A hard, comprehensive Gold Rush simulator set in 1849 California. ASCII roguelike with survival, prospecting, trading, combat, trapping, business management, and AI-powered freeform actions.
 
-Pan for gold, dig mines, build sluice boxes, trade with merchants, explore the American frontier. Every action takes time. Survival is not guaranteed.
+---
+
+## How to Play
+
+There are two ways to run the game. Pick whichever is easier for you.
+
+---
+
+### Method 1: Download and Run (Easiest)
+
+**What you need:** Nothing. Just the game folder.
+
+**Steps:**
+
+1. **Download the game folder** (zip file) and unzip it anywhere
+2. **Double-click `AmericanProspector.exe`**
+
+**Windows SmartScreen warning:** Windows will say "Windows protected your PC" because the exe isn't signed by a big company. This is normal for all indie games and homebrew software.
+- Click **"More info"**
+- Click **"Run anyway"**
+- This only happens the first time. It will not harm your computer.
+
+**That's it. You're playing.**
+
+**What if there's no API key in config.json?**
+The game still works perfectly. You just won't get AI responses when you type freeform actions (like "I search the body"). All hardcoded gameplay — mining, combat, crafting, trading, hunting, trapping, building — works without AI. That's 95% of the game.
+
+---
+
+### Method 2: Run with Python (No Security Warnings)
+
+**What you need:** Python (free, from Microsoft Store)
+
+**Why this method:** The Microsoft Store version of Python doesn't trigger security warnings. No "Windows protected your PC" popup. If Method 1 makes you nervous, use this.
+
+**Steps:**
+
+1. **Install Python** from the Microsoft Store
+   - Open the **Microsoft Store** app
+   - Search **"Python 3.12"** (or any 3.11+)
+   - Click **Install** (free)
+   - *Why: The game is written in Python. This runs it.*
+
+2. **Download the game folder** and unzip it
+
+3. **Double-click `run.bat`**
+   - Installs two small libraries automatically (python-tcod for graphics, pygame-ce for music)
+   - Then starts the game
+   - *First run takes ~30 seconds for library install. After that it starts instantly.*
+
+**Optional steps you can skip:**
+- **pygame-ce** — only needed for music. If it fails to install, game works fine, just silent.
+- **config.json** — if missing, game creates defaults. AI features disabled unless you add an API key.
+
+---
+
+## Configuration (Optional)
+
+Settings are in `config.json` in the game folder. If missing, game uses defaults.
+
+### AI Modes
+
+**API mode** (recommended, already configured if someone set it up for you):
+```json
+"llm_mode": "api",
+"llm_api_key": "sk-ant-your-key-here"
+```
+Uses Claude AI over the internet. No downloads, no GPU. 3-8 second delay on freeform actions only.
+
+**Local mode** (for players with a gaming GPU):
+```json
+"llm_mode": "local",
+"model_path": "models/qwen2.5-7b-instruct-q4_k_m.gguf"
+```
+Requires 5GB model download + 8GB+ GPU VRAM. Faster, no content filtering.
+
+**No AI** (game fully playable without it):
+```json
+"llm_enabled": false
+```
+All hardcoded gameplay works. Freeform typed actions get generic responses.
+
+---
+
+## Bug Reports
+
+Press **ESC** in-game → **Report Bug** → type what happened → Enter. Sent automatically.
+
+---
+
+## Controls
+
+| Key | Action |
+|-----|--------|
+| Arrows / Numpad | Move |
+| A | Actions menu |
+| I | Inventory |
+| C | Crafting |
+| T | Talk to NPC |
+| K | Combat mode |
+| B | Build |
+| E | Examine |
+| J | Journal |
+| ? | Help (detailed) |
+| ESC | Pause menu |
+
+---
+
+## What Is This Game?
+
+You arrive in California in 1849 with $150, a mule, a rifle, and a gold pan. Pan for gold, stake claims, hunt, trap, craft 111 items, brew whiskey, start businesses, fight bandits, survive winters, get rich or die trying.
+
+v0.3.0-alpha "Fur & Fortune"
 
 ```
   .:T^T.:~~~~~:.T^.    You stand at the edge of a gravel bar

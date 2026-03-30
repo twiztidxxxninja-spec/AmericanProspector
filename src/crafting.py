@@ -218,7 +218,7 @@ RECIPES: List[Recipe] = [
                        "tool_tags": ["repair"],
                        "description": "Glue and binding. Restores condition on worn tools."},
         output_qty=2,
-        category="general",
+        category="tools",
     ),
 
     # ── Trapping & Rope ───────────────────────────────────────────────
@@ -241,7 +241,7 @@ RECIPES: List[Recipe] = [
         output_custom={"id": "bowstring", "name": "Bowstring", "weight": 0.05,
                        "category": "material", "base_value": 0.50,
                        "description": "Twisted sinew cord. String a bow with this."},
-        category="general",
+        category="materials",
     ),
     Recipe(
         id="candle", name="Tallow Candle",
@@ -252,7 +252,7 @@ RECIPES: List[Recipe] = [
                        "category": "tool", "base_value": 0.10,
                        "tool_tags": ["light"],
                        "description": "A tallow candle. Burns for hours."},
-        category="general",
+        category="tools",
     ),
     # ── Food Preservation ──────────────────────────────────────────────
     Recipe(
@@ -586,7 +586,7 @@ RECIPES: List[Recipe] = [
                        "damage_min": 2, "damage_max": 6,
                        "tool_tags": ["cut", "butcher"],
                        "description": "A knapped stone blade. Crude but functional."},
-        category="general",
+        category="tools",
     ),
     Recipe(
         id="stone_axe", name="Stone Axe",
@@ -598,7 +598,7 @@ RECIPES: List[Recipe] = [
                        "damage_min": 5, "damage_max": 14,
                        "tool_tags": ["chop"],
                        "description": "A crude stone axe. Gets the job done, barely."},
-        category="general",
+        category="tools",
     ),
     Recipe(
         id="make_rope", name="Rope (from rawhide)",
@@ -606,7 +606,7 @@ RECIPES: List[Recipe] = [
         materials=[("raw_hide", 1)],
         tool_required="cut", skill="survival", difficulty=5, time_minutes=30,
         output_id="rope_10ft", output_qty=2,
-        category="general",
+        category="materials",
     ),
     Recipe(
         id="make_fishing_line", name="Fishing Line & Hook",
@@ -614,7 +614,7 @@ RECIPES: List[Recipe] = [
         materials=[("sinew", 1), ("animal_bones", 1)],
         tool_required="cut", skill="survival", difficulty=6, time_minutes=25,
         output_id="fishing_line",
-        category="general",
+        category="tools",
     ),
     Recipe(
         id="make_canvas_tent", name="Canvas Tent",
@@ -625,7 +625,7 @@ RECIPES: List[Recipe] = [
                        "category": "misc", "base_value": 5.00,
                        "extra": {"shelter": True, "warmth_bonus": 15},
                        "description": "A canvas tent. Basic shelter from the elements."},
-        category="general",
+        category="shelter",
     ),
     Recipe(
         id="make_bedroll", name="Bedroll",
@@ -633,7 +633,7 @@ RECIPES: List[Recipe] = [
         materials=[("leather", 2), ("raw_hide", 1)],
         tool_required="cut", skill="survival", difficulty=6, time_minutes=60,
         output_id="bedroll",
-        category="general",
+        category="shelter",
     ),
     Recipe(
         id="make_travois", name="Travois",
@@ -644,7 +644,7 @@ RECIPES: List[Recipe] = [
                        "category": "tool", "base_value": 2.00,
                        "extra": {"carry_bonus_lb": 100},
                        "description": "A drag sled. Haul 100 extra pounds behind you."},
-        category="general",
+        category="tools",
     ),
     Recipe(
         id="make_snowshoes", name="Snowshoes",
@@ -655,7 +655,7 @@ RECIPES: List[Recipe] = [
                        "category": "clothing", "base_value": 3.00,
                        "extra": {"snow_speed": 0.5, "slot": "feet"},
                        "description": "Snowshoes. Walk on snow without sinking."},
-        category="general",
+        category="tools",
     ),
     Recipe(
         id="make_stretcher", name="Stretcher/Litter",
@@ -666,7 +666,7 @@ RECIPES: List[Recipe] = [
                        "category": "tool", "base_value": 1.00,
                        "extra": {"carry_bonus_lb": 80},
                        "description": "A canvas stretcher. Carry the injured or extra gear."},
-        category="general",
+        category="tools",
     ),
     Recipe(
         id="make_bucket", name="Wooden Bucket",
@@ -677,7 +677,7 @@ RECIPES: List[Recipe] = [
                        "category": "tool", "base_value": 0.50,
                        "tool_tags": ["haul_water"],
                        "description": "A wooden bucket. Haul water from streams."},
-        category="general",
+        category="tools",
     ),
 
     # ── Medical ──────────────────────────────────────────────────────
@@ -690,7 +690,7 @@ RECIPES: List[Recipe] = [
                        "category": "tool", "base_value": 0.20, "stackable": True,
                        "tool_tags": ["medical"],
                        "description": "A strip of clean cloth for bandaging wounds."},
-        category="general",
+        category="medical",
     ),
 
     # ── Storage & Carrying ──────────────────────────────────────────
@@ -725,7 +725,7 @@ RECIPES: List[Recipe] = [
         materials=[("canvas", 1)],
         skill="survival", difficulty=3, time_minutes=15,
         output_id="ore_sack",
-        category="general",
+        category="tools",
     ),
 
     # ── Animal parts crafting ────────────────────────────────────────
@@ -759,7 +759,7 @@ RECIPES: List[Recipe] = [
                        "category": "material", "base_value": 0.30, "stackable": True,
                        "description": "Strong hide glue. Repairs tool handles and bindings."},
         output_qty=2,
-        category="general",
+        category="materials",
     ),
     Recipe(
         id="gut_string", name="Gut String",
@@ -770,7 +770,7 @@ RECIPES: List[Recipe] = [
                        "category": "material", "base_value": 0.40, "stackable": True,
                        "description": "Twisted intestine cord. Strong for snares and bowstrings."},
         output_qty=3,
-        category="general",
+        category="materials",
     ),
     Recipe(
         id="water_bag", name="Stomach Water Bag",
@@ -780,7 +780,7 @@ RECIPES: List[Recipe] = [
         output_custom={"id": "stomach_bag", "name": "Stomach Water Bag", "weight": 0.3,
                        "category": "drink", "base_value": 0.25, "hydration": 25.0,
                        "description": "A cleaned animal stomach. Holds water. Smells faintly."},
-        category="general",
+        category="tools",
     ),
     Recipe(
         id="small_leather", name="Small Leather Piece",
@@ -813,7 +813,7 @@ RECIPES: List[Recipe] = [
         output_custom={"id": "skull_trophy", "name": "Skull Trophy", "weight": 2.0,
                        "category": "misc", "base_value": 1.50,
                        "description": "A cleaned animal skull. Decoration or curiosity."},
-        category="general",
+        category="bonework",
     ),
     Recipe(
         id="gallbladder_medicine", name="Bear Bile Medicine",
@@ -824,7 +824,7 @@ RECIPES: List[Recipe] = [
                        "category": "tool", "base_value": 8.00,
                        "tool_tags": ["medical"],
                        "description": "Traditional medicine. Valuable trade item with Chinese merchants."},
-        category="general",
+        category="medical",
     ),
     Recipe(
         id="rattlesnake_charm", name="Rattlesnake Rattle Charm",
@@ -834,7 +834,7 @@ RECIPES: List[Recipe] = [
         output_custom={"id": "rattle_charm", "name": "Rattlesnake Charm", "weight": 0.05,
                        "category": "misc", "base_value": 1.00,
                        "description": "A rattlesnake rattle on a sinew cord. Lucky, some say."},
-        category="general",
+        category="bonework",
     ),
     Recipe(
         id="clay_pot", name="Clay Pot",
@@ -845,7 +845,7 @@ RECIPES: List[Recipe] = [
                        "category": "tool", "base_value": 0.50,
                        "tool_tags": ["cook", "brew"],
                        "description": "A hand-fired clay pot. Cook, boil, or store."},
-        category="general",
+        category="tools",
     ),
 
     # ── Medical ──────────────────────────────────────────────────────
@@ -858,7 +858,7 @@ RECIPES: List[Recipe] = [
                        "category": "tool", "base_value": 0.15, "stackable": True,
                        "tool_tags": ["medical", "set_bone"],
                        "description": "A wooden splint. Immobilizes fractures."},
-        category="general",
+        category="medical",
     ),
     Recipe(
         id="poultice", name="Herbal Poultice",
@@ -869,7 +869,7 @@ RECIPES: List[Recipe] = [
                        "category": "tool", "base_value": 0.25, "stackable": True,
                        "tool_tags": ["medical", "poultice"],
                        "description": "A damp herbal pack. Reduces infection."},
-        category="general",
+        category="medical",
     ),
     Recipe(
         id="willow_tea", name="Willow Bark Tea",
@@ -880,7 +880,7 @@ RECIPES: List[Recipe] = [
                        "category": "drink", "base_value": 0.10, "hydration": 10.0,
                        "extra": {"pain_relief": 20},
                        "description": "Bitter tea. Dulls pain for hours."},
-        category="general",
+        category="medical",
     ),
     Recipe(
         id="tourniquet", name="Tourniquet",
@@ -891,7 +891,7 @@ RECIPES: List[Recipe] = [
                        "category": "tool", "base_value": 0.20, "stackable": True,
                        "tool_tags": ["medical", "tourniquet"],
                        "description": "Emergency tourniquet. Stops bleeding but risks the limb."},
-        category="general",
+        category="medical",
     ),
 
     # ── Material processing ──────────────────────────────────────────
@@ -904,7 +904,7 @@ RECIPES: List[Recipe] = [
                        "category": "misc", "base_value": 0.50, "stackable": True,
                        "description": "Hard lye soap. Cleans everything. Trades well."},
         output_qty=3,
-        category="general",
+        category="materials",
     ),
     Recipe(
         id="make_nails", name="Nails (from iron)",
@@ -912,7 +912,7 @@ RECIPES: List[Recipe] = [
         materials=[("iron_bar", 1)],
         skill="engineering", difficulty=8, time_minutes=60,
         output_id="nails", output_qty=10,
-        category="general",
+        category="materials",
     ),
     Recipe(
         id="make_rawhide_rope", name="Rawhide Lashing",
@@ -920,7 +920,7 @@ RECIPES: List[Recipe] = [
         materials=[("raw_hide", 1)],
         tool_required="cut", skill="survival", difficulty=3, time_minutes=15,
         output_id="cordage", output_qty=4,
-        category="general",
+        category="materials",
     ),
 
     # ── Crafting intermediates ────────────────────────────────────────
@@ -930,7 +930,7 @@ RECIPES: List[Recipe] = [
         materials=[("log", 1)],
         skill="survival", difficulty=4, time_minutes=30,
         output_id="charcoal", output_qty=3,
-        category="general",
+        category="materials",
     ),
     Recipe(
         id="make_lye", name="Lye",
@@ -938,7 +938,7 @@ RECIPES: List[Recipe] = [
         materials=[("charcoal", 1)],
         skill="survival", difficulty=5, time_minutes=20,
         output_id="lye", output_qty=2,
-        category="general",
+        category="materials",
     ),
     Recipe(
         id="make_cordage", name="Cordage (from brush)",
@@ -946,7 +946,7 @@ RECIPES: List[Recipe] = [
         materials=[("brush_bundle", 1)],
         skill="survival", difficulty=3, time_minutes=15,
         output_id="cordage", output_qty=3,
-        category="general",
+        category="materials",
     ),
 
     # ── Survival crafting ─────────────────────────────────────────────
@@ -960,7 +960,7 @@ RECIPES: List[Recipe] = [
                        "nutrition": 35.0, "perishable": True,
                        "days_until_spoil": 30,
                        "description": "Salt-preserved meat. Lasts weeks."},
-        category="general",
+        category="food",
     ),
     Recipe(
         id="brew_coffee", name="Brew Coffee",
@@ -972,7 +972,7 @@ RECIPES: List[Recipe] = [
                        "hydration": 10.0,
                        "extra": {"fatigue_restore": 20},
                        "description": "Black coffee. Bitter but it wakes you up."},
-        category="general",
+        category="food",
     ),
     Recipe(
         id="make_bear_trap", name="Bear Trap",

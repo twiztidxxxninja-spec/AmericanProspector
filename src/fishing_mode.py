@@ -428,8 +428,9 @@ def enter_fishing_mode(engine: "Engine", console, ctx) -> None:
                         caught.name = f"Fresh {fish.display_name}"
                         caught.nutrition = fish.nutrition
                         caught.weight = max(0.3, weight)
-                        # Trade value scales with size and difficulty
-                        caught.base_value = round(weight * 0.05 + fish.catch_difficulty * 0.03, 2)
+                        # Base trade value — fish is cheap at the river
+                        # Regional price multiplier handles markup in camps/towns
+                        caught.base_value = round(weight * 0.02, 2)  # ~$0.44 for a 22lb salmon
                         # Tag with species for smoking/drying recipes
                         if not caught.extra:
                             caught.extra = {}
@@ -453,7 +454,7 @@ def enter_fishing_mode(engine: "Engine", console, ctx) -> None:
                             bc.name = f"Fresh {bonus.display_name}"
                             bc.nutrition = bonus.nutrition
                             bc.weight = max(0.3, bw)
-                            bc.base_value = round(bw * 0.05 + bonus.catch_difficulty * 0.03, 2)
+                            bc.base_value = round(bw * 0.02, 2)
                             if not bc.extra: bc.extra = {}
                             bc.extra["fish_species"] = bonus.id
                             player.inventory.append(bc)

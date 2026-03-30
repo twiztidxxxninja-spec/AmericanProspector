@@ -225,7 +225,16 @@ def assess_ground(player: "Player", local_map: "LocalMap",
     return " ".join(observations)
 
 
-def pan_for_gold(player: "Player", local_map: "LocalMap") -> PanResult:
+_SEASON_GOLD_MULT = {
+    "spring": 1.3,   # spring runoff washes new gold down from mountains
+    "summer": 0.8,   # low water, less material moving
+    "fall":   1.0,   # normal
+    "winter": 0.6,   # frozen ground, cold hands, less efficient
+}
+
+
+def pan_for_gold(player: "Player", local_map: "LocalMap",
+                 season: str = "summer") -> PanResult:
     """
     One panning cycle at the player's current tile.
     Takes ~20 minutes. Uses Placer skill.
@@ -280,9 +289,11 @@ def pan_for_gold(player: "Player", local_map: "LocalMap") -> PanResult:
         base_oz = GRADE_OZ[grade_label]
         # Skill multiplier: up to 2× at skill 10
         skill_mult = 1.0 + placer_skill * 0.1
+        # Seasonal variation — spring runoff best, winter worst
+        season_mult = _SEASON_GOLD_MULT.get(season, 1.0)
         # Random variation ±30%
         variation = random.uniform(0.7, 1.3)
-        gold_recovered = base_oz * skill_mult * variation
+        gold_recovered = base_oz * skill_mult * season_mult * variation
         # Deplete tile slightly
         tile.gold_grade = max(0.0, tile.gold_grade - 0.005)
 

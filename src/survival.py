@@ -17,6 +17,10 @@ class SurvivalStats:
     warmth:  float = 80.0    # 100 = warm, 0 = freezing
     fatigue: float = 100.0   # 100 = rested, 0 = exhausted
 
+    # Gut sickness — from stagnant water, bad food, etc.
+    # Duration in hours remaining. 0 = healthy.
+    gut_sick_hours: float = 0.0
+
     def tick(self, minutes: float, activity_mult: float = 1.0,
              temp_mod: float = 0.0, sheltered: bool = False,
              constitution: int = 10):
@@ -42,6 +46,13 @@ class SurvivalStats:
         # CON 16 = 30% less warmth drain, CON 6 = 20% more
         con_cold = 1.0 - (constitution - 10) * 0.05
         self.warmth = max(0.0, self.warmth - WARMTH_RATE * hours * (1.0 + cold_mult) * con_cold)
+
+        # Gut sickness — drains hunger/thirst faster, slows you down
+        if self.gut_sick_hours > 0:
+            self.gut_sick_hours = max(0, self.gut_sick_hours - hours)
+            self.hunger = max(0, self.hunger - 1.5 * hours)   # vomiting/diarrhea
+            self.thirst = max(0, self.thirst - 2.0 * hours)   # dehydration
+            self.fatigue = max(0, self.fatigue - 1.0 * hours)  # exhaustion
 
         # Damage from critical stats (CON reduces damage rate)
         deprivation_resist = max(0.5, 1.0 - (constitution - 10) * 0.05)
@@ -76,6 +87,11 @@ class SurvivalStats:
             ("health",  self.health),
         ]
         result = []
+        if self.gut_sick_hours > 0:
+            if self.gut_sick_hours > 48:
+                result.append(("gut sick", "critical"))
+            else:
+                result.append(("gut sick", "advisory"))
         for name, val in checks:
             if val <= STAT_CRITICAL:
                 result.append((name, "critical"))
@@ -86,6 +102,21 @@ class SurvivalStats:
     @property
     def alive(self) -> bool:
         return self.health > 0
+
+    def contract_gut_sickness(self, severity: float = 1.0):
+        """Contract gut sickness. Duration 72-120 hours (3-5 days).
+        Survivable without treatment, clears faster with medicine."""
+        import random
+        duration = random.uniform(72, 120) * severity
+        self.gut_sick_hours = max(self.gut_sick_hours, duration)
+
+    def treat_gut_sickness(self):
+        """Treat with medicine — reduces remaining duration to ~24 hours."""
+        self.gut_sick_hours = min(self.gut_sick_hours, 24)
+
+    @property
+    def is_gut_sick(self) -> bool:
+        return self.gut_sick_hours > 0
 
     def bar(self, stat: str, width: int = 10) -> str:
         """ASCII bar for display: ████████░░"""

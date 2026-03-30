@@ -3018,7 +3018,35 @@ class Engine:
             if _near_water():
                 canteen.extra["filled"] = True
                 canteen.extra["contents"] = "water"
-                self.add_message("You kneel by the water and fill your canteen.", "normal")
+                # Check if water is stagnant (few adjacent water tiles = puddle)
+                from src.local_map import LocalTerrain as _WLT
+                water_adj = 0
+                for dy2 in range(-2, 3):
+                    for dx2 in range(-2, 3):
+                        wx2 = self.player.local_x + dx2
+                        wy2 = self.player.local_y + dy2
+                        if lmap.in_bounds(wx2, wy2) and \
+                                lmap.tile_at(wx2, wy2).terrain == _WLT.WATER:
+                            water_adj += 1
+                if water_adj <= 3:
+                    # Stagnant water — risk of gut sickness
+                    import random as _wrng
+                    con = self.player.attributes.get("constitution", 10)
+                    risk = max(0.05, 0.25 - con * 0.015)
+                    if _wrng.random() < risk:
+                        self.player.survival.contract_gut_sickness()
+                        self.add_message(
+                            "You fill your canteen from a still pool. "
+                            "The water tastes off. Your stomach churns.",
+                            "warning")
+                    else:
+                        self.add_message(
+                            "You fill your canteen from a still pool. "
+                            "Looks clear enough.", "normal")
+                else:
+                    self.add_message(
+                        "You kneel by the flowing stream and fill your canteen. "
+                        "Cold, clean water.", "normal")
                 self.advance_time(5)
             else:
                 self.add_message("There's no water nearby to fill from.", "advisory")
@@ -3379,7 +3407,7 @@ class Engine:
                 # Temporarily set current tile's grade to source grade for pan_for_gold
                 saved_grade = tile.gold_grade
                 tile.gold_grade = src_tile.gold_grade
-                result = pan_for_gold(self.player, lmap)
+                result = pan_for_gold(self.player, lmap, season=self.time.season)
                 tile.gold_grade = saved_grade  # restore
                 self.player.pan_loaded = False
                 self.player.pan_source_x = -1

@@ -2684,6 +2684,19 @@ class Engine:
             else:
                 actions.append("Check traps")
 
+        # Medical — show when wounded or sick
+        if self.player.wounds.active_wounds:
+            actions.append("Inspect wounds")
+            if any(not getattr(w, '_cleaned', False)
+                   for w in self.player.wounds.active_wounds):
+                actions.append("Clean wounds")
+            if any(w.is_bleeding for w in self.player.wounds.active_wounds):
+                actions.append("Bandage wounds")
+            if any(w.lodged for w in self.player.wounds.active_wounds):
+                actions.append("Extract lodged object")
+        if self.player.survival.is_gut_sick:
+            actions.append("Treat gut sickness")
+
         # Camp — always available outdoors
         if not (hasattr(lmap, 'town_layout') and lmap.town_layout):
             actions.append("Make camp")
@@ -3076,6 +3089,95 @@ class Engine:
             else:
                 self.add_message("There's no water nearby to fill from.", "advisory")
                 self.advance_time(2)
+            return
+
+        # ── Inspect wounds ────────────────────────────────────────────────
+        if "inspect" in a and ("wound" in a or "injur" in a or "health" in a):
+            wounds = self.player.wounds.active_wounds
+            if not wounds:
+                self.add_message("No active wounds.", "normal")
+            else:
+                for w in wounds:
+                    from src.health_system import PART_DATA
+                    part_label = PART_DATA.get(w.part, {}).get("label", w.part)
+                    status = []
+                    if w.is_bleeding:
+                        status.append(f"bleeding ({w.bleed_level})")
+                    if w.infected:
+                        status.append("INFECTED")
+                    if w.bone_broken:
+                        status.append("broken bone")
+                    if w.lodged:
+                        status.append(f"{w.lodged} lodged")
+                    status_str = ", ".join(status) if status else "stable"
+                    self.add_message(
+                        f"  {part_label}: {w.description} [{status_str}]",
+                        "advisory")
+                # Show gut sickness / mercury
+                if self.player.survival.is_gut_sick:
+                    hrs = self.player.survival.gut_sick_hours
+                    self.add_message(
+                        f"  Gut sickness: {hrs:.0f} hours remaining. "
+                        f"Treat with medicine or wait it out.",
+                        "advisory")
+                if self.player.survival.mercury_exposure >= 20:
+                    self.add_message(
+                        f"  Mercury: {self.player.survival.mercury_symptoms}",
+                        "warning")
+            self.advance_time(5)
+            return
+
+        # ── Clean wound ──────────────────────────────────────────────────
+        if "clean" in a and "wound" in a:
+            wounds = [w for w in self.player.wounds.active_wounds
+                      if not getattr(w, '_cleaned', False)]
+            if not wounds:
+                self.add_message("No wounds need cleaning.", "normal")
+                return
+            # Need water nearby or canteen
+            has_water = any(i.id == "canteen" and i.extra.get("filled")
+                           for i in self.player.inventory)
+            if not has_water and not _near_water():
+                self.add_message("You need water to clean wounds. Fill your canteen.", "advisory")
+                return
+            w = wounds[0]
+            w._cleaned = True
+            # Cleaning reduces infection chance
+            if hasattr(w, 'infection_chance'):
+                w.infection_chance = max(0, w.infection_chance - 0.3)
+            self.add_message(
+                f"You clean the {w.description} on your {w.part} with water. "
+                f"Infection risk reduced.", "normal")
+            self.player.gain_skill_xp("firstAid", 2.0)
+            self.advance_time(10)
+            return
+
+        # ── Treat gut sickness ───────────────────────────────────────────
+        if ("treat" in a or "medicine" in a or "cure" in a) and \
+                ("gut" in a or "sick" in a or "stomach" in a):
+            if not self.player.survival.is_gut_sick:
+                self.add_message("You're not sick.", "normal")
+                return
+            # Check for medicine items
+            meds = [i for i in self.player.inventory
+                    if any(t in getattr(i, 'tool_tags', [])
+                           for t in ('medical', 'painkiller'))
+                    or i.id in ('whiskey', 'willow_tea', 'laudanum')]
+            if meds:
+                med = meds[0]
+                if med.stackable and med.quantity > 1:
+                    med.quantity -= 1
+                else:
+                    self.player.inventory.remove(med)
+                self.player.survival.treat_gut_sickness()
+                self.add_message(
+                    f"You take {med.name}. Your stomach settles. "
+                    f"Should clear up within a day.", "normal")
+            else:
+                self.add_message(
+                    "No medicine available. Whiskey, willow bark tea, "
+                    "or laudanum would help. Otherwise wait it out.",
+                    "advisory")
             return
 
         # ── Bandage wounds ───────────────────────────────────────────────

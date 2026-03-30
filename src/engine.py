@@ -4721,13 +4721,31 @@ class Engine:
         from src.local_map import LocalTerrain as _LT
         p = self.player
 
-        # Drop ALL inventory into the river downstream
-        # Scatter items on banks 20-60 tiles downstream
+        # Separate items by weight — heavy items sink or travel far,
+        # light items wash up closer. Pack/bags go the farthest.
         flow_dy = 1  # downstream = south-ish
-        for item in list(p.inventory):
-            dist = rng.randint(20, 60)
+        items_by_weight = sorted(p.inventory,
+                                  key=lambda i: i.weight * getattr(i, 'quantity', 1),
+                                  reverse=True)
+        for item in items_by_weight:
+            item_weight = item.weight * getattr(item, 'quantity', 1)
+            is_bag = (getattr(item, 'extra', {}) or {}).get('carry_capacity_lb', 0) > 0
+
+            # Bags/packs go VERY far downstream — might not be worth recovering
+            if is_bag:
+                dist = rng.randint(120, 200)
+            elif item_weight > 5.0:
+                # Heavy items (pickaxe, rifle) — far but findable
+                dist = rng.randint(60, 120)
+            elif item_weight > 1.0:
+                # Medium items — moderate distance
+                dist = rng.randint(30, 70)
+            else:
+                # Light items (food, ammo) — closer
+                dist = rng.randint(15, 40)
+
             placed = False
-            for offset in range(dist, dist + 30):
+            for offset in range(dist, dist + 40):
                 bx = p.local_x + rng.randint(-5, 5)
                 by = p.local_y + flow_dy * offset + rng.randint(-3, 3)
                 if lmap.in_bounds(bx, by):
@@ -4736,12 +4754,12 @@ class Engine:
                         bank.ground_items.append(item)
                         placed = True
                         break
-            # If can't place on bank, item is truly lost
+            # If can't place on bank, item is gone forever
         p.inventory.clear()
         p.left_hand = None
         p.right_hand = None
 
-        # Lose gold dust
+        # Lose gold dust — all of it
         gold_lost = p.gold_oz
         p.gold_oz = 0.0
 
@@ -4781,11 +4799,13 @@ class Engine:
             "critical")
         if gold_lost > 0:
             self.add_message(
-                f"  [{gold_lost:.3f} oz gold dust lost]",
+                f"  [{gold_lost:.3f} oz gold dust lost to the river]",
                 "critical")
         self.add_message(
-            "Some of your gear might have washed up downstream. "
-            "Search the banks.",
+            "Light items may have washed up nearby. Heavier gear "
+            "could be a long walk downstream. Your pack... "
+            "it might be half a mile away by now. Up to you if "
+            "it's worth going after.",
             "advisory")
         self.recompute_fov()
 

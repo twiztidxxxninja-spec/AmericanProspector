@@ -2348,7 +2348,7 @@ class Engine:
         from src.ui_framework import draw_box, WHITE, YELLOW, CYAN, GREY, DGREY, BG, BG_SEL
         K = tcod.event.KeySym
 
-        W, H = 40, 18
+        W, H = 40, 20
         X = (con.width - W) // 2
         Y = (con.height - H) // 2
         selected = 0
@@ -2358,6 +2358,7 @@ class Engine:
             "Save Game",
             f"Music Volume: {int(self.music.volume * 100)}%",
             f"Music: {'ON' if self.music.enabled else 'OFF'}",
+            "Report Bug",
             "Quit to Desktop",
         ]
 
@@ -2420,6 +2421,11 @@ class Engine:
                     elif selected == 3:
                         self.music.toggle_mute()
                     elif selected == 4:
+                        from src.bug_report import open_bug_report_ui
+                        result = open_bug_report_ui(self, con, ctx)
+                        if result:
+                            self.add_message(result, "advisory")
+                    elif selected == 5:
                         self._do_save()
                         return "quit"
 

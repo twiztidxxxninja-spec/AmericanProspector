@@ -592,10 +592,22 @@ ITEM_TEMPLATES: Dict[str, dict] = {
         "description": "A bolt of heavy canvas cloth. Used for tents, tarps, and covers.",
         "base_value": 1.00, "stackable": True,
     },
+    "brain": {
+        "id": "brain", "name": "Brain", "weight": 0.5,
+        "category": "material",
+        "description": "Animal brain. Used for brain-tanning hides into leather.",
+        "base_value": 0.05, "stackable": True, "perishable": True, "days_until_spoil": 2,
+    },
+    "leather": {
+        "id": "leather", "name": "Tanned Leather", "weight": 4.0,
+        "category": "material",
+        "description": "Worked leather. Craft into clothing, bags, or sheaths.",
+        "base_value": 3.00, "stackable": True,
+    },
     "brush_bundle": {
         "id": "brush_bundle", "name": "Brush", "weight": 1.0,
         "category": "material",
-        "description": "A bundle of cut brush and branches. Used for lean-tos and thatching.",
+        "description": "A bundle of cut brush and fibers. Twist into cordage or use for shelter.",
         "base_value": 0.02, "stackable": True,
     },
     "clay": {
@@ -699,6 +711,7 @@ ITEM_TEMPLATES: Dict[str, dict] = {
         "description": "Tincture of opium. Kills pain from wounds. "
                        "Highly addictive — use sparingly or pay the price.",
         "base_value": 2.00, "stackable": True,
+        "tool_tags": ["medical", "painkiller"],
         "extra": {"pain_relief": 40, "addiction_risk": 0.15},
     },
     "whiskey": {

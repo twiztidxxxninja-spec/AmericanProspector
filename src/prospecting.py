@@ -63,6 +63,168 @@ def _skill_roll(player: "Player", skill: str, difficulty: int) -> bool:
     return roll >= difficulty
 
 
+def test_pan(player: "Player", local_map: "LocalMap") -> PanResult:
+    """
+    Quick 5-minute test pan — reveals gold grade of current spot
+    without extracting gold. Core prospecting mechanic: you sample
+    before committing to work an area.
+    """
+    from src.local_map import LocalTerrain
+    tile = local_map.tile_at(player.local_x, player.local_y)
+
+    has_pan = any("pan" in getattr(item, 'tool_tags', []) for item in player.inventory)
+    if not has_pan:
+        return PanResult(
+            success=False, gold_oz=0, grade_seen="barren",
+            time_minutes=2, xp_placer=0, xp_geology=0,
+            message="You need a gold pan to test this ground.",
+        )
+
+    # Assign gold grade if not yet set
+    if tile.gold_grade == 0.0:
+        rng = random.Random(local_map.seed + player.local_x * 100 + player.local_y)
+        if tile.terrain == LocalTerrain.GRAVEL_BAR:
+            tile.gold_grade = rng.betavariate(1.5, 4.0)
+        elif tile.terrain == LocalTerrain.BEDROCK:
+            tile.gold_grade = rng.betavariate(2.0, 3.0)
+        elif tile.terrain in (LocalTerrain.WATER, LocalTerrain.MUD,
+                               LocalTerrain.SAND):
+            tile.gold_grade = rng.betavariate(0.8, 5.0)
+        else:
+            tile.gold_grade = rng.betavariate(0.3, 8.0)
+
+    grade_label = tile_grade_label(tile.gold_grade)
+    placer_skill = player.skills.get("placer", 0)
+    geo_skill = player.skills.get("geology", 0)
+
+    # What the player learns depends on combined skill
+    total_skill = placer_skill + geo_skill
+    if total_skill >= 12:
+        # Expert: exact grade + estimated oz/pan
+        base_oz = GRADE_OZ.get(grade_label, 0)
+        grade_seen = grade_label
+        if base_oz > 0:
+            est = base_oz * random.uniform(0.8, 1.2)
+            msg = (f"Test pan: {grade_label}. Estimated ~{est:.3f} oz/pan "
+                   f"(~${est * GOLD_PRICE_PER_OZ * FINENESS:.2f}). "
+                   f"{'Worth setting up here.' if grade_label in ('color', 'rich', 'bonanza') else 'Marginal ground.'}")
+        else:
+            msg = "Test pan: barren. No color at all. Move on."
+    elif total_skill >= 8:
+        # Good: accurate grade label
+        grade_seen = grade_label
+        msg_map = {
+            "barren": "Test pan: nothing. Dead ground.",
+            "trace": "Test pan: faintest hint of color. Barely worth it.",
+            "color": "Test pan: definite color. There's gold here.",
+            "rich": "Test pan: good color! Fat flakes in the black sand. Promising.",
+            "bonanza": "Test pan: heavy gold settles immediately. This is exceptional ground.",
+        }
+        msg = msg_map.get(grade_label, "Test pan complete.")
+    elif total_skill >= 4:
+        # Moderate: rough classification
+        if grade_label in ("barren", "trace"):
+            grade_seen = "barren" if random.random() < 0.7 else "trace"
+            msg = "Test pan: looks pretty lean. Maybe a trace, maybe nothing."
+        elif grade_label in ("color", "rich"):
+            grade_seen = "color"
+            msg = "Test pan: there's color. How much, hard to say."
+        else:
+            grade_seen = "rich"
+            msg = "Test pan: definitely gold here. Lots of it."
+    else:
+        # Novice: binary — gold or no gold
+        if grade_label == "barren":
+            grade_seen = "barren"
+            msg = "You swirl the dirt around. You have no idea what you're looking at. Seems empty."
+        else:
+            grade_seen = "color"
+            msg = "You see... something shiny? Could be gold. Could be mica. You're not sure."
+
+    tile.mineral_hint = grade_seen
+
+    return PanResult(
+        success=True, gold_oz=0.0, grade_seen=grade_seen,
+        time_minutes=5, xp_placer=2.0, xp_geology=3.0,
+        message=msg,
+    )
+
+
+def assess_ground(player: "Player", local_map: "LocalMap",
+                  x: int, y: int) -> str:
+    """
+    Read geological indicators at a tile. Free action — just looking.
+    Higher geology skill reveals more useful information.
+    """
+    from src.local_map import LocalTerrain
+    tile = local_map.tile_at(x, y)
+    geo_skill = player.skills.get("geology", 0)
+
+    observations = []
+
+    # Basic terrain observation (anyone can see)
+    terrain_obs = {
+        LocalTerrain.GRAVEL_BAR: "Gravel bar — loose alluvial material.",
+        LocalTerrain.BEDROCK: "Exposed bedrock — potential gold trap.",
+        LocalTerrain.WATER: "Flowing water.",
+        LocalTerrain.MUD: "Wet mud — recent water activity.",
+        LocalTerrain.SAND: "Sandy ground.",
+    }
+    t_obs = terrain_obs.get(tile.terrain)
+    if t_obs:
+        observations.append(t_obs)
+
+    # Skill-gated observations
+    if geo_skill >= 1:
+        # Check nearby water (inside bend indicator)
+        has_water_adj = False
+        water_count = 0
+        for dx in range(-2, 3):
+            for dy in range(-2, 3):
+                nx, ny = x + dx, y + dy
+                if local_map.in_bounds(nx, ny):
+                    if local_map.tile_at(nx, ny).terrain == LocalTerrain.WATER:
+                        water_count += 1
+                        has_water_adj = True
+        if has_water_adj:
+            observations.append("Near running water — placer deposits possible.")
+        if water_count >= 3:
+            observations.append("Inside bend of creek — gold concentrates here.")
+
+    if geo_skill >= 3:
+        # Check for black sand (high gold_grade nearby)
+        rich_nearby = 0
+        for dx in range(-3, 4):
+            for dy in range(-3, 4):
+                nx, ny = x + dx, y + dy
+                if local_map.in_bounds(nx, ny):
+                    if local_map.tile_at(nx, ny).gold_grade > 0.3:
+                        rich_nearby += 1
+        if rich_nearby >= 2:
+            observations.append("Heavy black sand in the area — good sign.")
+
+    if geo_skill >= 5:
+        # Read the gold grade directly
+        if tile.gold_grade > 0:
+            gl = tile_grade_label(tile.gold_grade)
+            observations.append(f"Your experienced eye reads this as: {gl}.")
+        elif tile.mineral_hint:
+            observations.append(f"Previously tested: {tile.mineral_hint}.")
+
+    if geo_skill >= 7:
+        # Identify pay streaks
+        if tile.gold_grade >= 0.45:
+            observations.append("PAY STREAK — this is working ground. Set up here.")
+        # Identify bedrock crevices
+        if tile.terrain == LocalTerrain.BEDROCK and tile.gold_grade > 0.3:
+            observations.append("Bedrock crevice — gold trapped in the cracks. Clean it out.")
+
+    if not observations:
+        observations.append("Nothing stands out about this ground.")
+
+    return " ".join(observations)
+
+
 def pan_for_gold(player: "Player", local_map: "LocalMap") -> PanResult:
     """
     One panning cycle at the player's current tile.
@@ -231,34 +393,6 @@ def depletion_message(old_grade: float, new_grade: float) -> str:
     return ""
 
 
-def assess_ground(player: "Player", local_map: "LocalMap") -> str:
-    """
-    Geology assessment of current tile without panning.
-    Returns a description string. Takes 10 minutes.
-    """
-    from src.local_map import LocalTerrain
-    tile = local_map.tile_at(player.local_x, player.local_y)
-    geo  = player.skills.get("geology", 0)
-
-    if tile.terrain not in (LocalTerrain.GRAVEL_BAR, LocalTerrain.BEDROCK,
-                             LocalTerrain.ROCK, LocalTerrain.WATER):
-        return "Nothing here suggests gold-bearing ground."
-
-    if geo == 0:
-        return "You look at the gravel and dirt. You're not sure what you're looking for."
-    if geo <= 2:
-        return ("The gravel bar looks like it could carry gold — inside bends usually do. "
-                "Worth panning a few test pans.")
-    if geo <= 4:
-        hints = []
-        if tile.terrain == LocalTerrain.GRAVEL_BAR:
-            hints.append("good particle mix — fine and coarse together")
-        if tile.terrain == LocalTerrain.BEDROCK:
-            hints.append("bedrock crevices running perpendicular to flow — natural gold traps")
-        hints.append("black sand present" if (tile.gold_grade or 0) > 0.1
-                     else "light black sand")
-        return f"Assessment: {', '.join(hints)}. Looks promising."
-    # High geology
-    grade = tile_grade_label(tile.gold_grade) if tile.gold_grade else "unknown"
-    return (f"Experienced eye: this ground reads as {grade} grade. "
-            f"{'Worth setting up a sluice.' if grade in ('rich','bonanza') else 'Pan it out and move on if it doesnt show.'}")
+# Old assess_ground (2-arg) kept as backward-compat wrapper
+def _assess_ground_compat(player: "Player", local_map: "LocalMap") -> str:
+    return assess_ground(player, local_map, player.local_x, player.local_y)

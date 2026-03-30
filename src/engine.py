@@ -3195,6 +3195,26 @@ class Engine:
             self.advance_time(3)
             return
 
+        # ── Test pan (quick sample) ───────────────────────────────────────
+        if ("test" in a and "pan" in a) or "sample" in a:
+            from src.prospecting import test_pan
+            result = test_pan(self.player, self.current_local)
+            self.add_message(result.message, "advisory" if result.success else "normal")
+            self.player.gain_skill_xp("placer", result.xp_placer)
+            self.player.gain_skill_xp("geology", result.xp_geology)
+            self.advance_time(result.time_minutes)
+            return
+
+        # ── Assess ground (read geology) ──────────────────────────────────
+        if "assess" in a or "read" in a and ("ground" in a or "rock" in a or "terrain" in a):
+            from src.prospecting import assess_ground
+            obs = assess_ground(self.player, self.current_local,
+                                self.player.local_x, self.player.local_y)
+            self.add_message(obs, "advisory")
+            self.player.gain_skill_xp("geology", 1.0)
+            self.advance_time(2)
+            return
+
         # ── Panning ───────────────────────────────────────────────────────
         if "pan" in a and ("gold" in a or "crevice" in a or "bedrock" in a):
             has_pan = any("pan" in getattr(i, "tool_tags", [])
@@ -3475,12 +3495,13 @@ class Engine:
             return
 
         # ── Geology / sampling ────────────────────────────────────────────
-        if "sample" in a or "assess" in a or "geology" in a or "mineral" in a or "terrain" in a:
+        if "geology" in a or "mineral" in a or ("read" in a and "terrain" in a):
             from src.prospecting import assess_ground
-            msg = assess_ground(self.player, lmap)
+            msg = assess_ground(self.player, lmap,
+                                self.player.local_x, self.player.local_y)
             self.player.gain_skill_xp("geology", 3.0)
-            self.advance_time(10)
-            self.add_message(msg, "normal")
+            self.advance_time(5)
+            self.add_message(msg, "advisory")
             return
 
         # ── Digging ───────────────────────────────────────────────────────
@@ -3886,9 +3907,10 @@ class Engine:
         # ── Read streamflow ───────────────────────────────────────────────
         if "stream" in a and ("read" in a or "flow" in a):
             from src.prospecting import assess_ground
-            msg = assess_ground(self.player, lmap)
-            self.add_message(msg, "normal")
-            self.advance_time(10)
+            msg = assess_ground(self.player, lmap,
+                                self.player.local_x, self.player.local_y)
+            self.add_message(msg, "advisory")
+            self.advance_time(5)
             self.player.gain_skill_xp("geology", 2.0)
             return
 

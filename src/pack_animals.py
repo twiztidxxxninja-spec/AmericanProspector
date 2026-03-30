@@ -163,72 +163,58 @@ class PackAnimal:
         return base
 
     def tick_hourly(self, is_traveling: bool, terrain: str = "grass"):
-        """Called every game hour. Drain hunger/fatigue."""
+        """Called every game hour. Animals graze automatically and
+        need minimal maintenance. Only overloading causes problems."""
         if not self.alive:
             return
 
-        # Hunger drain
-        hunger_rate = 0.8 if is_traveling else 0.4
-        if self.overloaded:
-            hunger_rate *= 1.5
-        self.hunger = max(0, self.hunger - hunger_rate)
+        # Animals graze automatically — hunger stays topped up
+        # Only drains if in a desert/barren area with no forage
+        if terrain not in ("desert", "rock", "bedrock", "snow"):
+            self.hunger = min(100, self.hunger + 1.0)
+        else:
+            self.hunger = max(0, self.hunger - 0.3)
 
-        # Fatigue drain
+        # Fatigue
         if is_traveling:
-            fatigue_rate = 1.2
+            fatigue_rate = 0.8
             if self.overloaded:
-                fatigue_rate *= 2.0
+                fatigue_rate *= 2.5
             self.fatigue = max(0, self.fatigue - fatigue_rate)
         else:
-            # Resting recovers fatigue
-            self.fatigue = min(100, self.fatigue + 3.0)
+            self.fatigue = min(100, self.fatigue + 5.0)
 
-        # Starvation damage
-        if self.hunger <= 0:
-            self.health -= 2.0
-
-        # Exhaustion damage
-        if self.fatigue <= 0:
-            self.health -= 1.0
-            self.condition = max(0, self.condition - 0.5)
-
-        # Overload condition damage
+        # Overload condition damage (only real maintenance issue)
         if self.overloaded:
             self.condition = max(0, self.condition - 0.3)
+
+        # Only take health damage from extreme overload or zero fatigue
+        if self.fatigue <= 0:
+            self.health -= 0.5
+        if self.hunger <= 0:
+            self.health -= 1.0
 
         self.health = max(0, self.health)
 
     def tick_daily(self, on_grassland: bool, has_grain: bool,
                    rng: random.Random) -> List[str]:
-        """Daily tick. Forage, condition recovery, random events.
+        """Daily tick. Animals are low-maintenance — they graze on their own.
         Returns list of messages."""
         msgs = []
         if not self.alive:
             return msgs
 
-        sp = self.species
+        # Auto-forage — animals find their own food
+        self.hunger = min(100, self.hunger + 20)
 
-        # Forage on grassland
-        if on_grassland:
-            forage_amt = 30.0 * sp.forage_efficiency
-            self.hunger = min(100, self.hunger + forage_amt)
-            if forage_amt > 15:
-                msgs.append(f"{self.name} grazes contentedly.")
-
-        # Grain feeding needed?
-        if sp.grain_per_day > 0 and not on_grassland:
-            if has_grain:
-                self.hunger = min(100, self.hunger + 40)
-            else:
-                msgs.append(f"{self.name} needs grain — no forage available.")
-
-        # Condition recovery (slow, only when well-fed and rested)
-        if self.hunger > 60 and self.fatigue > 60 and not self.overloaded:
-            self.condition = min(100, self.condition + 1.0)
+        # Condition recovery (natural healing)
+        if not self.overloaded and self.fatigue > 40:
+            self.condition = min(100, self.condition + 2.0)
+            self.health = min(100, self.health + 1.0)
 
         # Death check
         if self.health <= 0:
-            msgs.append(f"{self.name} the {sp.name} has died.")
+            msgs.append(f"{self.name} the {self.species.name} has died.")
 
         return msgs
 

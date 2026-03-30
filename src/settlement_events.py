@@ -1,841 +1,1436 @@
 """
 src/settlement_events.py
 
-Random events that happen in towns and settlements — things the player
-witnesses, hears about, or is affected by while present.
+Interactive settlement events — NPCs with motives, player choices,
+and consequences. Every event involves real named NPCs from the
+settlement and gives the player agency.
 
-Called from engine daily tick when player is at a settlement.
-Events range from atmospheric flavor to gameplay-affecting incidents.
-
-Two categories:
-    1. Ambient events — flavor text, no state change
-    2. Active events — modify NPCs, prices, reputation, spawn items, etc.
+Called from engine daily tick. The event presents a situation and
+the player picks how to respond. Outcomes depend on player skills,
+attributes, relationships, and choices.
 """
 
 import random
 from dataclasses import dataclass, field
-from typing import Optional, Tuple, List, Dict, Any, TYPE_CHECKING
+from typing import Optional, List, Dict, Any, Callable, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from src.engine import Engine
+    from src.npc import NPC
 
 # ============================================================================
-#  SETTLEMENT EVENT
+#  DATA STRUCTURES
 # ============================================================================
 
 @dataclass
-class SettlementEvent:
-    """Result of a settlement event roll."""
+class EventChoice:
+    """A player choice in a settlement event."""
+    label: str
+    skill: str = ""             # skill checked (empty = auto-success)
+    difficulty: int = 0         # DC for skill check
+    attribute: str = ""         # attribute checked
+    attr_min: int = 0           # minimum attribute value needed
+
+
+@dataclass
+class EventOutcome:
+    """What happens after the player chooses."""
     message: str
-    severity: str = "normal"        # normal, advisory, warning, critical
-    # Optional gameplay effects
-    reputation_delta: float = 0.0   # player reputation change
-    price_mult: float = 1.0         # temporary price multiplier
-    price_duration: int = 0         # days the price effect lasts
-    npc_spawned: str = ""           # NPC type to spawn
-    item_spawned: str = ""          # item to drop near player
-    cash_delta: float = 0.0         # direct cash gain/loss
-    health_delta: float = 0.0       # survival health change
-    law_alert: bool = False         # triggers law enforcement attention
+    reputation_delta: float = 0.0
+    cash_delta: float = 0.0
+    health_delta: float = 0.0
+    relationship_delta: float = 0.0   # applied to involved NPC
+    item_id: str = ""                 # item given to player
+    price_mult: float = 1.0
+    price_duration: int = 0
+    npc_hostile: bool = False         # NPC turns hostile
+    npc_leaves: bool = False          # NPC leaves town
+    xp_skill: str = ""               # skill XP gained
+    xp_amount: float = 0.0
+
+
+@dataclass
+class SettlementEvent:
+    """A complete interactive event."""
+    title: str
+    description: str
+    npc_id: str = ""            # primary NPC involved
+    npc_name: str = ""
+    severity: str = "normal"
+    choices: List[EventChoice] = field(default_factory=list)
+    # Filled after player chooses:
+    outcome: Optional[EventOutcome] = None
+
+
+# ============================================================================
+#  HELPERS
+# ============================================================================
+
+def _pick_npc(npcs: List["NPC"], exclude: set = None,
+              occupation: str = "", alive_only: bool = True) -> Optional["NPC"]:
+    """Pick a random NPC from the settlement, optionally filtered."""
+    candidates = [n for n in npcs
+                  if n.present and (not alive_only or n.alive)
+                  and (not exclude or n.npc_id not in exclude)
+                  and (not occupation or n.occupation == occupation)]
+    return random.choice(candidates) if candidates else None
+
+
+def _pick_any_npc(npcs: List["NPC"], exclude: set = None) -> Optional["NPC"]:
+    """Pick any living, present NPC."""
+    return _pick_npc(npcs, exclude)
+
+
+def _skill_check(player, skill: str, difficulty: int, rng) -> bool:
+    """d20 + skill/2 + attr/3 >= difficulty."""
+    skill_val = player.skills.get(skill, 0)
+    # Map skill to governing attribute
+    attr_map = {"trading": "charisma", "law": "intelligence",
+                "firstAid": "wisdom", "firearms": "agility",
+                "survival": "wisdom", "tracking": "wisdom",
+                "engineering": "intelligence", "geology": "intelligence",
+                "placer": "wisdom", "chemistry": "intelligence"}
+    attr_name = attr_map.get(skill, "intelligence")
+    attr_val = player.attributes.get(attr_name, 10)
+    roll = rng.randint(1, 20) + skill_val // 2 + attr_val // 3
+    return roll >= difficulty
+
+
+def _present_event(engine: "Engine", event: SettlementEvent,
+                   rng) -> Optional[EventOutcome]:
+    """Show event to player and get their choice. Returns outcome."""
+    from src.menus import pick_from_list
+
+    con = engine._console
+    ctx = engine._ctx
+
+    labels = [c.label for c in event.choices]
+    title = f"{event.title}"
+    if event.npc_name:
+        title += f" [{event.npc_name}]"
+
+    # Show description as message first
+    engine.add_message(event.description, event.severity)
+
+    idx = pick_from_list(con, ctx, title, labels)
+    if idx is None:
+        return None
+    return idx
 
 
 # ============================================================================
 #  EVENT CHANCE
 # ============================================================================
 
-# Base chance per day of an event firing (by settlement type)
 EVENT_CHANCE: Dict[str, float] = {
-    "mining_camp_small":  0.30,   # small camps — things happen constantly
+    "mining_camp_small":  0.30,
     "mining_camp_medium": 0.35,
-    "boomtown":           0.45,   # boomtowns are chaotic
+    "boomtown":           0.45,
     "small_town":         0.25,
     "trading_post":       0.20,
-    "city":               0.40,   # cities have lots going on
+    "city":               0.40,
 }
 
 
 # ============================================================================
-#  EVENT POOLS — organized by category
+#  EVENT DEFINITIONS
+#  Each is a function: (engine, npcs, rng) -> Optional[SettlementEvent]
+#  Returns None if preconditions not met (e.g. no suitable NPC).
 # ============================================================================
-# Each entry: (message_template, severity, weight, effects_dict)
-# message_template can use {settlement}, {npc_name}, {year}
 
 # ── SALOON & SOCIAL ──────────────────────────────────────────────────────
 
-_SALOON_EVENTS = [
-    ("A fistfight breaks out in the saloon. Chairs fly. "
-     "The barkeep pulls a shotgun and everyone settles down.",
-     "normal", 10, {}),
+def _evt_bar_fight(engine, npcs, rng):
+    a = _pick_npc(npcs)
+    b = _pick_npc(npcs, exclude={a.npc_id} if a else set())
+    if not a or not b:
+        return None
+    motive = rng.choice(["a card game", "a spilled drink",
+                         "an old grudge", "a woman's name",
+                         "who owns the last bottle of whiskey"])
+    evt = SettlementEvent(
+        title="Bar Fight",
+        description=(f"{a.name} and {b.name} are throwing punches in the "
+                     f"saloon over {motive}. Chairs are flying. "
+                     f"The barkeep is yelling for help."),
+        npc_id=a.npc_id, npc_name=a.name,
+        choices=[
+            EventChoice("Break it up", skill="strength", difficulty=10,
+                        attribute="strength", attr_min=8),
+            EventChoice("Bet on a winner", skill="trading"),
+            EventChoice("Stay out of it"),
+            EventChoice("Join in (side with " + a.name + ")",
+                        skill="firearms", difficulty=8),
+        ])
+    return evt
 
-    ("Two miners argue over a card game. One accuses the other of cheating. "
-     "Knives come out before the sheriff steps in.",
-     "normal", 8, {}),
+def _resolve_bar_fight(engine, evt, choice_idx, npcs, rng):
+    a_npc = next((n for n in npcs if n.npc_id == evt.npc_id), None)
+    b_npc = _pick_npc(npcs, exclude={evt.npc_id})
+    p = engine.player
 
-    ("A drunk prospector staggers out of the saloon yelling "
-     "about a \"mother lode\" up in the hills. Nobody believes him.",
-     "normal", 8, {}),
+    if choice_idx == 0:  # Break it up
+        if _skill_check(p, "survival", 10, rng):
+            if a_npc: a_npc.adjust_relationship(5)
+            if b_npc: b_npc.adjust_relationship(5)
+            return EventOutcome(
+                f"You step between them and shove them apart. "
+                f"Both men cool down. The barkeep buys you a drink.",
+                reputation_delta=3, relationship_delta=5,
+                xp_skill="survival", xp_amount=2.0)
+        else:
+            return EventOutcome(
+                f"You catch a wild fist to the jaw stepping in. "
+                f"They stop fighting, at least — over you being hurt.",
+                health_delta=-8, reputation_delta=1)
+    elif choice_idx == 1:  # Bet
+        if rng.random() < 0.5:
+            return EventOutcome(
+                f"You bet $2 on {evt.npc_name}. He wins — barely. "
+                f"You collect $4.",
+                cash_delta=4.0, reputation_delta=-1)
+        else:
+            return EventOutcome(
+                f"You bet $2 on {evt.npc_name}. He goes down hard. "
+                f"There goes your money.",
+                cash_delta=-2.0)
+    elif choice_idx == 2:  # Stay out
+        return EventOutcome(
+            f"You watch from the corner. {evt.npc_name} takes a "
+            f"bottle to the head. The sheriff arrives and arrests both.",
+            reputation_delta=0)
+    else:  # Join in
+        if a_npc: a_npc.adjust_relationship(10)
+        if b_npc: b_npc.adjust_relationship(-15)
+        if _skill_check(p, "firearms", 8, rng):
+            return EventOutcome(
+                f"You and {evt.npc_name} make short work of it. "
+                f"He claps you on the back. \"I owe you one.\"",
+                reputation_delta=-2, relationship_delta=10,
+                health_delta=-3)
+        else:
+            return EventOutcome(
+                f"You swing and miss. Someone hits you with a chair leg. "
+                f"The sheriff arrests everyone including you.",
+                health_delta=-15, reputation_delta=-5, cash_delta=-5.0)
 
-    ("Someone is playing a fiddle in the saloon tonight. "
-     "The whole town seems to have gathered to listen.",
-     "normal", 6, {}),
 
-    ("A traveling showman has set up in the saloon — card tricks, "
-     "fortune telling, and \"genuine Egyptian mysteries.\"",
-     "normal", 5, {}),
+def _evt_drunk_prospector(engine, npcs, rng):
+    npc = _pick_npc(npcs)
+    if not npc:
+        return None
+    claim = rng.choice(["a mother lode up in the hills",
+                        "a creek running with gold dust",
+                        "a nugget big as his fist",
+                        "an abandoned Spanish mine full of silver",
+                        "a seam of quartz thick with wire gold"])
+    return SettlementEvent(
+        title="Drunk's Tale",
+        description=(f"{npc.name} is drunk and loud in the saloon, "
+                     f"claiming to have found {claim}. "
+                     f"Most people are ignoring him. He's looking for "
+                     f"a partner — or money for another bottle."),
+        npc_id=npc.npc_id, npc_name=npc.name,
+        choices=[
+            EventChoice("Buy him a drink and listen closely",
+                        skill="trading", difficulty=8),
+            EventChoice("Tell him to shut up"),
+            EventChoice("Offer to be his partner"),
+            EventChoice("Ignore him"),
+        ])
 
-    ("The saloon has run dry. No whiskey for a week, they say. "
-     "Men are drinking coffee and looking miserable.",
-     "advisory", 4, {"price_mult": 1.5, "price_duration": 7}),
+def _resolve_drunk_prospector(engine, evt, choice_idx, npcs, rng):
+    npc = next((n for n in npcs if n.npc_id == evt.npc_id), None)
+    p = engine.player
 
-    ("A woman walks into the saloon and the whole room goes quiet. "
-     "Turns out she's looking for her husband. He's under a table.",
-     "normal", 5, {}),
+    if choice_idx == 0:  # Buy drink and listen
+        if _skill_check(p, "trading", 8, rng):
+            return EventOutcome(
+                f"A $0.50 whiskey loosens his tongue. Between the "
+                f"slurring, you catch a real direction — northeast of "
+                f"the big bend. Could be something. Could be nothing.",
+                cash_delta=-0.50, relationship_delta=8,
+                xp_skill="geology", xp_amount=3.0)
+        else:
+            return EventOutcome(
+                f"He drinks your whiskey, tells three contradictory "
+                f"stories, and passes out. Waste of fifty cents.",
+                cash_delta=-0.50, relationship_delta=3)
+    elif choice_idx == 1:  # Tell him to shut up
+        if npc: npc.adjust_relationship(-10)
+        return EventOutcome(
+            f"\"Who the hell are you?\" He takes a swing but misses "
+            f"by a mile. The barkeep throws him out.",
+            reputation_delta=1, relationship_delta=-10)
+    elif choice_idx == 2:  # Partner up
+        if rng.random() < 0.3:
+            return EventOutcome(
+                f"He sobers up enough to shake on it. \"Tomorrow. "
+                f"Dawn. Bring a pan.\" He might actually know something.",
+                relationship_delta=15, xp_skill="placer", xp_amount=2.0)
+        else:
+            return EventOutcome(
+                f"\"Partners? You and me?\" He laughs himself off the "
+                f"stool. \"I don't need no partner.\" In the morning "
+                f"he won't remember any of it.",
+                relationship_delta=2)
+    else:
+        return EventOutcome(
+            f"You mind your own business. He's asleep on the bar "
+            f"within the hour.",
+            reputation_delta=0)
 
-    ("Gambling fever tonight. A miner just lost his entire claim "
-     "on a hand of faro. He sits on the porch staring at nothing.",
-     "normal", 6, {}),
 
-    ("A stranger buys drinks for the whole saloon. People are suspicious "
-     "but not suspicious enough to refuse free whiskey.",
-     "normal", 5, {}),
+def _evt_gambling_dispute(engine, npcs, rng):
+    a = _pick_npc(npcs)
+    b = _pick_npc(npcs, exclude={a.npc_id} if a else set())
+    if not a or not b:
+        return None
+    amount = rng.choice([5, 10, 20, 50])
+    return SettlementEvent(
+        title="Gambling Dispute",
+        description=(f"{a.name} accuses {b.name} of cheating at cards. "
+                     f"${amount} on the table. {b.name} says it was a "
+                     f"fair hand. Both men have their hands near their belts."),
+        npc_id=a.npc_id, npc_name=a.name,
+        choices=[
+            EventChoice("Mediate — examine the cards", skill="trading",
+                        difficulty=12),
+            EventChoice("Back " + a.name + " — he was cheated"),
+            EventChoice("Back " + b.name + " — it was fair"),
+            EventChoice("Grab the pot and run"),
+            EventChoice("Walk away"),
+        ])
 
-    ("The piano player quit. The saloon owner is offering $2/day "
-     "for anyone who can play. Nobody can.",
-     "normal", 4, {}),
-]
+def _resolve_gambling_dispute(engine, evt, choice_idx, npcs, rng):
+    a_npc = next((n for n in npcs if n.npc_id == evt.npc_id), None)
+    others = [n for n in npcs if n.npc_id != evt.npc_id and n.present and n.alive]
+    b_npc = others[0] if others else None
+    p = engine.player
+
+    if choice_idx == 0:  # Mediate
+        if _skill_check(p, "trading", 12, rng):
+            cheated = rng.random() < 0.5
+            cheater = b_npc if cheated else a_npc
+            name = cheater.name if cheater else "someone"
+            return EventOutcome(
+                f"You flip the cards. Marked — ace of spades has a "
+                f"bent corner. {name} was cheating. The pot goes to "
+                f"the honest player. Both men respect your judgment.",
+                reputation_delta=5, xp_skill="trading", xp_amount=3.0)
+        else:
+            return EventOutcome(
+                f"You look at the cards but can't spot anything wrong. "
+                f"Both men tell you to mind your own business.",
+                reputation_delta=-1)
+    elif choice_idx == 1:  # Back A
+        if a_npc: a_npc.adjust_relationship(10)
+        if b_npc: b_npc.adjust_relationship(-15)
+        return EventOutcome(
+            f"You vouch for {evt.npc_name}. {b_npc.name if b_npc else 'The other man'} "
+            f"throws down the cards and storms out.",
+            reputation_delta=1, relationship_delta=10)
+    elif choice_idx == 2:  # Back B
+        if a_npc: a_npc.adjust_relationship(-15)
+        if b_npc: b_npc.adjust_relationship(10)
+        return EventOutcome(
+            f"You say the hand looked fair to you. {evt.npc_name} "
+            f"glares at you and leaves. Made an enemy today.",
+            reputation_delta=1, relationship_delta=-15)
+    elif choice_idx == 3:  # Grab pot
+        return EventOutcome(
+            f"You snatch the bills and bolt for the door. Behind you, "
+            f"both men are too surprised to react. By the time they do, "
+            f"you're gone. That'll come back around.",
+            cash_delta=float(rng.choice([5, 10, 20])),
+            reputation_delta=-15, relationship_delta=-20)
+    else:
+        return EventOutcome(
+            f"You leave them to sort it out. A gunshot rings out "
+            f"behind you. You don't look back.")
+
 
 # ── LAW & ORDER ──────────────────────────────────────────────────────────
 
-_LAW_EVENTS = [
-    ("The sheriff drags a man down Main Street in irons. "
-     "Caught stealing from the assay office.",
-     "normal", 8, {}),
+def _evt_wanted_man(engine, npcs, rng):
+    npc = _pick_npc(npcs)
+    if not npc:
+        return None
+    bounty = rng.choice([25, 50, 100, 200])
+    crime = rng.choice(["stage robbery", "horse theft", "murder",
+                        "claim jumping", "bank robbery"])
+    return SettlementEvent(
+        title="Wanted Man",
+        description=(f"You spot {npc.name} on the street — and you're "
+                     f"sure you saw that face on a wanted poster. "
+                     f"${bounty} for {crime}. He hasn't noticed you yet."),
+        npc_id=npc.npc_id, npc_name=npc.name, severity="advisory",
+        choices=[
+            EventChoice("Confront him directly", skill="firearms",
+                        difficulty=12),
+            EventChoice("Tell the sheriff"),
+            EventChoice("Approach friendly, confirm identity",
+                        skill="trading", difficulty=10),
+            EventChoice("None of your business"),
+        ])
 
-    ("A hanging scheduled for noon. The whole town turns out. "
-     "The condemned man says nothing.",
-     "normal", 4, {}),
+def _resolve_wanted_man(engine, evt, choice_idx, npcs, rng):
+    npc = next((n for n in npcs if n.npc_id == evt.npc_id), None)
+    p = engine.player
 
-    ("A wanted poster goes up on the bulletin board. "
-     "$200 reward for a stage robber working the road south.",
-     "normal", 6, {}),
+    if choice_idx == 0:  # Confront
+        if _skill_check(p, "firearms", 12, rng):
+            return EventOutcome(
+                f"\"Don't move.\" Your hand is on your gun. "
+                f"{evt.npc_name} sees you mean it and puts his hands up. "
+                f"The sheriff takes him. Bounty's yours.",
+                cash_delta=float(rng.choice([25, 50, 100])),
+                reputation_delta=10, npc_leaves=True,
+                xp_skill="firearms", xp_amount=4.0)
+        else:
+            if npc: npc.go_hostile()
+            return EventOutcome(
+                f"{evt.npc_name} draws faster than you expected. "
+                f"A bullet creases your arm before he bolts. "
+                f"He's gone before the sheriff arrives.",
+                health_delta=-15, npc_hostile=True)
+    elif choice_idx == 1:  # Tell sheriff
+        return EventOutcome(
+            f"The sheriff and two deputies move in quietly. "
+            f"{evt.npc_name} is arrested without a shot. "
+            f"The sheriff promises you a share of the bounty.",
+            cash_delta=float(rng.choice([10, 25, 50])),
+            reputation_delta=5, npc_leaves=True)
+    elif choice_idx == 2:  # Approach friendly
+        if _skill_check(p, "trading", 10, rng):
+            return EventOutcome(
+                f"You buy him a drink, get him talking. He admits "
+                f"he's running from the law. \"I didn't kill nobody. "
+                f"It was self-defense.\" He offers you $20 to forget "
+                f"his face.",
+                cash_delta=20.0, relationship_delta=5,
+                xp_skill="trading", xp_amount=3.0)
+        else:
+            return EventOutcome(
+                f"He gets suspicious of your questions. \"You asking "
+                f"a lot for a stranger.\" He leaves town that night.",
+                npc_leaves=True)
+    else:
+        return EventOutcome(
+            f"You keep walking. Not your problem. A week later "
+            f"you hear the sheriff caught him anyway.")
 
-    ("Vigilance committee riding through town at dawn. "
-     "They're looking for claim jumpers.",
-     "advisory", 5, {}),
 
-    ("The sheriff got shot last night. Town's without law "
-     "until they can find a replacement.",
-     "advisory", 4, {"law_alert": True}),
+def _evt_theft_accusation(engine, npcs, rng):
+    victim = _pick_npc(npcs)
+    accused = _pick_npc(npcs, exclude={victim.npc_id} if victim else set())
+    if not victim or not accused:
+        return None
+    stolen = rng.choice(["gold dust", "a pocket watch", "a pistol",
+                         "a sack of flour", "a mule"])
+    return SettlementEvent(
+        title="Theft Accusation",
+        description=(f"{victim.name} is shouting that {accused.name} "
+                     f"stole {stolen}. {accused.name} denies it. "
+                     f"A crowd is gathering. Both look to you — "
+                     f"you're known to be fair."),
+        npc_id=accused.npc_id, npc_name=accused.name,
+        choices=[
+            EventChoice("Investigate — search " + accused.name + "'s tent",
+                        skill="tracking", difficulty=10),
+            EventChoice("Side with " + victim.name),
+            EventChoice("Side with " + accused.name),
+            EventChoice("Suggest they settle it themselves"),
+        ])
 
-    ("A prisoner escaped from the jail. Armed and dangerous, they say. "
-     "People are locking their doors early tonight.",
-     "advisory", 5, {}),
+def _resolve_theft_accusation(engine, evt, choice_idx, npcs, rng):
+    accused = next((n for n in npcs if n.npc_id == evt.npc_id), None)
+    others = [n for n in npcs if n.npc_id != evt.npc_id and n.present and n.alive]
+    victim = others[0] if others else None
+    p = engine.player
 
-    ("A trial underway at the courthouse. The defendant is accused "
-     "of salting a mine to sell it. Half the town's been swindled.",
-     "normal", 4, {}),
+    if choice_idx == 0:  # Investigate
+        if _skill_check(p, "tracking", 10, rng):
+            guilty = rng.random() < 0.6
+            if guilty:
+                return EventOutcome(
+                    f"You find the goods hidden under a blanket. "
+                    f"{evt.npc_name} hangs his head. The crowd's "
+                    f"verdict is swift — banishment.",
+                    reputation_delta=8, npc_leaves=True,
+                    xp_skill="tracking", xp_amount=3.0)
+            else:
+                return EventOutcome(
+                    f"Nothing in {evt.npc_name}'s belongings. {victim.name if victim else 'The accuser'} "
+                    f"looks embarrassed. Turns out a raccoon got into "
+                    f"the supplies. False alarm.",
+                    reputation_delta=5,
+                    xp_skill="tracking", xp_amount=2.0)
+        else:
+            return EventOutcome(
+                f"You look around but can't find anything conclusive. "
+                f"Both men are disgusted. The dispute festers.",
+                reputation_delta=-2)
+    elif choice_idx == 1:  # Side with victim
+        if accused: accused.adjust_relationship(-20)
+        if victim: victim.adjust_relationship(10)
+        return EventOutcome(
+            f"You back {victim.name if victim else 'the accuser'}. "
+            f"{evt.npc_name} is made to pay restitution. "
+            f"He stares daggers at you as he counts out the coins.",
+            reputation_delta=2, relationship_delta=-20)
+    elif choice_idx == 2:  # Side with accused
+        if accused: accused.adjust_relationship(10)
+        if victim: victim.adjust_relationship(-15)
+        return EventOutcome(
+            f"You defend {evt.npc_name}. {victim.name if victim else 'The accuser'} "
+            f"sputters and storms off. May have made the wrong call — "
+            f"or saved an innocent man.",
+            reputation_delta=1, relationship_delta=10)
+    else:
+        return EventOutcome(
+            f"\"Sort it out yourselves.\" The argument continues "
+            f"for another hour before the sheriff intervenes.")
 
-    ("Two men dueling at dawn outside town. One walks away. "
-     "The other doesn't.",
-     "normal", 5, {}),
-
-    ("The marshal rode in from the county seat. Something big "
-     "must be happening — he doesn't visit for nothing.",
-     "normal", 4, {}),
-
-    ("A lynch mob forming outside the jail. The sheriff stands alone "
-     "on the steps with a double-barrel. The crowd disperses. Slowly.",
-     "normal", 3, {}),
-]
 
 # ── ECONOMY & TRADE ──────────────────────────────────────────────────────
 
-_ECONOMY_EVENTS = [
-    ("A freight wagon rolled in loaded with supplies. "
-     "Prices on flour and salt drop noticeably.",
-     "advisory", 8, {"price_mult": 0.7, "price_duration": 5}),
+def _evt_merchant_deal(engine, npcs, rng):
+    npc = _pick_npc(npcs, occupation="Merchant")
+    if not npc:
+        npc = _pick_npc(npcs)
+    if not npc:
+        return None
+    goods = rng.choice(["a crate of rifles", "fifty pounds of coffee",
+                        "a barrel of whiskey", "mining tools",
+                        "a wagonload of flour and salt"])
+    return SettlementEvent(
+        title="Merchant's Offer",
+        description=(f"{npc.name} pulls you aside. \"I got {goods} coming "
+                     f"in cheap — supplier owes me a favor. I need a "
+                     f"partner with cash. You put in $30, I double "
+                     f"your money when they sell.\""),
+        npc_id=npc.npc_id, npc_name=npc.name,
+        choices=[
+            EventChoice("Invest $30"),
+            EventChoice("Negotiate for a better split",
+                        skill="trading", difficulty=12),
+            EventChoice("Ask around about his reputation first",
+                        skill="trading", difficulty=8),
+            EventChoice("Decline — too risky"),
+        ])
 
-    ("Supply wagon broke an axle on the pass. No deliveries this week. "
-     "Prices are climbing.",
-     "advisory", 6, {"price_mult": 1.4, "price_duration": 7}),
+def _resolve_merchant_deal(engine, evt, choice_idx, npcs, rng):
+    npc = next((n for n in npcs if n.npc_id == evt.npc_id), None)
+    p = engine.player
 
-    ("A merchant is auctioning off a bankrupt prospector's gear "
-     "in the town square. Tools going for cheap.",
-     "advisory", 5, {}),
+    if choice_idx == 0:  # Invest
+        if p.cash < 30:
+            return EventOutcome("You don't have $30 to invest.", cash_delta=0)
+        if rng.random() < 0.6:
+            return EventOutcome(
+                f"A week later, {evt.npc_name} finds you. \"Sold the lot.\" "
+                f"He hands you $60. The man's word is good.",
+                cash_delta=30.0, relationship_delta=10,
+                reputation_delta=2)
+        else:
+            return EventOutcome(
+                f"The shipment never arrives. Bandits, {evt.npc_name} says. "
+                f"Your $30 is gone. Whether he's lying or not, "
+                f"you'll never know.",
+                cash_delta=-30.0, relationship_delta=-5)
+    elif choice_idx == 1:  # Negotiate
+        if _skill_check(p, "trading", 12, rng):
+            if p.cash < 20:
+                return EventOutcome("You don't have enough to invest.")
+            if rng.random() < 0.65:
+                return EventOutcome(
+                    f"You talk him down to $20 for a 60% share. "
+                    f"When the goods sell, you get $48 back. Smart dealing.",
+                    cash_delta=28.0, reputation_delta=3,
+                    xp_skill="trading", xp_amount=4.0)
+            else:
+                return EventOutcome(
+                    f"Good deal — $20 in, but the shipment was robbed. "
+                    f"At least you negotiated a smaller loss.",
+                    cash_delta=-20.0, xp_skill="trading", xp_amount=2.0)
+        else:
+            return EventOutcome(
+                f"\"Take it or leave it,\" {evt.npc_name} says. "
+                f"He finds another investor.",
+                relationship_delta=-3)
+    elif choice_idx == 2:  # Ask around
+        if _skill_check(p, "trading", 8, rng):
+            honest = rng.random() < 0.5
+            if honest:
+                return EventOutcome(
+                    f"People say {evt.npc_name} is straight as an arrow. "
+                    f"Been trading here for years. Might be worth the risk.",
+                    xp_skill="trading", xp_amount=2.0)
+            else:
+                return EventOutcome(
+                    f"\"That one? He sold a man a mule that died the "
+                    f"next day.\" Good thing you checked. You decline.",
+                    reputation_delta=1, xp_skill="trading", xp_amount=2.0)
+        else:
+            return EventOutcome(
+                f"Nobody wants to talk about {evt.npc_name}'s business. "
+                f"That's either very good or very bad.")
+    else:
+        return EventOutcome(
+            f"\"Your loss,\" {evt.npc_name} shrugs and moves on.",
+            reputation_delta=0)
 
-    ("News of a strike upriver. Prospectors flooding in. "
-     "The general store can't keep shelves stocked.",
-     "advisory", 7, {"price_mult": 1.3, "price_duration": 14}),
 
-    ("A Chinese merchant has set up a stand selling vegetables "
-     "and dried fish. First fresh food in weeks.",
-     "normal", 5, {}),
+def _evt_supply_shortage(engine, npcs, rng):
+    item = rng.choice(["flour", "salt", "ammunition", "coffee", "whiskey",
+                        "lamp oil", "rope", "nails"])
+    npc = _pick_npc(npcs)
+    if not npc:
+        return None
+    return SettlementEvent(
+        title="Supply Shortage",
+        description=(f"The town is running low on {item}. Prices are climbing. "
+                     f"{npc.name} asks if you have any to sell — "
+                     f"\"I'll pay triple.\""),
+        npc_id=npc.npc_id, npc_name=npc.name, severity="advisory",
+        choices=[
+            EventChoice("Sell some from your supplies"),
+            EventChoice("Organize a supply run yourself"),
+            EventChoice("Suggest rationing at a town meeting",
+                        skill="trading", difficulty=10),
+            EventChoice("Not your problem"),
+        ])
 
-    ("The bank is offering loans at 3% monthly. Several men line up. "
-     "The fine print is in very small letters.",
-     "normal", 4, {}),
+def _resolve_supply_shortage(engine, evt, choice_idx, npcs, rng):
+    npc = next((n for n in npcs if n.npc_id == evt.npc_id), None)
+    p = engine.player
 
-    ("An assayer was caught giving false readings — cheating miners "
-     "out of fair value. He's been run out of town.",
-     "advisory", 4, {}),
+    if choice_idx == 0:  # Sell supplies
+        # Check if player actually has trade goods
+        sellable = [i for i in p.inventory if i.category in ("supply", "food", "misc")
+                    and i.base_value > 0]
+        if sellable:
+            item = rng.choice(sellable)
+            price = item.base_value * 3.0
+            p.inventory.remove(item)
+            return EventOutcome(
+                f"You sell your {item.name} for ${price:.2f} — "
+                f"triple the usual price. {evt.npc_name} is grateful.",
+                cash_delta=price, reputation_delta=3, relationship_delta=8)
+        else:
+            return EventOutcome(
+                f"You check your pack — nothing useful to sell. "
+                f"{evt.npc_name} looks disappointed.")
+    elif choice_idx == 1:  # Supply run
+        return EventOutcome(
+            f"You offer to ride to the next town for supplies. "
+            f"Several people chip in — $15 travel fund. "
+            f"If you bring goods back, you'll be a hero.",
+            cash_delta=15.0, reputation_delta=5)
+    elif choice_idx == 2:  # Town meeting
+        if _skill_check(p, "trading", 10, rng):
+            return EventOutcome(
+                f"You call a meeting and propose fair rationing. "
+                f"People grumble but agree. Order is maintained. "
+                f"The sheriff nods approvingly.",
+                reputation_delta=8, xp_skill="trading", xp_amount=3.0,
+                price_mult=1.3, price_duration=7)
+        else:
+            return EventOutcome(
+                f"Nobody wants to be told what they can and can't buy. "
+                f"The meeting breaks up in arguments.",
+                reputation_delta=-2)
+    else:
+        return EventOutcome(
+            f"People manage. Prices stay high for a while.",
+            price_mult=1.5, price_duration=10)
 
-    ("Mule train just arrived from Sacramento. "
-     "Twenty animals loaded with everything from boots to bacon.",
-     "normal", 6, {"price_mult": 0.8, "price_duration": 5}),
-
-    ("Gold dust is circulating as currency again. "
-     "The merchants are biting coins to check if they're real.",
-     "normal", 4, {}),
-
-    ("A peddler in the square is selling \"genuine California gold maps\" "
-     "for $5 each. They're hand-drawn on butcher paper.",
-     "normal", 5, {}),
-
-    ("The freight company raised its rates. Everything shipped in "
-     "costs more now.",
-     "advisory", 4, {"price_mult": 1.2, "price_duration": 14}),
-
-    ("Auction today — an old miner passed away and left no kin. "
-     "His gear is going under the hammer.",
-     "normal", 4, {}),
-]
-
-# ── GOLD & MINING ────────────────────────────────────────────────────────
-
-_MINING_EVENTS = [
-    ("Word spreading through camp: someone pulled a two-ounce nugget "
-     "from the creek yesterday. The excitement is palpable.",
-     "normal", 8, {}),
-
-    ("A claim dispute turned violent last night. One man shot, "
-     "one in hiding. The claim's been roped off.",
-     "advisory", 6, {}),
-
-    ("Old timer says the creek's been worked out. \"Ain't enough color "
-     "left to fill a tooth.\" Some men are packing up.",
-     "normal", 5, {}),
-
-    ("A miner found quartz with visible gold on the ridge above town. "
-     "Half the camp rushed up there this morning.",
-     "normal", 7, {}),
-
-    ("Cave-in at a shaft mine east of town. Two men trapped. "
-     "Volunteers organizing a rescue.",
-     "advisory", 5, {}),
-
-    ("The assay office posted results: ore from the new lode "
-     "runs $40 to the ton. That's real money.",
-     "normal", 5, {}),
-
-    ("Someone staked a claim right on the road into town. "
-     "People have to walk around it. Nobody's happy.",
-     "normal", 4, {}),
-
-    ("A hydraulic operation started upriver. The creek is running "
-     "brown and muddy. Downstream claims are furious.",
-     "advisory", 5, {}),
-
-    ("An old-timer demonstrates proper panning technique to newcomers "
-     "at the creek. Some of them are hopeless.",
-     "normal", 4, {}),
-
-    ("The stamp mill's running day and night. The pounding echoes "
-     "through the whole valley. Nobody's sleeping well.",
-     "normal", 5, {}),
-
-    ("A miner hit bedrock and found nothing. Three months of digging "
-     "for empty ground. He sits on his tailings pile, staring.",
-     "normal", 4, {}),
-
-    ("Someone's selling placer claims for $50 each — pre-tested, "
-     "they say. Experienced miners are skeptical.",
-     "normal", 5, {}),
-]
-
-# ── WEATHER & NATURAL ────────────────────────────────────────────────────
-
-_WEATHER_EVENTS = [
-    ("Flash flood warning. The creek is rising fast. Men scrambling "
-     "to pull equipment out of the water.",
-     "warning", 5, {"health_delta": -5}),
-
-    ("Wildfire smoke drifting in from the east. The sun is red "
-     "and the air tastes like ash. Hard to breathe.",
-     "advisory", 5, {"health_delta": -3}),
-
-    ("Heavy snow overnight. The pass is closed. Nobody's going "
-     "anywhere for a while.",
-     "advisory", 4, {"price_mult": 1.3, "price_duration": 10}),
-
-    ("Earthquake tremor shakes the buildings. Bottles fall off shelves. "
-     "Everyone runs outside, then sheepishly walks back in.",
-     "advisory", 3, {}),
-
-    ("Lightning struck the big pine on the hill. It's burning "
-     "like a torch. Beautiful and terrifying.",
-     "normal", 4, {}),
-
-    ("Spring thaw flooding the lower claims. Water's knee-deep "
-     "in the main street. Mud everywhere.",
-     "normal", 5, {}),
-
-    ("Frost last night killed the garden plots outside town. "
-     "Fresh vegetables just got more expensive.",
-     "normal", 4, {"price_mult": 1.2, "price_duration": 7}),
-
-    ("Perfect weather. Clear sky, warm sun, cool breeze. "
-     "Everyone seems to be in a better mood today.",
-     "normal", 6, {}),
-
-    ("Dust storm rolling in from the flats. Visibility dropping. "
-     "People covering their faces with bandanas.",
-     "normal", 4, {}),
-
-    ("River's so low you can walk across on the rocks. "
-     "Good for prospecting, bad for the water supply.",
-     "normal", 4, {}),
-]
 
 # ── HEALTH & DISEASE ─────────────────────────────────────────────────────
 
-_HEALTH_EVENTS = [
-    ("Cholera scare. Three people sick down by the creek. "
-     "The doctor says boil your water.",
-     "warning", 5, {"health_delta": -5}),
-
-    ("A miner collapsed in the street. Heatstroke, they say. "
-     "Someone pours water over him.",
-     "normal", 4, {}),
-
-    ("The doctor is drunk again. If you get hurt, you're on your own.",
-     "normal", 4, {}),
-
-    ("Dysentery going around camp. Half the men are too sick to work. "
-     "The latrines are too close to the water source.",
-     "advisory", 5, {"health_delta": -8}),
-
-    ("A dentist has arrived in town. He's set up under a canvas "
-     "awning and the screaming can be heard all afternoon.",
-     "normal", 5, {}),
-
-    ("Someone brought smallpox into camp. The doctor is quarantining "
-     "the affected tent. Everyone's nervous.",
-     "warning", 3, {"health_delta": -10}),
-
-    ("The barber is advertising \"surgical services\" alongside "
-     "haircuts. His hands are surprisingly steady.",
-     "normal", 4, {}),
-
-    ("A traveling medicine show rolled in. \"Dr. Pemberton's Genuine "
-     "Cure-All\" — mostly alcohol and opium, probably.",
-     "normal", 5, {}),
-
-    ("Spring water from the new well is clear and cold. "
-     "Best water in camp, people say.",
-     "normal", 4, {"health_delta": 3}),
-
-    ("Scurvy cases appearing. No fresh fruit for months. "
-     "Someone's selling wild onions for a dollar each.",
-     "advisory", 4, {"health_delta": -5}),
-]
-
-# ── ARRIVALS & DEPARTURES ────────────────────────────────────────────────
-
-_ARRIVAL_EVENTS = [
-    ("A wagon train pulled in at dusk. Forty people, dead tired, "
-     "half-starved. They've been on the trail three months.",
-     "normal", 7, {}),
-
-    ("A lone rider came in from the south. Weathered, quiet, "
-     "asking no questions. The kind of man you don't ask questions of.",
-     "normal", 5, {}),
-
-    ("A family arrived with a farm wagon. Father, mother, three children. "
-     "They're looking for land, not gold.",
-     "normal", 5, {}),
-
-    ("Stage coach arrived — first one in two weeks. "
-     "Mail, newspapers, and two passengers who look lost.",
-     "normal", 6, {}),
-
-    ("Half the camp packed up and left overnight. "
-     "Heard about a new strike at another creek.",
-     "normal", 5, {}),
-
-    ("A preacher arrived. Set up a tent church on the edge of town. "
-     "Sunday services for sinners, which is everyone.",
-     "normal", 5, {}),
-
-    ("A woman arrived alone on horseback. She says she's a reporter "
-     "from a San Francisco newspaper. People don't know what to make of it.",
-     "normal", 4, {}),
-
-    ("A group of Chinese miners set up camp on the downstream claims. "
-     "Some of the white miners are grumbling.",
-     "normal", 5, {}),
-
-    ("An old mountain man wandered in from the wilderness. "
-     "He trades beaver pelts and tells stories nobody believes.",
-     "normal", 5, {}),
-
-    ("A photographer has arrived with his equipment. "
-     "He's offering daguerreotypes for $3 each.",
-     "normal", 4, {}),
-
-    ("An army patrol passed through, headed north. "
-     "The lieutenant asked about hostile activity. There hasn't been any.",
-     "normal", 4, {}),
-
-    ("A troupe of actors arrived and are performing Shakespeare "
-     "in the saloon. The audience is mostly confused but entertained.",
-     "normal", 3, {}),
-]
-
-# ── CONSTRUCTION & GROWTH ────────────────────────────────────────────────
-
-_GROWTH_EVENTS = [
-    ("A new building going up on Main Street. "
-     "The sound of hammering starts at dawn and doesn't stop.",
-     "normal", 6, {}),
-
-    ("The town council voted to build a proper schoolhouse. "
-     "Taxes going up a nickel.",
-     "normal", 4, {}),
-
-    ("Someone's digging a well in the town square. "
-     "About time — hauling water from the creek was getting old.",
-     "normal", 5, {}),
-
-    ("The road into town is being graded. Men with picks and shovels "
-     "filling ruts and moving rocks.",
-     "normal", 4, {}),
-
-    ("A bridge is being built across the creek. Logs and rope. "
-     "It'll save a quarter mile of walking.",
-     "normal", 4, {}),
-
-    ("The general store expanded. Added a second room in the back. "
-     "Now carries hardware alongside groceries.",
-     "normal", 5, {}),
-
-    ("Talk of a telegraph line coming through. The poles are already "
-     "set on the road east. Another month, they say.",
-     "normal", 4, {}),
-
-    ("An assay office just opened — the town's first. "
-     "No more riding two days to get ore tested.",
-     "normal", 5, {}),
-
-    ("A fire company organized. Twelve volunteers with buckets. "
-     "Better than nothing.",
-     "normal", 4, {}),
-
-    ("The livery stable doubled its rates. Only stable in town "
-     "and they know it.",
-     "normal", 4, {"price_mult": 1.1, "price_duration": 14}),
-]
-
-# ── FIRE & DISASTER ──────────────────────────────────────────────────────
-
-_DISASTER_EVENTS = [
-    ("Fire! A cabin caught fire from an unattended stove. "
-     "The bucket brigade saved the neighbors but the cabin's gone.",
-     "warning", 4, {}),
-
-    ("A building collapsed on Main Street. Shoddy construction. "
-     "Nobody hurt, but it blocked the road for a day.",
-     "advisory", 3, {}),
-
-    ("The dam upstream broke. Water surging down the creek. "
-     "Claims along the bottom are flooded out.",
-     "warning", 3, {}),
-
-    ("A runaway horse and wagon tore through town. "
-     "Knocked over a hitching post and scattered a fruit stand.",
-     "normal", 4, {}),
-
-    ("Explosion at the powder magazine. Windows shattered across town. "
-     "Miraculously, nobody killed. This time.",
-     "warning", 2, {}),
-
-    ("A chimney fire spread to the roof. Half the block turned out "
-     "with buckets. They saved it, barely.",
-     "advisory", 4, {}),
-
-    ("Rock slide on the cliff above town. Boulders the size of wagons "
-     "came down. Missed the buildings by twenty yards.",
-     "advisory", 3, {}),
-]
-
-# ── GOSSIP & RUMOR ───────────────────────────────────────────────────────
-
-_GOSSIP_EVENTS = [
-    ("Rumor going around that the merchant's been watering the whiskey. "
-     "He denies it. The whiskey tastes the same as always.",
-     "normal", 7, {}),
-
-    ("People whispering about a ghost in the old shaft mine. "
-     "The dead miner's spirit, they say. Superstitious nonsense. Probably.",
-     "normal", 5, {}),
-
-    ("The blacksmith's wife left him. Rode off with a peddler "
-     "in the middle of the night. Whole town's talking.",
-     "normal", 5, {}),
-
-    ("Word is the railroad survey crew passed through last month. "
-     "If the railroad comes here, everything changes.",
-     "normal", 5, {}),
-
-    ("Old Jake swears he saw a grizzly just outside town last night. "
-     "Nobody else saw it. But Jake doesn't usually lie.",
-     "normal", 5, {}),
-
-    ("The assayer and the banker haven't spoken in a week. "
-     "Some kind of personal dispute. People are choosing sides.",
-     "normal", 4, {}),
-
-    ("A letter from back east says the President signed something "
-     "about mining claims. Nobody's sure what it means yet.",
-     "normal", 4, {}),
-
-    ("Someone found a human skeleton in a dry wash outside town. "
-     "No identification. Could've been there for years.",
-     "normal", 4, {}),
-
-    ("The schoolteacher is teaching the children to read using "
-     "wanted posters. Practical education.",
-     "normal", 4, {}),
-
-    ("There's talk of incorporating as a proper town. "
-     "Elections, a mayor, ordinances. The old-timers hate the idea.",
-     "normal", 4, {}),
-
-    ("A man claims to have found an ancient Spanish mine entrance "
-     "in the hills. He's selling shares in the venture.",
-     "normal", 5, {}),
-
-    ("The laundress found a gold nugget in a miner's shirt pocket "
-     "while washing. She returned it. The miner tipped her a dollar.",
-     "normal", 4, {}),
-]
-
-# ── ANIMALS & WILDLIFE ───────────────────────────────────────────────────
-
-_ANIMAL_EVENTS = [
-    ("A bear got into the meat cache behind the general store. "
-     "Cleaned it out. The storekeeper is furious.",
-     "normal", 5, {}),
-
-    ("Pack of wolves howling on the ridge above town all night. "
-     "Nobody slept well.",
-     "normal", 5, {}),
-
-    ("A rattlesnake found under the porch of the hotel. "
-     "Took three men and a shovel to deal with it.",
-     "normal", 5, {}),
-
-    ("Deer wandered right into the middle of town at dawn. "
-     "Stood in the street for a minute, then bolted.",
-     "normal", 5, {}),
-
-    ("A mule kicked through the wall of the livery stable. "
-     "It's still standing there looking pleased with itself.",
-     "normal", 4, {}),
-
-    ("Crows have been following the camp dogs all morning. "
-     "Something dead in the brush, probably.",
-     "normal", 4, {}),
-
-    ("A cougar took somebody's dog last night. "
-     "Men organizing a hunt.",
-     "normal", 5, {}),
-
-    ("Prairie dog holes everywhere outside town. "
-     "A horse stepped in one and threw its rider. Broken arm.",
-     "normal", 4, {}),
-
-    ("Eagles nesting on the cliff above town. "
-     "Watching everything with those cold yellow eyes.",
-     "normal", 4, {}),
-
-    ("Skunk got under the church. Services canceled until "
-     "the smell clears. Could be a while.",
-     "normal", 4, {}),
-]
-
-# ── RELIGION & CULTURE ───────────────────────────────────────────────────
-
-_CULTURE_EVENTS = [
-    ("Sunday services well-attended today. The preacher gave "
-     "a sermon about greed. Nobody made eye contact.",
-     "normal", 5, {}),
-
-    ("A camp meeting tent revival started on the edge of town. "
-     "Singing and shouting all night. Opinions are divided.",
-     "normal", 4, {}),
-
-    ("Someone donated a piano to the town hall. "
-     "Now they just need someone who can play it.",
-     "normal", 4, {}),
-
-    ("Fourth of July celebration. Gunfire at midnight, "
-     "whiskey flowing, and someone lit the outhouse on fire.",
-     "normal", 3, {}),
-
-    ("A funeral procession down Main Street. "
-     "The whole town walks behind the coffin. Hats off.",
-     "normal", 5, {}),
-
-    ("A wedding at the church. The bride wore calico. "
-     "The groom wore a clean shirt. First wedding in this town.",
-     "normal", 4, {}),
-
-    ("Christmas Eve. Candles in every window. The saloon "
-     "is serving hot cider. Even the rough men seem quieter tonight.",
-     "normal", 3, {}),
-
-    ("A traveling preacher challenges the local preacher to "
-     "a theological debate. The saloon serves as venue. Standing room only.",
-     "normal", 3, {}),
-]
-
-# ── CONFLICT & TENSION ───────────────────────────────────────────────────
-
-_CONFLICT_EVENTS = [
-    ("Tensions between the hill miners and the creek miners. "
-     "Something about water rights. Getting ugly.",
-     "advisory", 5, {}),
-
-    ("A group of men ran a family out of town for reasons nobody "
-     "will explain clearly. The air is tense.",
-     "advisory", 4, {"reputation_delta": -2}),
-
-    ("Gunshots after dark. In the morning, bloodstains on the "
-     "street but nobody's talking.",
-     "advisory", 5, {}),
-
-    ("The saloon keeper barred a group of miners. Now they're "
-     "drinking outside and making threats.",
-     "normal", 5, {}),
-
-    ("Two businesses on Main Street in a price war. "
-     "Flour down to nothing. Customers benefit, for now.",
-     "normal", 4, {"price_mult": 0.7, "price_duration": 7}),
-
-    ("A claim-jumping dispute is headed for the mining district court. "
-     "Both sides hiring lawyers. Going to be expensive.",
-     "normal", 4, {}),
-
-    ("Night riders rode through camp last night. Fired shots in the air. "
-     "Nobody knows what they wanted. Nobody wants to find out.",
-     "advisory", 4, {}),
-
-    ("The teamsters are threatening to strike. No freight deliveries "
-     "until their demands are met. Prices will rise.",
-     "advisory", 4, {"price_mult": 1.3, "price_duration": 10}),
-]
-
-# ── ODD & COLORFUL ──────────────────────────────────────────────────────
-
-_ODD_EVENTS = [
-    ("A man walked into town wearing nothing but a barrel. "
-     "Lost everything at cards, including his clothes.",
-     "normal", 4, {}),
-
-    ("Someone painted \"WELCOME TO HELL\" on the sign at the edge of town. "
-     "The mayor had it scrubbed off. It was back the next morning.",
-     "normal", 4, {}),
-
-    ("A prospector named his mule \"Senator\" and insists on introducing "
-     "it to everyone. The mule seems indifferent to the honor.",
-     "normal", 4, {}),
-
-    ("A chess tournament at the general store. The prize is a ham. "
-     "Competition is fierce.",
-     "normal", 4, {}),
-
-    ("Someone built a hot tub from a half-barrel and charges "
-     "two bits for a soak. Line's around the block.",
-     "normal", 4, {}),
-
-    ("A parrot showed up in town. Nobody knows where it came from. "
-     "It sits on the saloon porch and swears at passersby.",
-     "normal", 4, {}),
-
-    ("Two men having a spitting contest in the street. "
-     "A crowd has gathered. Bets are being placed.",
-     "normal", 4, {}),
-
-    ("Somebody's rooster crows at all hours, not just dawn. "
-     "The owner says it's \"artistic.\" Neighbors disagree.",
-     "normal", 4, {}),
-
-    ("A man just ate 47 hardtack biscuits on a bet. "
-     "He won $5. He does not look well.",
-     "normal", 4, {}),
-
-    ("A prospector is panning for gold in the horse trough. "
-     "The livery owner is not amused, but there IS color in there.",
-     "normal", 4, {}),
-]
-
-# ── CAMP-SPECIFIC (mining camps only) ────────────────────────────────────
-
-_CAMP_EVENTS = [
-    ("The creek shifted course after last night's rain. "
-     "Some claims just got better. Others just got worthless.",
-     "normal", 6, {}),
-
-    ("Somebody's tent collapsed in the wind. "
-     "He's standing there holding a canvas sheet looking defeated.",
-     "normal", 5, {}),
-
-    ("A campfire got away from someone. Burned a patch of brush "
-     "before it was stomped out. No real damage.",
-     "normal", 5, {}),
-
-    ("New arrivals staking claims too close to existing ones. "
-     "Arguments about claim boundaries all afternoon.",
-     "normal", 6, {}),
-
-    ("The water's gone muddy from all the upstream digging. "
-     "Can't drink it. Can't wash in it. Camp morale is low.",
-     "normal", 5, {}),
-
-    ("Someone strung a rope line between the tents and hung "
-     "wet clothes. The whole camp looks like laundry day.",
-     "normal", 4, {}),
-
-    ("A newcomer set up his pan right on someone's tailings pile. "
-     "He's either very clever or very ignorant.",
-     "normal", 4, {}),
-
-    ("Camp meeting tonight around the fire. Talk of organizing "
-     "a miners' committee to settle disputes.",
-     "normal", 5, {}),
-]
-
-# ── CITY-SPECIFIC (cities only) ──────────────────────────────────────────
-
-_CITY_EVENTS = [
-    ("The newspaper published an editorial against the mine operators. "
-     "Calling for safety regulations. The operators are furious.",
-     "normal", 5, {}),
-
-    ("A bank robbery! Two armed men rode in, shot the guard, "
-     "and took the vault. Posse forming up.",
-     "warning", 3, {"law_alert": True}),
-
-    ("City council meeting got heated. The mayor and the sheriff "
-     "nearly came to blows over the tax rate.",
-     "normal", 4, {}),
-
-    ("Gas street lamps installed on Main Street. "
-     "The town looks different at night now. Almost civilized.",
-     "normal", 4, {}),
-
-    ("A fire department organized with a proper hand-pump engine. "
-     "Demonstration in the square. Impressive.",
-     "normal", 4, {}),
-
-    ("Opera house opened its doors. First show is next week. "
-     "Tickets are $1. The miners are bewildered by the concept.",
-     "normal", 3, {}),
-
-    ("The telegraph office received 47 messages today. "
-     "The operator hasn't slept. News travels fast now.",
-     "normal", 4, {}),
-
-    ("A suffragist gave a speech in the square. Mixed reception. "
-     "The women applauded. Most of the men walked away.",
-     "normal", 3, {}),
-
-    ("Real estate speculation heating up. Lots on Main Street "
-     "selling for ten times what they cost a year ago.",
-     "normal", 4, {}),
-
-    ("The railroad announced a spur line to this town. "
-     "If it comes through, land values will explode.",
-     "advisory", 3, {}),
-]
-
-# ── SEASONAL ─────────────────────────────────────────────────────────────
-
-_SPRING_EVENTS = [
-    ("Wildflowers carpeting the hills above town. "
-     "Even the hardest men stop to look.",
-     "normal", 5, {}),
-
-    ("Spring runoff swelling the creek. Good for panning, "
-     "dangerous for crossing.",
-     "normal", 5, {}),
-
-    ("The snow line is receding up the mountains. "
-     "High country will be passable again soon.",
-     "normal", 4, {}),
-]
-
-_SUMMER_EVENTS = [
-    ("Heat so fierce the dogs won't leave the shade. "
-     "Work slows to nothing after noon.",
-     "normal", 5, {"health_delta": -3}),
-
-    ("The creek is drying up. Barely a trickle where it used to run "
-     "waist-deep. Claims along the upper stretches are bone-dry.",
-     "normal", 5, {}),
-
-    ("Grasshoppers everywhere. They're eating everything green "
-     "within a mile of town.",
-     "normal", 4, {}),
-]
-
-_FALL_EVENTS = [
-    ("First frost of the season. Ice on the water bucket this morning. "
-     "Winter's coming.",
-     "normal", 5, {}),
-
-    ("Aspen turning gold on the hillsides. "
-     "The whole mountain looks like it's on fire.",
-     "normal", 5, {}),
-
-    ("Men stacking firewood against every wall in town. "
-     "Nobody wants to be caught short when the snow comes.",
-     "normal", 5, {}),
-]
-
-_WINTER_EVENTS = [
-    ("Snow piling up. The pass is closed. "
-     "This town is on its own until spring.",
-     "advisory", 5, {"price_mult": 1.4, "price_duration": 30}),
-
-    ("Frozen pipes, frozen ground, frozen everything. "
-     "Mining's suspended. Men huddled around stoves.",
-     "normal", 5, {}),
-
-    ("Someone's still out there digging in the frozen creek bed. "
-     "Dedicated or crazy. Maybe both.",
-     "normal", 4, {}),
-
-    ("Cabin fever setting in. Arguments over nothing. "
-     "The saloon's doing good business though.",
-     "normal", 5, {}),
-
-    ("A man froze to death in his tent last night. "
-     "Found him in the morning. Nobody knew his real name.",
-     "advisory", 3, {}),
+def _evt_sick_person(engine, npcs, rng):
+    npc = _pick_npc(npcs)
+    if not npc:
+        return None
+    illness = rng.choice(["cholera", "dysentery", "fever", "a bad wound",
+                          "what looks like scurvy", "mining lung"])
+    return SettlementEvent(
+        title="Someone Sick",
+        description=(f"{npc.name} is sick — {illness}. "
+                     f"Lying in a tent, pale and shaking. "
+                     f"The camp doctor is three towns away. "
+                     f"Someone should do something."),
+        npc_id=npc.npc_id, npc_name=npc.name,
+        choices=[
+            EventChoice("Try to help — you know some first aid",
+                        skill="firstAid", difficulty=10),
+            EventChoice("Bring them water and food"),
+            EventChoice("Warn people to keep distance — it might spread"),
+            EventChoice("Move along — you're no doctor"),
+        ])
+
+def _resolve_sick_person(engine, evt, choice_idx, npcs, rng):
+    npc = next((n for n in npcs if n.npc_id == evt.npc_id), None)
+    p = engine.player
+
+    if choice_idx == 0:  # First aid
+        if _skill_check(p, "firstAid", 10, rng):
+            if npc: npc.adjust_relationship(20)
+            return EventOutcome(
+                f"You clean the wound, brew willow bark tea, keep them "
+                f"hydrated. By morning {evt.npc_name} is sitting up. "
+                f"\"You saved my life.\" Word spreads.",
+                reputation_delta=8, relationship_delta=20,
+                xp_skill="firstAid", xp_amount=5.0)
+        else:
+            return EventOutcome(
+                f"You do what you can but it's beyond your skill. "
+                f"{evt.npc_name} doesn't improve. At least you tried.",
+                reputation_delta=2, health_delta=-3,
+                xp_skill="firstAid", xp_amount=2.0)
+    elif choice_idx == 1:  # Water and food
+        if npc: npc.adjust_relationship(10)
+        return EventOutcome(
+            f"You bring a blanket, clean water, and what food you can "
+            f"spare. Basic kindness. {evt.npc_name} squeezes your hand "
+            f"in thanks.",
+            reputation_delta=3, relationship_delta=10)
+    elif choice_idx == 2:  # Warn people
+        return EventOutcome(
+            f"You post warnings and keep people away from the sick tent. "
+            f"Nobody else gets ill. Practical, if not compassionate.",
+            reputation_delta=2, health_delta=5)
+    else:
+        return EventOutcome(
+            f"You pass by. Nobody else helps either. "
+            f"{evt.npc_name} pulls through — barely — on their own.",
+            reputation_delta=-1)
+
+
+# ── MINING & CLAIMS ──────────────────────────────────────────────────────
+
+def _evt_claim_dispute(engine, npcs, rng):
+    a = _pick_npc(npcs)
+    b = _pick_npc(npcs, exclude={a.npc_id} if a else set())
+    if not a or not b:
+        return None
+    return SettlementEvent(
+        title="Claim Dispute",
+        description=(f"{a.name} and {b.name} both claim the same stretch "
+                     f"of creek. {a.name} says he staked first. {b.name} "
+                     f"says the stakes were down when he arrived. "
+                     f"Both have tools on the ground."),
+        npc_id=a.npc_id, npc_name=a.name,
+        choices=[
+            EventChoice("Help survey the claim boundaries",
+                        skill="geology", difficulty=10),
+            EventChoice("Suggest they split the claim"),
+            EventChoice("Side with " + a.name + " — first stake wins"),
+            EventChoice("Stay out of it"),
+        ])
+
+def _resolve_claim_dispute(engine, evt, choice_idx, npcs, rng):
+    a_npc = next((n for n in npcs if n.npc_id == evt.npc_id), None)
+    others = [n for n in npcs if n.npc_id != evt.npc_id and n.present and n.alive]
+    b_npc = others[0] if others else None
+    p = engine.player
+
+    if choice_idx == 0:  # Survey
+        if _skill_check(p, "geology", 10, rng):
+            return EventOutcome(
+                f"You pace off the boundaries, check the original stakes. "
+                f"Clear as day — {evt.npc_name} was here first. The claim "
+                f"is his. Both men accept your judgment.",
+                reputation_delta=8, xp_skill="geology", xp_amount=4.0,
+                xp_amount_extra=("law", 2.0))
+        else:
+            return EventOutcome(
+                f"The boundary markers are a mess. You can't sort it out. "
+                f"They'll need to take it to the mining recorder.",
+                reputation_delta=1, xp_skill="geology", xp_amount=1.0)
+    elif choice_idx == 1:  # Split
+        if a_npc: a_npc.adjust_relationship(3)
+        if b_npc: b_npc.adjust_relationship(3)
+        return EventOutcome(
+            f"\"Half each. Fair is fair.\" Both men grumble but neither "
+            f"wants to fight. They start digging on opposite ends.",
+            reputation_delta=5, relationship_delta=3)
+    elif choice_idx == 2:  # Side with A
+        if a_npc: a_npc.adjust_relationship(10)
+        if b_npc: b_npc.adjust_relationship(-15)
+        return EventOutcome(
+            f"You back {evt.npc_name}. {b_npc.name if b_npc else 'The other man'} "
+            f"curses and kicks dirt but walks away. ",
+            reputation_delta=2, relationship_delta=10)
+    else:
+        return EventOutcome(
+            f"The argument escalates all afternoon. Eventually "
+            f"the bigger man wins by intimidation. Not exactly justice.")
+
+
+def _evt_gold_strike_rumor(engine, npcs, rng):
+    npc = _pick_npc(npcs)
+    if not npc:
+        return None
+    direction = rng.choice(["north", "south", "east", "west",
+                            "up the mountain", "down the valley"])
+    return SettlementEvent(
+        title="Strike Rumor",
+        description=(f"{npc.name} rushes into camp, breathless. "
+                     f"\"They hit it big, {direction}! Nuggets laying "
+                     f"on the ground!\" Half the camp is already packing."),
+        npc_id=npc.npc_id, npc_name=npc.name,
+        choices=[
+            EventChoice("Rush out with everyone else"),
+            EventChoice("Ask {name} for details first".format(name=npc.name),
+                        skill="geology", difficulty=8),
+            EventChoice("Stay put — work your own claim"),
+            EventChoice("Use the chaos to buy abandoned gear cheap",
+                        skill="trading", difficulty=8),
+        ])
+
+def _resolve_gold_strike_rumor(engine, evt, choice_idx, npcs, rng):
+    p = engine.player
+
+    if choice_idx == 0:  # Rush out
+        real = rng.random() < 0.25
+        if real:
+            return EventOutcome(
+                f"It's real. Small but real — you find color in "
+                f"the first pan. Got here before the crowd.",
+                xp_skill="placer", xp_amount=4.0, reputation_delta=0)
+        else:
+            return EventOutcome(
+                f"Nothing. Rumors were overblown or someone salted "
+                f"the ground. You wasted a whole day walking.",
+                health_delta=-5)
+    elif choice_idx == 1:  # Ask details
+        if _skill_check(p, "geology", 8, rng):
+            real = rng.random() < 0.3
+            if real:
+                return EventOutcome(
+                    f"The details check out — right kind of terrain, "
+                    f"right geology. Worth investigating carefully. "
+                    f"You take note of the location.",
+                    xp_skill="geology", xp_amount=5.0)
+            else:
+                return EventOutcome(
+                    f"His description doesn't add up — the rock type "
+                    f"he describes doesn't carry gold. You save yourself "
+                    f"a trip. Good instinct.",
+                    xp_skill="geology", xp_amount=3.0)
+        else:
+            return EventOutcome(
+                f"He's talking too fast, you can't evaluate the claim. "
+                f"Could be real, could be nonsense.")
+    elif choice_idx == 2:  # Stay
+        return EventOutcome(
+            f"You keep working while half the camp runs off. "
+            f"Peace and quiet. The creek's all yours today.",
+            xp_skill="placer", xp_amount=2.0)
+    else:  # Buy gear
+        if _skill_check(p, "trading", 8, rng):
+            return EventOutcome(
+                f"Men abandoning their camp gear in the rush. You buy "
+                f"a good pan and rocker for $3 total. Worth ten.",
+                cash_delta=-3.0, item_id="gold_pan",
+                xp_skill="trading", xp_amount=3.0)
+        else:
+            return EventOutcome(
+                f"Everyone took their gear with them. Nothing left "
+                f"worth buying.")
+
+
+# ── ARRIVALS & STRANGERS ────────────────────────────────────────────────
+
+def _evt_stranger_arrives(engine, npcs, rng):
+    look = rng.choice([
+        ("scarred and silent", "a gunfighter"),
+        ("well-dressed in a city suit", "a con man or a businessman"),
+        ("dusty with a heavy pack", "a prospector who's been walking for weeks"),
+        ("nervous, looking over his shoulder", "someone running from something"),
+        ("with a badge and a stern look", "a federal marshal"),
+    ])
+    name = rng.choice(["McCready", "Faulkner", "The Swede", "Jones",
+                        "Silvers", "Hartley", "One-Eye", "Whitmore"])
+    return SettlementEvent(
+        title="Stranger in Town",
+        description=(f"A stranger walks in — {look[0]}. People whisper "
+                     f"he might be {look[1]}. He calls himself {name}. "
+                     f"He's asking about you."),
+        npc_name=name,
+        choices=[
+            EventChoice("Go introduce yourself"),
+            EventChoice("Ask around about him first",
+                        skill="trading", difficulty=8),
+            EventChoice("Avoid him"),
+            EventChoice("Watch from a distance",
+                        skill="tracking", difficulty=8),
+        ])
+
+def _resolve_stranger_arrives(engine, evt, choice_idx, npcs, rng):
+    p = engine.player
+
+    if choice_idx == 0:  # Introduce
+        intent = rng.choices(
+            ["friendly", "business", "threat"],
+            weights=[40, 40, 20], k=1)[0]
+        if intent == "friendly":
+            return EventOutcome(
+                f"\"{evt.npc_name}. Heard you know this country.\" "
+                f"He's looking for a reliable guide. Offers $10/day.",
+                cash_delta=0, reputation_delta=2)
+        elif intent == "business":
+            return EventOutcome(
+                f"He's a buyer — looking for gold dust at a fair price. "
+                f"\"I pay better than the assay office,\" he says. "
+                f"Could be useful.",
+                reputation_delta=1)
+        else:
+            return EventOutcome(
+                f"\"I think you're working a claim that belongs to my "
+                f"associate.\" His hand rests on his holster. "
+                f"This could go badly.",
+                reputation_delta=-2)
+    elif choice_idx == 1:  # Ask around
+        if _skill_check(p, "trading", 8, rng):
+            dangerous = rng.random() < 0.3
+            if dangerous:
+                return EventOutcome(
+                    f"The bartender leans close: \"That man killed two "
+                    f"people in Sonora. Stay clear.\" Good to know.",
+                    xp_skill="trading", xp_amount=2.0)
+            else:
+                return EventOutcome(
+                    f"\"Seems straight,\" people say. A trader from "
+                    f"Sacramento. Pays fair. Nothing to worry about.",
+                    xp_skill="trading", xp_amount=1.0)
+        else:
+            return EventOutcome(
+                f"Nobody knows anything — or nobody's talking.")
+    elif choice_idx == 2:  # Avoid
+        return EventOutcome(
+            f"You steer clear. {evt.npc_name} stays a few days, "
+            f"then moves on. You'll never know what he wanted.")
+    else:  # Watch
+        if _skill_check(p, "tracking", 8, rng):
+            return EventOutcome(
+                f"You observe from the shadows. He meets with the "
+                f"merchant, exchanges something — a letter? Money? "
+                f"Then he rides out before dawn.",
+                xp_skill="tracking", xp_amount=3.0)
+        else:
+            return EventOutcome(
+                f"He notices you watching. Tips his hat. Unsettling.")
+
+
+# ── WEATHER & DISASTER ───────────────────────────────────────────────────
+
+def _evt_fire_in_town(engine, npcs, rng):
+    npc = _pick_npc(npcs)
+    building = rng.choice(["the general store", "a cabin on the edge of camp",
+                           "the saloon's kitchen", "a woodpile behind the hotel",
+                           "the livery stable"])
+    return SettlementEvent(
+        title="Fire!",
+        description=(f"Fire! {building.capitalize()} is burning. "
+                     f"Smoke billowing. People screaming. "
+                     f"The bucket brigade is forming up but they need "
+                     f"every hand."),
+        npc_name=npc.name if npc else "", severity="warning",
+        choices=[
+            EventChoice("Join the bucket brigade"),
+            EventChoice("Run in and save what you can",
+                        skill="survival", difficulty=12),
+            EventChoice("Help evacuate people"),
+            EventChoice("Protect your own property"),
+        ])
+
+def _resolve_fire_in_town(engine, evt, choice_idx, npcs, rng):
+    p = engine.player
+
+    if choice_idx == 0:  # Bucket brigade
+        return EventOutcome(
+            f"You haul water until your arms burn. The fire is contained "
+            f"after an hour. The building's gutted but the ones next "
+            f"to it survived. Everyone's soot-black and exhausted.",
+            reputation_delta=5, health_delta=-5,
+            xp_skill="survival", xp_amount=3.0)
+    elif choice_idx == 1:  # Run in
+        if _skill_check(p, "survival", 12, rng):
+            return EventOutcome(
+                f"You dash through the smoke and drag out supplies — "
+                f"tools, blankets, a strongbox. The owner is in tears "
+                f"of gratitude. \"Everything I had was in there.\"",
+                reputation_delta=10, health_delta=-10,
+                item_id="rope_10ft",
+                xp_skill="survival", xp_amount=5.0)
+        else:
+            return EventOutcome(
+                f"The smoke is too thick. You stumble out coughing, "
+                f"singed, gasping. Nearly didn't make it. "
+                f"The building collapses behind you.",
+                health_delta=-20, reputation_delta=3)
+    elif choice_idx == 2:  # Evacuate
+        return EventOutcome(
+            f"You help families move their belongings to safety. "
+            f"Children crying, dogs barking, total chaos. "
+            f"But everyone gets out. That's what matters.",
+            reputation_delta=8, xp_skill="survival", xp_amount=2.0)
+    else:  # Protect own
+        return EventOutcome(
+            f"You stand guard over your own camp with wet blankets "
+            f"ready. The fire doesn't reach you. Others notice "
+            f"you didn't help.",
+            reputation_delta=-5)
+
+
+def _evt_flood_warning(engine, npcs, rng):
+    npc = _pick_npc(npcs)
+    return SettlementEvent(
+        title="Rising Water",
+        description=(f"The creek is rising fast after upstream rain. "
+                     f"Water's already at the porch level. "
+                     f"{npc.name if npc else 'Someone'} is yelling to "
+                     f"move equipment to high ground."),
+        npc_name=npc.name if npc else "", severity="warning",
+        choices=[
+            EventChoice("Help move camp equipment to higher ground"),
+            EventChoice("Dam the water with sandbags",
+                        skill="engineering", difficulty=12),
+            EventChoice("Secure only your own gear"),
+            EventChoice("Head for high ground immediately"),
+        ])
+
+def _resolve_flood_warning(engine, evt, choice_idx, npcs, rng):
+    p = engine.player
+
+    if choice_idx == 0:  # Help move
+        return EventOutcome(
+            f"You and a dozen others haul sluice boxes, rockers, "
+            f"and supplies up the bank. Backbreaking work. The flood "
+            f"takes the lower claims but the equipment is saved.",
+            reputation_delta=6, health_delta=-8,
+            xp_skill="survival", xp_amount=3.0)
+    elif choice_idx == 1:  # Dam
+        if _skill_check(p, "engineering", 12, rng):
+            return EventOutcome(
+                f"You organize a sandbag wall across the low point. "
+                f"It holds — barely. The water diverts around camp. "
+                f"People are calling you an engineer now.",
+                reputation_delta=12, health_delta=-5,
+                xp_skill="engineering", xp_amount=6.0)
+        else:
+            return EventOutcome(
+                f"The sandbag wall collapses under the pressure. "
+                f"Water everywhere. Worse than if you'd done nothing — "
+                f"the redirected flow hit the dry side of camp.",
+                reputation_delta=-3, health_delta=-10)
+    elif choice_idx == 2:  # Secure own
+        return EventOutcome(
+            f"You grab your pack and tools and move to high ground. "
+            f"Your gear is safe. Others weren't as quick.",
+            reputation_delta=-3, health_delta=-2)
+    else:  # Run
+        return EventOutcome(
+            f"You get out fast. Smart — the flood is worse than "
+            f"expected. Several claims are washed out completely. "
+            f"Those who stayed are soaked and cursing.",
+            health_delta=-2)
+
+
+# ── ANIMALS ──────────────────────────────────────────────────────────────
+
+def _evt_bear_in_camp(engine, npcs, rng):
+    npc = _pick_npc(npcs)
+    where = rng.choice(["the meat cache", "behind the general store",
+                        "the garbage pit", "someone's tent"])
+    return SettlementEvent(
+        title="Bear!",
+        description=(f"A bear is rummaging through {where}. Big one — "
+                     f"grizzly, maybe 600 pounds. "
+                     f"{npc.name if npc else 'People'} backed away slowly. "
+                     f"It hasn't charged anyone. Yet."),
+        npc_name=npc.name if npc else "", severity="advisory",
+        choices=[
+            EventChoice("Shoot it", skill="firearms", difficulty=14),
+            EventChoice("Make noise to scare it off"),
+            EventChoice("Throw food away from camp to lure it out",
+                        skill="survival", difficulty=8),
+            EventChoice("Stay very still and wait"),
+        ])
+
+def _resolve_bear_in_camp(engine, evt, choice_idx, npcs, rng):
+    p = engine.player
+
+    if choice_idx == 0:  # Shoot
+        if _skill_check(p, "firearms", 14, rng):
+            return EventOutcome(
+                f"One shot. Clean kill. 600 pounds of bear hits the dirt. "
+                f"The camp eats well tonight. \"Hell of a shot,\" "
+                f"someone says.",
+                reputation_delta=8, item_id="fresh_venison",
+                xp_skill="firearms", xp_amount=5.0)
+        else:
+            return EventOutcome(
+                f"You wound it. Now it's angry. It charges — you dive "
+                f"behind a barrel. Others open fire. It goes down, "
+                f"but not before ripping through a tent.",
+                health_delta=-12, reputation_delta=2,
+                xp_skill="firearms", xp_amount=3.0)
+    elif choice_idx == 1:  # Make noise
+        if rng.random() < 0.6:
+            return EventOutcome(
+                f"You bang pots and yell. The bear looks up, annoyed, "
+                f"then lumbers off into the trees. Worked this time.",
+                reputation_delta=2, xp_skill="survival", xp_amount=2.0)
+        else:
+            return EventOutcome(
+                f"The bear doesn't care about your noise. It finishes "
+                f"eating and leaves on its own schedule. You feel foolish "
+                f"standing there with a pot.",
+                reputation_delta=-1)
+    elif choice_idx == 2:  # Lure with food
+        if _skill_check(p, "survival", 8, rng):
+            return EventOutcome(
+                f"You toss jerky and hardtack in a trail leading "
+                f"away from camp. The bear follows the food. "
+                f"Slow, but effective. No one got hurt.",
+                reputation_delta=4, xp_skill="survival", xp_amount=4.0)
+        else:
+            return EventOutcome(
+                f"The bear ignores your food offering and goes for "
+                f"the better stuff in the tent. Can't blame it.",
+                reputation_delta=0)
+    else:  # Wait
+        return EventOutcome(
+            f"You freeze. Everyone freezes. The bear eats its fill "
+            f"and wanders off after twenty tense minutes. "
+            f"Feels like twenty hours.",
+            xp_skill="survival", xp_amount=1.0)
+
+
+# ── GOSSIP & SOCIAL ──────────────────────────────────────────────────────
+
+def _evt_npc_asks_favor(engine, npcs, rng):
+    npc = _pick_npc(npcs)
+    if not npc:
+        return None
+    favor = rng.choice([
+        ("deliver a letter to his wife back east", "a letter"),
+        ("lend him $5 until payday", "$5"),
+        ("teach him to pan for gold", "prospecting lessons"),
+        ("look at a map and tell him if the geology makes sense",
+         "geological advice"),
+        ("help him fix a broken sluice box", "carpentry help"),
+        ("stand watch over his claim while he sleeps", "guard duty"),
+    ])
+    return SettlementEvent(
+        title="Favor Asked",
+        description=(f"{npc.name} approaches you. He needs a favor — "
+                     f"{favor[0]}. He's {rng.choice(['desperate', 'polite but insistent', 'clearly embarrassed to ask', 'offering to pay you back double'])}. "
+                     f"\"I wouldn't ask if I had anyone else.\""),
+        npc_id=npc.npc_id, npc_name=npc.name,
+        choices=[
+            EventChoice("Help him out"),
+            EventChoice("Help, but ask for something in return",
+                        skill="trading", difficulty=8),
+            EventChoice("Decline politely"),
+            EventChoice("Decline rudely"),
+        ])
+
+def _resolve_npc_asks_favor(engine, evt, choice_idx, npcs, rng):
+    npc = next((n for n in npcs if n.npc_id == evt.npc_id), None)
+    p = engine.player
+
+    if choice_idx == 0:  # Help freely
+        if npc: npc.adjust_relationship(15)
+        return EventOutcome(
+            f"You help {evt.npc_name} without asking anything in return. "
+            f"He's genuinely grateful. \"I won't forget this.\" "
+            f"And he means it.",
+            reputation_delta=3, relationship_delta=15)
+    elif choice_idx == 1:  # Help for payment
+        if _skill_check(p, "trading", 8, rng):
+            if npc: npc.adjust_relationship(5)
+            return EventOutcome(
+                f"\"Fair enough.\" {evt.npc_name} agrees to return the "
+                f"favor — information, labor, or cash. A useful contact.",
+                reputation_delta=1, relationship_delta=5,
+                cash_delta=rng.uniform(2, 8),
+                xp_skill="trading", xp_amount=2.0)
+        else:
+            if npc: npc.adjust_relationship(-5)
+            return EventOutcome(
+                f"\"I'm asking for help and you want to haggle?\" "
+                f"{evt.npc_name} walks away disgusted.",
+                relationship_delta=-5)
+    elif choice_idx == 2:  # Decline politely
+        return EventOutcome(
+            f"\"Sorry, can't right now.\" {evt.npc_name} nods and "
+            f"moves on to ask someone else. No hard feelings.",
+            reputation_delta=0)
+    else:  # Decline rudely
+        if npc: npc.adjust_relationship(-10)
+        return EventOutcome(
+            f"\"Not my problem.\" {evt.npc_name}'s face hardens. "
+            f"He walks away without a word. People nearby overheard.",
+            reputation_delta=-3, relationship_delta=-10)
+
+
+def _evt_npc_offers_info(engine, npcs, rng):
+    npc = _pick_npc(npcs)
+    if not npc:
+        return None
+    info_type = rng.choice([
+        ("where the best prospecting ground is",
+         "geology", "xp_skill", "geology", 4.0),
+        ("which merchants cheat on weights",
+         "trading", "reputation_delta", "", 3.0),
+        ("where a wanted man is hiding",
+         "law", "reputation_delta", "", 5.0),
+        ("a shortcut through the mountains",
+         "tracking", "xp_skill", "tracking", 3.0),
+        ("how to build a better sluice box",
+         "engineering", "xp_skill", "engineering", 4.0),
+    ])
+    topic = info_type[0]
+    return SettlementEvent(
+        title="Information Offered",
+        description=(f"{npc.name} sidles up to you quietly. "
+                     f"\"I know {topic}. Worth something to you?\" "
+                     f"He wants $3 for the information."),
+        npc_id=npc.npc_id, npc_name=npc.name,
+        choices=[
+            EventChoice("Pay $3 for the information"),
+            EventChoice("Negotiate the price down",
+                        skill="trading", difficulty=10),
+            EventChoice("Refuse — could be worthless"),
+            EventChoice("Intimidate him into telling you free",
+                        attribute="strength", attr_min=12),
+        ])
+
+def _resolve_npc_offers_info(engine, evt, choice_idx, npcs, rng):
+    npc = next((n for n in npcs if n.npc_id == evt.npc_id), None)
+    p = engine.player
+    good_info = rng.random() < 0.65
+
+    if choice_idx == 0:  # Pay
+        if p.cash < 3:
+            return EventOutcome("You don't have $3.")
+        if good_info:
+            return EventOutcome(
+                f"Worth every penny. {evt.npc_name} draws a map on "
+                f"a scrap of paper. Detailed, specific. This is real.",
+                cash_delta=-3.0, relationship_delta=5,
+                xp_skill="geology", xp_amount=4.0)
+        else:
+            return EventOutcome(
+                f"Vague directions, obvious advice. You paid $3 for "
+                f"common knowledge. {evt.npc_name} is already gone.",
+                cash_delta=-3.0, relationship_delta=-3)
+    elif choice_idx == 1:  # Negotiate
+        if _skill_check(p, "trading", 10, rng):
+            if good_info:
+                return EventOutcome(
+                    f"Talked him down to $1. And the information is solid — "
+                    f"specific locations, tested by {evt.npc_name} himself.",
+                    cash_delta=-1.0, xp_skill="trading", xp_amount=3.0)
+            else:
+                return EventOutcome(
+                    f"$1 for garbage. At least you didn't pay full price.",
+                    cash_delta=-1.0, xp_skill="trading", xp_amount=1.0)
+        else:
+            return EventOutcome(
+                f"\"$3 or nothing.\" He walks. The information walks "
+                f"with him.",
+                reputation_delta=-1)
+    elif choice_idx == 2:  # Refuse
+        return EventOutcome(
+            f"\"Suit yourself.\" {evt.npc_name} shrugs and finds "
+            f"another buyer.",
+            reputation_delta=0)
+    else:  # Intimidate
+        str_val = p.attributes.get("strength", 10)
+        if str_val >= 12 and rng.random() < 0.6:
+            if npc: npc.adjust_relationship(-15)
+            return EventOutcome(
+                f"You lean in close. \"Tell me. Free.\" "
+                f"{evt.npc_name} pales and talks. Fast. "
+                f"The information might even be good.",
+                relationship_delta=-15, reputation_delta=-3,
+                xp_skill="geology", xp_amount=2.0)
+        else:
+            return EventOutcome(
+                f"{evt.npc_name} doesn't scare easy. "
+                f"\"Touch me and the sheriff hears about it.\" "
+                f"He walks away with your dignity.",
+                reputation_delta=-5, relationship_delta=-10)
+
+
+# ── CAMP/BOOMTOWN SPECIFIC ──────────────────────────────────────────────
+
+def _evt_newcomer_lost(engine, npcs, rng):
+    name = rng.choice(["a young man", "an older fellow", "a woman",
+                        "a boy barely sixteen", "a foreigner"])
+    return SettlementEvent(
+        title="Lost Newcomer",
+        description=(f"{name.capitalize()} wanders into camp looking lost. "
+                     f"No supplies, no tools, no idea what they're doing. "
+                     f"They came west to find gold and clearly have "
+                     f"no plan beyond that."),
+        choices=[
+            EventChoice("Take them under your wing — show them the basics"),
+            EventChoice("Point them to the general store and wish them luck"),
+            EventChoice("Warn them this isn't a place for beginners"),
+            EventChoice("Offer to hire them as labor"),
+        ])
+
+def _resolve_newcomer_lost(engine, evt, choice_idx, npcs, rng):
+    if choice_idx == 0:  # Mentor
+        return EventOutcome(
+            f"You spend an afternoon teaching basic panning, how to "
+            f"read the creek, where to camp. They're a quick learner. "
+            f"Could have a friend for life.",
+            reputation_delta=5, xp_skill="placer", xp_amount=2.0)
+    elif choice_idx == 1:  # Point to store
+        return EventOutcome(
+            f"\"That way. Buy a pan, a shovel, and some flour. "
+            f"Then find a spot nobody's working.\" Simple advice. "
+            f"Better than nothing.",
+            reputation_delta=1)
+    elif choice_idx == 2:  # Warn
+        return EventOutcome(
+            f"\"People die out here. Go home.\" They look at you "
+            f"with big eyes. By morning they've either left or "
+            f"staked a claim. You said your piece.",
+            reputation_delta=1)
+    else:  # Hire
+        return EventOutcome(
+            f"\"Work for me, $1 a day and food. You'll learn the "
+            f"trade.\" They accept immediately. Eager labor, "
+            f"though unskilled.",
+            cash_delta=-1.0, reputation_delta=2)
+
+
+# ── CITY SPECIFIC ────────────────────────────────────────────────────────
+
+def _evt_newspaper_reporter(engine, npcs, rng):
+    npc = _pick_npc(npcs)
+    return SettlementEvent(
+        title="Reporter",
+        description=(f"A newspaper reporter is in town writing a story "
+                     f"about the mining district. She's asking everyone "
+                     f"for quotes. Now she's headed your way with a "
+                     f"pencil and notepad."),
+        choices=[
+            EventChoice("Give an honest interview about conditions"),
+            EventChoice("Exaggerate — make the place sound amazing",
+                        skill="trading", difficulty=8),
+            EventChoice("Complain about everything — corruption, "
+                        "unsafe conditions"),
+            EventChoice("Decline to comment"),
+        ])
+
+def _resolve_newspaper_reporter(engine, evt, choice_idx, npcs, rng):
+    if choice_idx == 0:  # Honest
+        return EventOutcome(
+            f"You tell it straight. The good, the bad, the mud. "
+            f"She writes it all down. A fair article runs next week — "
+            f"your name in print. People respect honesty.",
+            reputation_delta=5)
+    elif choice_idx == 1:  # Exaggerate
+        if _skill_check(engine.player, "trading", 8, rng):
+            return EventOutcome(
+                f"\"Gold everywhere! Richest ground in California!\" "
+                f"She prints it. Next month, a flood of newcomers "
+                f"arrive. Prices rise. You started something.",
+                reputation_delta=3, price_mult=1.3, price_duration=14,
+                xp_skill="trading", xp_amount=2.0)
+        else:
+            return EventOutcome(
+                f"Your tall tales are obviously fake. She writes "
+                f"a piece about liars in mining camps instead. "
+                f"Your name is mentioned. Unfavorably.",
+                reputation_delta=-5)
+    elif choice_idx == 2:  # Complain
+        return EventOutcome(
+            f"You unload — bad water, crooked merchants, dangerous "
+            f"conditions. She writes it all. The article brings "
+            f"attention — and eventually, inspectors.",
+            reputation_delta=2, price_mult=0.9, price_duration=7)
+    else:
+        return EventOutcome(
+            f"\"No comment.\" She moves on to the next person. "
+            f"Your story goes untold.")
+
+
+# ============================================================================
+#  EVENT REGISTRY — maps event functions to their resolvers
+# ============================================================================
+
+# (event_func, resolve_func, weight, required_settlement_types or None for all)
+_EVENT_REGISTRY: List[tuple] = [
+    # Saloon & Social
+    (_evt_bar_fight,        _resolve_bar_fight,        10, None),
+    (_evt_drunk_prospector, _resolve_drunk_prospector,   8, None),
+    (_evt_gambling_dispute, _resolve_gambling_dispute,   7, None),
+
+    # Law & Order
+    (_evt_wanted_man,       _resolve_wanted_man,         5, None),
+    (_evt_theft_accusation, _resolve_theft_accusation,   6, None),
+
+    # Economy
+    (_evt_merchant_deal,    _resolve_merchant_deal,      7, None),
+    (_evt_supply_shortage,  _resolve_supply_shortage,    5, None),
+
+    # Health
+    (_evt_sick_person,      _resolve_sick_person,        6, None),
+
+    # Mining
+    (_evt_claim_dispute,    _resolve_claim_dispute,      8,
+     {"mining_camp_small", "mining_camp_medium", "boomtown"}),
+    (_evt_gold_strike_rumor,_resolve_gold_strike_rumor,   7,
+     {"mining_camp_small", "mining_camp_medium", "boomtown", "small_town"}),
+
+    # Arrivals
+    (_evt_stranger_arrives, _resolve_stranger_arrives,   6, None),
+
+    # Disaster
+    (_evt_fire_in_town,     _resolve_fire_in_town,       4, None),
+    (_evt_flood_warning,    _resolve_flood_warning,      4,
+     {"mining_camp_small", "mining_camp_medium", "boomtown"}),
+
+    # Animals
+    (_evt_bear_in_camp,     _resolve_bear_in_camp,       5,
+     {"mining_camp_small", "mining_camp_medium", "boomtown", "trading_post"}),
+
+    # Social
+    (_evt_npc_asks_favor,   _resolve_npc_asks_favor,     8, None),
+    (_evt_npc_offers_info,  _resolve_npc_offers_info,    7, None),
+
+    # Camp-specific
+    (_evt_newcomer_lost,    _resolve_newcomer_lost,      6,
+     {"mining_camp_small", "mining_camp_medium", "boomtown"}),
+
+    # City-specific
+    (_evt_newspaper_reporter, _resolve_newspaper_reporter, 5,
+     {"city", "small_town"}),
 ]
 
 
 # ============================================================================
-#  MAIN ROLL FUNCTION
+#  MAIN ENTRY POINT
 # ============================================================================
 
 def roll_settlement_event(engine: "Engine", settlement_type: str,
                           season: str = "summer",
                           year: int = 1849) -> Optional[SettlementEvent]:
     """
-    Roll for a random settlement event. Called once per day from engine.
-    Returns a SettlementEvent or None.
+    Roll for and present an interactive settlement event.
+    Called once per day from engine daily tick.
+    Returns the completed event (with outcome) or None.
     """
     rng = random.Random()
 
@@ -844,65 +1439,116 @@ def roll_settlement_event(engine: "Engine", settlement_type: str,
     if rng.random() > chance:
         return None
 
-    # Build the weighted event pool based on settlement type + season
-    pool: List[Tuple] = []
+    # Get available NPCs
+    npcs = []
+    if engine:
+        wx, wy = engine.player.world_x, engine.player.world_y
+        ax, ay = engine.player.area_x, engine.player.area_y
+        prefixes = (f"sett_{wx}_{wy}_{ax}_{ay}_",
+                    f"wild_{wx}_{wy}_{ax}_{ay}_")
+        npcs = [n for n in engine.npc_mgr.npcs.values()
+                if n.present and n.alive
+                and any(n.npc_id.startswith(p) for p in prefixes)]
 
-    # Universal events (all settlements)
-    pool.extend(_SALOON_EVENTS)
-    pool.extend(_GOSSIP_EVENTS)
-    pool.extend(_WEATHER_EVENTS)
-    pool.extend(_HEALTH_EVENTS)
-    pool.extend(_ANIMAL_EVENTS)
-    pool.extend(_ODD_EVENTS)
-    pool.extend(_ARRIVAL_EVENTS)
+    # Filter events by settlement type
+    eligible = []
+    for evt_func, resolve_func, weight, stypes in _EVENT_REGISTRY:
+        if stypes is None or settlement_type in stypes:
+            eligible.append((evt_func, resolve_func, weight))
 
-    # Events requiring some infrastructure
-    if settlement_type not in ("mining_camp_small",):
-        pool.extend(_LAW_EVENTS)
-        pool.extend(_ECONOMY_EVENTS)
-        pool.extend(_GROWTH_EVENTS)
-        pool.extend(_CONFLICT_EVENTS)
-        pool.extend(_CULTURE_EVENTS)
-
-    # Mining-focused settlements
-    if settlement_type in ("mining_camp_small", "mining_camp_medium", "boomtown"):
-        pool.extend(_MINING_EVENTS)
-        pool.extend(_CAMP_EVENTS)
-
-    # Boomtowns get disaster events (overcrowded, poorly built)
-    if settlement_type in ("boomtown", "city"):
-        pool.extend(_DISASTER_EVENTS)
-
-    # Cities only
-    if settlement_type == "city":
-        pool.extend(_CITY_EVENTS)
-
-    # Seasonal
-    season_pools = {
-        "spring": _SPRING_EVENTS,
-        "summer": _SUMMER_EVENTS,
-        "fall": _FALL_EVENTS,
-        "winter": _WINTER_EVENTS,
-    }
-    pool.extend(season_pools.get(season, []))
-
-    if not pool:
+    if not eligible:
         return None
 
-    # Weighted selection
-    messages, severities, weights, effects_list = zip(*pool)
-    idx = rng.choices(range(len(pool)), weights=weights, k=1)[0]
-    msg, sev, _, effects = pool[idx]
+    # Try events in weighted random order until one succeeds
+    rng.shuffle(eligible)
+    funcs, resolvers, weights = zip(*eligible)
+    order = rng.choices(range(len(eligible)), weights=weights, k=min(5, len(eligible)))
 
-    return SettlementEvent(
-        message=msg,
-        severity=sev,
-        reputation_delta=effects.get("reputation_delta", 0.0),
-        price_mult=effects.get("price_mult", 1.0),
-        price_duration=effects.get("price_duration", 0),
-        npc_spawned=effects.get("npc_spawned", ""),
-        item_spawned=effects.get("item_spawned", ""),
-        cash_delta=effects.get("cash_delta", 0.0),
-        health_delta=effects.get("health_delta", 0.0),
-        law_alert=effects.get("law_alert", False),
-    )
+    for idx in order:
+        evt_func, resolve_func, _ = eligible[idx]
+        evt = evt_func(engine, npcs, rng)
+        if evt is None:
+            continue
+
+        # Present choices to player
+        choice_idx = _present_event(engine, evt, rng)
+        if choice_idx is None:
+            # Player cancelled — still show the description but no interaction
+            return evt
+
+        # Resolve the outcome
+        outcome = resolve_func(engine, evt, choice_idx, npcs, rng)
+        evt.outcome = outcome
+
+        # Apply effects
+        if outcome and engine:
+            _apply_outcome(engine, evt, outcome, npcs)
+
+        return evt
+
+    return None
+
+
+def _apply_outcome(engine: "Engine", evt: SettlementEvent,
+                   outcome: EventOutcome, npcs: list):
+    """Apply all outcome effects to game state."""
+    p = engine.player
+    region = ""
+    if engine.current_local:
+        region = getattr(engine.current_local, '_region_name', '')
+
+    # Show outcome message
+    engine.add_message(outcome.message, "normal")
+
+    # Cash
+    if outcome.cash_delta:
+        p.cash += outcome.cash_delta
+        if outcome.cash_delta > 0:
+            engine.add_message(f"  [+${outcome.cash_delta:.2f}]", "advisory")
+        elif outcome.cash_delta < 0:
+            engine.add_message(f"  [-${abs(outcome.cash_delta):.2f}]", "advisory")
+
+    # Health
+    if outcome.health_delta:
+        p.survival.health = max(0, min(100,
+            p.survival.health + outcome.health_delta))
+        if outcome.health_delta < 0:
+            engine.add_message(
+                f"  [Health {outcome.health_delta:+.0f}]", "advisory")
+
+    # Reputation
+    if outcome.reputation_delta and region:
+        engine.reputation.adjust(region, outcome.reputation_delta)
+
+    # Skill XP
+    if outcome.xp_skill and outcome.xp_amount > 0:
+        p.gain_skill_xp(outcome.xp_skill, outcome.xp_amount)
+
+    # Item
+    if outcome.item_id:
+        try:
+            from src.items import make_item
+            item = make_item(outcome.item_id)
+            p.inventory.append(item)
+            engine.add_message(f"  [Received: {item.name}]", "advisory")
+        except Exception:
+            pass
+
+    # NPC effects
+    if evt.npc_id:
+        npc = next((n for n in npcs if n.npc_id == evt.npc_id), None)
+        if npc:
+            if outcome.npc_hostile:
+                npc.go_hostile()
+            if outcome.npc_leaves:
+                npc.present = False
+
+    # Price effects
+    if outcome.price_mult != 1.0 and outcome.price_duration > 0:
+        if not hasattr(engine, '_settlement_price_effects'):
+            engine._settlement_price_effects = []
+        current_day = engine.time.total_minutes // 1440
+        engine._settlement_price_effects.append({
+            "mult": outcome.price_mult,
+            "expires": current_day + outcome.price_duration,
+        })

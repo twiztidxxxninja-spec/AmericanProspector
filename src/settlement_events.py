@@ -1365,6 +1365,174 @@ def _resolve_newspaper_reporter(engine, evt, choice_idx, npcs, rng):
             f"Your story goes untold.")
 
 
+# ── NEWSPAPER ────────────────────────────────────────────────────────
+
+def _evt_read_newspaper(engine, npcs, rng):
+    headlines = [
+        "GOLD STRIKE REPORTED UP NORTH — dozens rushing to new diggings",
+        "STAGE ROBBED ON PLACERVILLE ROAD — $2,000 in gold dust taken",
+        "NEW ASSAY OFFICE OPENS — promises fair weights and honest readings",
+        "CHOLERA FEARS — three deaths in camp downstream, boil your water",
+        "FREIGHT PRICES RISING — teamsters demand higher rates",
+        "CLAIM DISPUTE ENDS IN SHOOTING — two men dead over 50 feet of creek",
+        "SHIP ARRIVES FROM EAST — fresh supplies expected within the week",
+        "PRICE OF FLOUR DOUBLES — drought in valley reduces harvest",
+        "VIGILANCE COMMITTEE FORMS — three hangings this month already",
+        "CHINESE MINERS DISCOVER NEW CREEK — working abandoned claims profitably",
+    ]
+    headline = rng.choice(headlines)
+    return SettlementEvent(
+        title="Newspaper",
+        description=f"A copy of the local gazette is posted on the board. "
+                    f"The headline reads: \"{headline}\"",
+        choices=[
+            EventChoice("Read the whole paper carefully",
+                        skill="trading", difficulty=6),
+            EventChoice("Glance at it and move on"),
+            EventChoice("Ask someone about the headline"),
+        ])
+
+def _resolve_read_newspaper(engine, evt, choice_idx, npcs, rng):
+    if choice_idx == 0:  # Read carefully
+        if _skill_check(engine.player, "trading", 6, rng):
+            return EventOutcome(
+                "You read every column — prices, arrivals, wanted notices, "
+                "classifieds. A merchant is selling a claim cheap. "
+                "An assayer is offering free tests this week. "
+                "Knowledge is currency out here.",
+                xp_skill="trading", xp_amount=3.0, reputation_delta=1)
+        else:
+            return EventOutcome(
+                "The small print blurs. You get the gist but miss the details. "
+                "Should've paid more attention in school.")
+    elif choice_idx == 1:
+        return EventOutcome("You note the headline and keep walking.")
+    else:
+        return EventOutcome(
+            "An old-timer fills you in. Half gossip, half fact. "
+            "Hard to tell which is which.",
+            xp_skill="trading", xp_amount=1.0)
+
+
+# ── SUPPLY CHAIN DISRUPTION ──────────────────────────────────────────
+
+def _evt_supply_disruption(engine, npcs, rng):
+    cause = rng.choice([
+        "Bandits hit a freight wagon on the road in.",
+        "The bridge washed out in the storm.",
+        "Teamsters are on strike — no deliveries this week.",
+        "A mule train lost half its load crossing the river.",
+    ])
+    return SettlementEvent(
+        title="Supply Disruption",
+        description=f"{cause} The camp store is running low. "
+                    f"Prices are climbing. People are hoarding.",
+        severity="advisory",
+        choices=[
+            EventChoice("Buy what you can before prices spike"),
+            EventChoice("Offer to help bring supplies in",
+                        skill="survival", difficulty=8),
+            EventChoice("Wait it out — supplies will come"),
+            EventChoice("Sell your surplus at the markup",
+                        skill="trading", difficulty=8),
+        ])
+
+def _resolve_supply_disruption(engine, evt, choice_idx, npcs, rng):
+    if choice_idx == 0:  # Buy early
+        return EventOutcome(
+            "Smart move. You stock up before the rush. "
+            "By tomorrow, flour costs triple.",
+            cash_delta=-5.0, price_mult=1.5, price_duration=7)
+    elif choice_idx == 1:  # Help
+        if _skill_check(engine.player, "survival", 8, rng):
+            return EventOutcome(
+                "You help haul emergency supplies from the next town. "
+                "Hard work but the camp remembers who stepped up.",
+                reputation_delta=8, health_delta=-5,
+                xp_skill="survival", xp_amount=4.0)
+        else:
+            return EventOutcome(
+                "You try but the road is worse than expected. "
+                "You turn back exhausted, empty-handed.",
+                health_delta=-8)
+    elif choice_idx == 2:
+        return EventOutcome(
+            "You wait. Prices spike for a week. "
+            "Some men go hungry. The supply wagon finally arrives.",
+            price_mult=1.5, price_duration=7)
+    else:  # Sell surplus
+        if _skill_check(engine.player, "trading", 8, rng):
+            return EventOutcome(
+                "You sell your extra flour and salt at triple markup. "
+                "The desperate pay. Good business, questionable morals.",
+                cash_delta=15.0, reputation_delta=-3,
+                xp_skill="trading", xp_amount=3.0)
+        else:
+            return EventOutcome(
+                "Nobody's buying from you — the store's still got some. "
+                "Your markup was too aggressive.",
+                reputation_delta=-1)
+
+
+# ── COMPETING PROSPECTOR ─────────────────────────────────────────────
+
+def _evt_competing_prospector(engine, npcs, rng):
+    npc = _pick_npc(npcs)
+    if not npc:
+        return None
+    spot = rng.choice(["the same creek you've been working",
+                       "the ridge you've had your eye on",
+                       "ground right next to your claim",
+                       "a gravel bar you tested last week"])
+    return SettlementEvent(
+        title="Competition",
+        description=f"{npc.name} has started working {spot}. "
+                    f"He's got a rocker box and two helpers. "
+                    f"The good ground is getting crowded.",
+        npc_id=npc.npc_id, npc_name=npc.name,
+        choices=[
+            EventChoice("Talk to him — propose splitting the area"),
+            EventChoice("Work harder — outpace him",
+                        skill="placer", difficulty=10),
+            EventChoice("Stake your claim formally to protect it"),
+            EventChoice("Let it go — plenty of creek to work"),
+        ])
+
+def _resolve_competing_prospector(engine, evt, choice_idx, npcs, rng):
+    npc = next((n for n in npcs if n.npc_id == evt.npc_id), None)
+
+    if choice_idx == 0:  # Split
+        if npc: npc.adjust_relationship(10)
+        return EventOutcome(
+            f"You work it out over coffee. He takes upstream, "
+            f"you take downstream. Handshake deal. "
+            f"\"Fair is fair,\" {evt.npc_name} says.",
+            reputation_delta=3, relationship_delta=10)
+    elif choice_idx == 1:  # Outwork
+        if _skill_check(engine.player, "placer", 10, rng):
+            return EventOutcome(
+                "You're up before dawn, working every inch. "
+                "By the end of the week he moves on — can't keep up. "
+                "The ground is yours.",
+                xp_skill="placer", xp_amount=5.0)
+        else:
+            return EventOutcome(
+                "He's faster. More helpers. Better equipment. "
+                "You exhaust yourself and he's still pulling more color.",
+                health_delta=-5, xp_skill="placer", xp_amount=2.0)
+    elif choice_idx == 2:  # Stake claim
+        return EventOutcome(
+            "You drive stakes at the corners and post your notice. "
+            "Legal protection — if he crosses the line, it's claim jumping. "
+            "He eyes the stakes but stays on his side.",
+            reputation_delta=2, xp_skill="law", xp_amount=2.0)
+    else:
+        return EventOutcome(
+            "You shrug and move upstream. Plenty of creek. "
+            "No point fighting over dirt.",
+            reputation_delta=1)
+
+
 # ============================================================================
 #  EVENT REGISTRY — maps event functions to their resolvers
 # ============================================================================
@@ -1416,6 +1584,18 @@ _EVENT_REGISTRY: List[tuple] = [
     # City-specific
     (_evt_newspaper_reporter, _resolve_newspaper_reporter, 5,
      {"city", "small_town"}),
+
+    # Newspaper — read headlines (cities/towns with newspaper buildings)
+    (_evt_read_newspaper, _resolve_read_newspaper, 6,
+     {"city", "small_town"}),
+
+    # Supply chain disruption
+    (_evt_supply_disruption, _resolve_supply_disruption, 4,
+     {"mining_camp_small", "mining_camp_medium", "boomtown"}),
+
+    # Competing prospector
+    (_evt_competing_prospector, _resolve_competing_prospector, 6,
+     {"mining_camp_small", "mining_camp_medium", "boomtown"}),
 ]
 
 

@@ -234,7 +234,8 @@ _SEASON_GOLD_MULT = {
 
 
 def pan_for_gold(player: "Player", local_map: "LocalMap",
-                 season: str = "summer") -> PanResult:
+                 season: str = "summer",
+                 partner_count: int = 0) -> PanResult:
     """
     One panning cycle at the player's current tile.
     Takes ~20 minutes. Uses Placer skill.
@@ -291,9 +292,11 @@ def pan_for_gold(player: "Player", local_map: "LocalMap",
         skill_mult = 1.0 + placer_skill * 0.1
         # Seasonal variation — spring runoff best, winter worst
         season_mult = _SEASON_GOLD_MULT.get(season, 1.0)
+        # Partnership bonus — more hands = more throughput
+        partner_mult = 1.0 + partner_count * 0.4  # each partner adds 40%
         # Random variation ±30%
         variation = random.uniform(0.7, 1.3)
-        gold_recovered = base_oz * skill_mult * season_mult * variation
+        gold_recovered = base_oz * skill_mult * season_mult * partner_mult * variation
         # Deplete tile slightly
         tile.gold_grade = max(0.0, tile.gold_grade - 0.005)
 

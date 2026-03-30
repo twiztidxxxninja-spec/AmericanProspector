@@ -3407,7 +3407,13 @@ class Engine:
                 # Temporarily set current tile's grade to source grade for pan_for_gold
                 saved_grade = tile.gold_grade
                 tile.gold_grade = src_tile.gold_grade
-                result = pan_for_gold(self.player, lmap, season=self.time.season)
+                # Count companions panning nearby (partnership bonus)
+                partners = sum(1 for link in self.companion_mgr.links.values()
+                               if link.current_task == "prospect_pan"
+                               and link.currently_tasked)
+                result = pan_for_gold(self.player, lmap,
+                                      season=self.time.season,
+                                      partner_count=partners)
                 tile.gold_grade = saved_grade  # restore
                 self.player.pan_loaded = False
                 self.player.pan_source_x = -1

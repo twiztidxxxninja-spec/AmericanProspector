@@ -6,68 +6,21 @@ A hard, comprehensive Gold Rush simulator set in 1849 California. ASCII roguelik
 
 ## How to Play
 
-There are two ways to run the game. Pick whichever is easier for you.
+1. **Download** — click the green "Code" button on GitHub → "Download ZIP"
+2. **Unzip** anywhere
+3. **Double-click `PLAY.bat`**
 
----
+That's it. If Python isn't installed, it opens the Microsoft Store for you — click Install (free), then double-click PLAY.bat again. Everything else is automatic.
 
-### Method 1: Download and Run (Easiest)
-
-**What you need:** Nothing. Just the game folder.
-
-**Steps:**
-
-1. **Download the game folder** (zip file) and unzip it anywhere
-2. **Double-click `AmericanProspector.exe`**
-
-**Windows SmartScreen warning:** Windows will pop up saying "Windows protected your PC." Here's why:
-
-Microsoft charges developers $200-400/year for a "code signing certificate" that makes this warning go away. I didn't pay them. That's the only reason you see it. Every indie game, modding tool, and homebrew app made by a solo developer shows this same warning.
+**First run** takes ~30 seconds to install game libraries. After that it starts instantly.
 
 **The game does not:**
 - Install anything to your system
 - Modify your registry or system files
 - Run at startup or in the background
 - Access anything outside its own folder
-- Collect personal information
 
-Everything the game does stays inside its own folder (saves, config, bug reports). Delete the folder and it's completely gone.
-
-**To get past the warning:**
-- Click **"More info"**
-- Click **"Run anyway"**
-- This only happens the first time
-
-**That's it. You're playing.**
-
-**What if there's no API key in config.json?**
-The game still works perfectly. You just won't get AI responses when you type freeform actions (like "I search the body"). All hardcoded gameplay — mining, combat, crafting, trading, hunting, trapping, building — works without AI. That's 95% of the game.
-
----
-
-### Method 2: Run with Python (No Security Warnings)
-
-**What you need:** Python (free, from Microsoft Store)
-
-**Why this method:** The Microsoft Store version of Python doesn't trigger security warnings. No "Windows protected your PC" popup. If Method 1 makes you nervous, use this.
-
-**Steps:**
-
-1. **Install Python** from the Microsoft Store
-   - Open the **Microsoft Store** app
-   - Search **"Python 3.12"** (or any 3.11+)
-   - Click **Install** (free)
-   - *Why: The game is written in Python. This runs it.*
-
-2. **Download the game folder** and unzip it
-
-3. **Double-click `run.bat`**
-   - Installs two small libraries automatically (python-tcod for graphics, pygame-ce for music)
-   - Then starts the game
-   - *First run takes ~30 seconds for library install. After that it starts instantly.*
-
-**Optional steps you can skip:**
-- **pygame-ce** — only needed for music. If it fails to install, game works fine, just silent.
-- **config.json** — if missing, game creates defaults. AI features disabled unless you add an API key.
+Delete the folder and it's completely gone.
 
 ---
 

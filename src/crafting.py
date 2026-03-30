@@ -485,6 +485,41 @@ RECIPES: List[Recipe] = [
         category="general",
     ),
 
+    # ── Storage & Carrying ──────────────────────────────────────────
+    Recipe(
+        id="make_satchel", name="Leather Satchel",
+        description="A shoulder bag from leather. Carry documents and small items.",
+        materials=[("leather", 2), ("sinew", 1)],
+        tool_required="cut", skill="survival", difficulty=7, time_minutes=60,
+        output_id="leather_satchel",
+        category="leatherwork",
+    ),
+    Recipe(
+        id="make_rucksack", name="Rucksack",
+        description="A canvas and leather pack with shoulder straps. "
+                    "The standard prospector's carrying solution.",
+        materials=[("canvas", 2), ("leather", 1), ("rope_10ft", 1)],
+        tool_required="cut", skill="survival", difficulty=8, time_minutes=90,
+        output_id="rucksack",
+        category="leatherwork",
+    ),
+    Recipe(
+        id="make_belt_pouch", name="Belt Pouch",
+        description="A small belt pouch for gold dust and ammunition.",
+        materials=[("leather", 1)],
+        tool_required="cut", skill="survival", difficulty=5, time_minutes=20,
+        output_id="belt_pouch",
+        category="leatherwork",
+    ),
+    Recipe(
+        id="make_ore_sack", name="Ore Sack",
+        description="A heavy sack for hauling rock samples and ore.",
+        materials=[("canvas", 1)],
+        skill="survival", difficulty=3, time_minutes=15,
+        output_id="ore_sack",
+        category="general",
+    ),
+
     Recipe(
         id="splint", name="Splint",
         description="Immobilize a broken bone with sticks and cloth.",

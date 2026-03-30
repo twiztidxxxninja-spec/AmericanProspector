@@ -825,6 +825,61 @@ ITEM_TEMPLATES: Dict[str, dict] = {
                        "Load a raw pelt and wait 24 hours.",
     },
 
+    # ── Storage (increases carry capacity when in inventory) ────────────
+    "rucksack": {
+        "id": "rucksack", "name": "Rucksack", "weight": 2.0,
+        "category": "misc",
+        "description": "A canvas rucksack with shoulder straps. "
+                       "The standard prospector's pack. +60lb carry capacity.",
+        "base_value": 3.00,
+        "extra": {"carry_capacity_lb": 60},
+    },
+    "leather_satchel": {
+        "id": "leather_satchel", "name": "Leather Satchel", "weight": 1.0,
+        "category": "misc",
+        "description": "A shoulder bag for documents, small tools, and samples. +20lb.",
+        "base_value": 2.00,
+        "extra": {"carry_capacity_lb": 20},
+    },
+    "prospector_pack": {
+        "id": "prospector_pack", "name": "Prospector's Pack", "weight": 3.0,
+        "category": "misc",
+        "description": "A large canvas and leather pack with external tool loops. "
+                       "The serious miner's workhorse. +80lb carry capacity.",
+        "base_value": 6.00,
+        "extra": {"carry_capacity_lb": 80},
+    },
+    "saddlebags": {
+        "id": "saddlebags", "name": "Saddlebags", "weight": 3.0,
+        "category": "misc",
+        "description": "Paired leather bags that drape over a mule or horse. +40lb. "
+                       "Must be near a pack animal to use full capacity.",
+        "base_value": 4.00,
+        "extra": {"carry_capacity_lb": 40},
+    },
+    "belt_pouch": {
+        "id": "belt_pouch", "name": "Belt Pouch", "weight": 0.3,
+        "category": "misc",
+        "description": "A small leather pouch worn on the belt. +5lb. "
+                       "Good for gold dust, ammunition, and small items.",
+        "base_value": 0.75,
+        "extra": {"carry_capacity_lb": 5},
+    },
+    "ore_sack": {
+        "id": "ore_sack", "name": "Ore Sack", "weight": 0.5,
+        "category": "misc",
+        "description": "A heavy canvas sack for hauling ore samples. +30lb.",
+        "base_value": 0.50,
+        "extra": {"carry_capacity_lb": 30},
+    },
+    "flour_sack": {
+        "id": "flour_sack", "name": "Empty Flour Sack", "weight": 0.2,
+        "category": "misc",
+        "description": "A repurposed flour sack. Carries anything. +15lb.",
+        "base_value": 0.05,
+        "extra": {"carry_capacity_lb": 15},
+    },
+
     "land_deed": {
         "id": "land_deed", "name": "Land Deed", "weight": 0.05,
         "category": "misc",
@@ -897,6 +952,8 @@ def random_skill_books(rng, count: int = 1) -> List[Item]:
 def starting_inventory() -> List[Item]:
     """Default starting gear for a Forty-Niner template."""
     return [
+        make_item("rucksack"),          # +60lb carry capacity
+        make_item("belt_pouch"),        # +5lb for small items
         make_item("gold_pan"),
         make_item("pickaxe"),
         make_item("shovel"),

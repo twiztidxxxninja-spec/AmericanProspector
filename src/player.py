@@ -233,13 +233,34 @@ class Player:
 
     @property
     def carry_capacity(self) -> float:
-        """Max carry weight in pounds (player + healthy pack animals)."""
-        base = 50.0 + self.attributes["strength"] * 5.0
-        # New pack animal system (via engine.animal_mgr)
+        """Max carry weight in pounds.
+        Base: pockets + hands (~15lb).
+        Gear: backpack, satchel, saddlebags add capacity.
+        Strength: +2lb per point above 8.
+        Pack animals: their capacity added on top."""
+        # Pockets and hands — what you can carry with no bag
+        base = 15.0 + max(0, self.attributes["strength"] - 8) * 2.0
+
+        # Storage containers in inventory add capacity
+        for item in self.inventory:
+            extra = getattr(item, 'extra', {}) or {}
+            carry_bonus = extra.get("carry_capacity_lb", 0)
+            if carry_bonus:
+                base += carry_bonus
+
+        # Worn equipment with storage (e.g. belt pouches, vest pockets)
+        if self.worn:
+            for slot_name, worn_item in vars(self.worn).items():
+                if worn_item and hasattr(worn_item, 'garment_def'):
+                    gd = worn_item.garment_def
+                    if gd and "storage" in (gd.tags or []):
+                        # Storage garments add ~5-10lb capacity
+                        base += gd.warmth * 0.5 + 5.0
+
+        # Pack animals
         if hasattr(self, '_animal_mgr') and self._animal_mgr:
             base += self._animal_mgr.total_carry_capacity
         else:
-            # Legacy dict-based fallback
             for pa in self.pack_animals:
                 cond  = pa.get("condition", 100) / 100.0
                 cap   = pa.get("carrying_capacity_lb", 0.0)

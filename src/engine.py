@@ -649,8 +649,15 @@ class Engine:
             self.add_message(result.message, "advisory")
             self.player.gold_oz += result.gold_found
             if result.for_business and self.business_mgr.businesses:
-                # Route items to the first matching business
-                biz = next(iter(self.business_mgr.businesses.values()))
+                # Route items to the first active business
+                biz_list = list(self.business_mgr.businesses.values())
+                biz = biz_list[0] if biz_list else None
+                if not biz:
+                    # No business — items go to player instead
+                    for item_name in result.items_produced:
+                        item = self.item_factory.create(item_name)
+                        self.player.inventory.append(item)
+                    continue
                 for item_name in result.items_produced:
                     item = self.item_factory.create(item_name)
                     biz.inventory.append(item)
@@ -2073,6 +2080,7 @@ class Engine:
             writing=self.writing,
             trade_engine=self.trade,
             settlement_layout=s_layout,
+            legal=self.legal,
         )
         for line in log[-4:]:   # last 4 exchanges into message log
             self.add_message(line, "normal")

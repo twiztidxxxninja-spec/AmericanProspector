@@ -742,8 +742,7 @@ def _resolve_claim_dispute(engine, evt, choice_idx, npcs, rng):
                 f"You pace off the boundaries, check the original stakes. "
                 f"Clear as day — {evt.npc_name} was here first. The claim "
                 f"is his. Both men accept your judgment.",
-                reputation_delta=8, xp_skill="geology", xp_amount=4.0,
-                xp_amount_extra=("law", 2.0))
+                reputation_delta=8, xp_skill="geology", xp_amount=4.0)
         else:
             return EventOutcome(
                 f"The boundary markers are a mess. You can't sort it out. "

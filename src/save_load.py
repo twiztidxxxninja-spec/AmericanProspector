@@ -81,6 +81,7 @@ def save_game(engine: "Engine", slot: str = "autosave") -> str:
             "attributes": npc.attributes, "skills": npc.skills,
             "knowledge": npc.knowledge, "traits": npc.traits,
             "local_x": npc.local_x, "local_y": npc.local_y,
+            "local_z": getattr(npc, 'local_z', 0),
             "alive": npc.alive, "present": npc.present,
             "health": npc.health, "combat_state": npc.combat_state,
             "relationship": npc.relationship,
@@ -152,6 +153,17 @@ def save_game(engine: "Engine", slot: str = "autosave") -> str:
     # Writing / mail system
     if hasattr(engine, "writing") and engine.writing:
         data["writing"] = engine.writing.to_dict()
+
+    # Trapping system
+    if hasattr(engine, "trap_mgr") and engine.trap_mgr:
+        try:
+            data["traps"] = engine.trap_mgr.to_dict()
+        except Exception:
+            pass
+
+    # Settlement price effects
+    if hasattr(engine, "_settlement_price_effects"):
+        data["settlement_price_effects"] = engine._settlement_price_effects
 
     # Item factory catalog (also saves to its own file)
     if hasattr(engine, "item_factory") and engine.item_factory:
@@ -256,6 +268,7 @@ def load_game(engine: "Engine", slot: str = "autosave") -> bool:
             npc.traits = nd.get("traits", [])
             npc.local_x = nd.get("local_x", 0)
             npc.local_y = nd.get("local_y", 0)
+            npc.local_z = nd.get("local_z", 0)
             npc.alive = nd.get("alive", True)
             npc.present = nd.get("present", True)
             npc.health = nd.get("health", 100.0)
@@ -297,6 +310,15 @@ def load_game(engine: "Engine", slot: str = "autosave") -> bool:
     if "writing" in data:
         from src.writing import WritingManager
         engine.writing = WritingManager.from_dict(data["writing"])
+
+    # Traps
+    if "traps" in data:
+        from src.trapping import TrapManager
+        engine.trap_mgr = TrapManager.from_dict(data["traps"])
+
+    # Settlement price effects
+    if "settlement_price_effects" in data:
+        engine._settlement_price_effects = data["settlement_price_effects"]
 
     return True
 

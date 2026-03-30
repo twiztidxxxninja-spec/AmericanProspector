@@ -189,12 +189,11 @@ class Player:
     def gain_skill_xp(self, skill: str, xp: float):
         if skill not in self.skills:
             return
-        self.skill_xp[skill] += xp
-        threshold = 100 + 10 * self.skills[skill]
         # INT multiplier: faster learning
         int_mult = 1.0 + (self.attributes.get("intelligence", 10) - 10) * 0.05
         effective_xp = xp * int_mult
-        self.skill_xp[skill] = self.skill_xp.get(skill, 0.0) + (effective_xp - xp)
+        self.skill_xp[skill] = self.skill_xp.get(skill, 0.0) + effective_xp
+        threshold = 100 + 10 * self.skills[skill]
         if self.skill_xp[skill] >= threshold and self.skills[skill] < 10:
             self.skills[skill] += 1
             self.skill_xp[skill] = 0.0

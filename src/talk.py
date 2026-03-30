@@ -453,6 +453,15 @@ def talk_menu(con: tcod.console.Console, ctx,
     log.append(greeting)
     npc.adjust_relationship(0.5)
 
+    # Warrant check — law NPCs react to wanted player
+    legal = kwargs.get("legal")
+    if legal and hasattr(legal, 'has_active_warrant') and legal.has_active_warrant():
+        if npc.occupation in ("Sheriff", "Marshal", "Deputy"):
+            log.append(f'*{npc.name} narrows his eyes.* '
+                       f'"Hold it right there. There\'s a warrant out for you."')
+            npc.adjust_relationship(-10)
+            return log
+
     # Insight check — player reads the NPC based on Wisdom + Intelligence
     from src.npc_system import insight_check
     insight = insight_check(player, npc)

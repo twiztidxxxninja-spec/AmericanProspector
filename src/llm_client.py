@@ -102,14 +102,27 @@ class LLMResponse:
 
 class LLMClient:
     """
-    Wraps llama-cpp-python. Lazy-loads the model on first call.
-    Thread-unsafe — call from the game loop only.
+    LLM interface — supports local llama-cpp-python OR Claude API.
+    Mode determined by config:
+      llm_mode: "local" (default) — uses local GGUF model
+      llm_mode: "api"  — uses Claude API via HTTP
     """
 
-    def __init__(self, model_path: str, enabled: bool = True,
-                 n_gpu_layers: int = -1, n_ctx: int = 4096):
-        self.model_path = os.path.abspath(model_path)
-        self.enabled = enabled and os.path.exists(self.model_path)
+    def __init__(self, model_path: str = "", enabled: bool = True,
+                 n_gpu_layers: int = -1, n_ctx: int = 4096,
+                 mode: str = "local",
+                 api_key: str = "", api_model: str = "claude-sonnet-4-20250514"):
+        self.mode = mode
+        self.api_key = api_key
+        self.api_model = api_model
+
+        if mode == "api" and api_key:
+            self.enabled = enabled
+            self.model_path = ""
+        else:
+            self.model_path = os.path.abspath(model_path) if model_path else ""
+            self.enabled = enabled and bool(self.model_path) and os.path.exists(self.model_path)
+
         self.n_gpu_layers = n_gpu_layers
         self.n_ctx = n_ctx
         self._llm = None
@@ -262,13 +275,16 @@ class LLMClient:
     # ── Private helpers ────────────────────────────────────────────────────
 
     def _load(self):
-        if self._llm is not None:
+        if self._llm is not None or self.mode == "api":
             return
         try:
             from llama_cpp import Llama
         except ImportError:
             self.enabled = False
             return   # callers re-check self.enabled after _load()
+        if not self.model_path or not os.path.exists(self.model_path):
+            self.enabled = False
+            return
         self._llm = Llama(
             model_path=self.model_path,
             n_gpu_layers=self.n_gpu_layers,
@@ -278,6 +294,9 @@ class LLMClient:
 
     def _chat(self, messages: list, temperature: float,
               max_tokens: int, json_mode: bool) -> str:
+        if self.mode == "api":
+            return self._chat_api(messages, temperature, max_tokens, json_mode)
+        # Local llama-cpp
         kwargs = dict(
             messages=messages,
             temperature=temperature,
@@ -290,6 +309,59 @@ class LLMClient:
         if not choices:
             return ""
         return choices[0].get("message", {}).get("content", "")
+
+    def _chat_api(self, messages: list, temperature: float,
+                  max_tokens: int, json_mode: bool) -> str:
+        """Call Claude API via HTTP."""
+        import urllib.request
+        import json as _json
+
+        # Convert messages to Anthropic format
+        # Anthropic uses "system" separately from "messages"
+        system_text = ""
+        user_messages = []
+        for m in messages:
+            if m["role"] == "system":
+                system_text += m["content"] + "\n"
+            else:
+                user_messages.append({
+                    "role": m["role"],
+                    "content": m["content"],
+                })
+        # Ensure alternating user/assistant — Anthropic requires this
+        if not user_messages:
+            user_messages = [{"role": "user", "content": "respond"}]
+
+        payload = {
+            "model": self.api_model,
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+            "messages": user_messages,
+        }
+        if system_text:
+            payload["system"] = system_text.strip()
+
+        body = _json.dumps(payload).encode("utf-8")
+        req = urllib.request.Request(
+            "https://api.anthropic.com/v1/messages",
+            data=body,
+            headers={
+                "Content-Type": "application/json",
+                "x-api-key": self.api_key,
+                "anthropic-version": "2023-06-01",
+            },
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                data = _json.loads(resp.read().decode())
+            # Anthropic response format
+            content = data.get("content", [])
+            if content and isinstance(content, list):
+                return content[0].get("text", "")
+            return ""
+        except Exception as exc:
+            return f"[API error: {exc}]"
 
     def _action_prompt(self, action_text: str,
                        ctx: Dict[str, Any]) -> str:

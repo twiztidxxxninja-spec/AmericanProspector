@@ -181,6 +181,9 @@ class Engine:
             enabled=_cfg.get("llm_enabled", False),
             n_gpu_layers=_cfg.get("n_gpu_layers", -1),
             n_ctx=_cfg.get("n_ctx", 4096),
+            mode=_cfg.get("llm_mode", "local"),
+            api_key=_cfg.get("llm_api_key", ""),
+            api_model=_cfg.get("llm_api_model", "claude-sonnet-4-20250514"),
         )
 
         # ── Post-LLM system wiring ────────────────────────────────────

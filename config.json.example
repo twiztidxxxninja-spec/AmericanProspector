@@ -1,0 +1,45 @@
+{
+  "model_path": "models/qwen2.5-7b-instruct-q4_k_m.gguf",
+  "llm_enabled": true,
+  "llm_mode": "api",
+  "llm_api_key": "YOUR_ANTHROPIC_API_KEY_HERE",
+  "llm_api_model": "claude-sonnet-4-20250514",
+  "n_gpu_layers": -1,
+  "n_ctx": 4096,
+  "display": {
+    "screen_width": 120,
+    "screen_height": 50,
+    "font": "terminal12x12_gs_ro.png",
+    "fullscreen": false
+  },
+  "keybindings": {
+    "move_n": "UP",
+    "move_s": "DOWN",
+    "move_e": "RIGHT",
+    "move_w": "LEFT",
+    "move_nw": "y",
+    "move_ne": "u",
+    "move_sw": "b",
+    "move_se": "n",
+    "wait": "SPACE",
+    "crafting": "c",
+    "examine": "e",
+    "journal": "j",
+    "talk": "t",
+    "actions": "a",
+    "food": "f",
+    "inventory": "i",
+    "combat": "k",
+    "map": "m",
+    "stance": "s",
+    "speed": "w"
+  },
+  "gameplay": {
+    "autosave_on_sleep": true,
+    "auto_eat": false,
+    "food_priority": "perishable_first"
+  },
+  "music_volume": 0.85,
+  "music_enabled": true,
+  "bug_report_webhook": ""
+}

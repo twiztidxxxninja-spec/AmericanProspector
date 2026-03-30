@@ -648,9 +648,21 @@ class Engine:
                 self.time.total_minutes, npc_lookup, gold_bias):
             self.add_message(result.message, "advisory")
             self.player.gold_oz += result.gold_found
-            for item_name in result.items_produced:
-                item = self.item_factory.create(item_name)
-                self.player.inventory.append(item)
+            if result.for_business and self.business_mgr.businesses:
+                # Route items to the first matching business
+                biz = next(iter(self.business_mgr.businesses.values()))
+                for item_name in result.items_produced:
+                    item = self.item_factory.create(item_name)
+                    biz.inventory.append(item)
+                if result.cost > 0:
+                    biz.cash_reserve -= result.cost
+                    self.add_message(
+                        f"  Bought {len(result.items_produced)} items "
+                        f"(${result.cost:.2f} from business cash).", "advisory")
+            else:
+                for item_name in result.items_produced:
+                    item = self.item_factory.create(item_name)
+                    self.player.inventory.append(item)
 
         # ── Daily ticks (once per game day) ───────────────────────────
         current_day = self.time.total_minutes // 1440

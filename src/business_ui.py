@@ -129,6 +129,63 @@ def _start_business_flow(engine, console, ctx):
         engine.add_message(f"Founded: {biz.name}!", "normal")
 
 
+def _hire_nearby_npc(engine, console, ctx, biz):
+    """Show nearby NPCs and hire one as a business employee."""
+    from src.menus import pick_from_list
+
+    # Find NPCs in this area patch
+    wx, wy = engine.player.world_x, engine.player.world_y
+    ax, ay = engine.player.area_x, engine.player.area_y
+    prefixes = (f"sett_{wx}_{wy}_{ax}_{ay}_", f"wild_{wx}_{wy}_{ax}_{ay}_")
+    available = []
+    for n in engine.npc_mgr.npcs.values():
+        if not n.present or not n.alive:
+            continue
+        if not any(n.npc_id.startswith(p) for p in prefixes):
+            continue
+        # Skip already-employed NPCs
+        if any(e.npc_id == n.npc_id for e in biz.employees):
+            continue
+        available.append(n)
+
+    if not available:
+        engine.add_message("No one nearby to hire.", "advisory")
+        return
+
+    labels = [f"{n.name} ({n.occupation})" for n in available]
+    idx = pick_from_list(console, ctx, "Hire who?", labels)
+    if idx is None:
+        return
+
+    npc = available[idx]
+
+    # Pick role
+    roles = ["Clerk", "Laborer", "Guard", "Specialist"]
+    role_idx = pick_from_list(console, ctx, f"What role for {npc.name}?", roles)
+    if role_idx is None:
+        return
+    role = roles[role_idx].lower()
+
+    # Determine wage and skill
+    skill_val = max(npc.skills.values()) if hasattr(npc, 'skills') and npc.skills else 3
+    wage = max(0.50, skill_val * 0.25 + 0.50)
+
+    # Add to companion system
+    from src.companions import Role
+    comp_mgr = engine.companion_mgr
+    if not comp_mgr.get(npc.npc_id):
+        comp_mgr.recruit(npc.npc_id, npc.name, Role.EMPLOYEE, wage=wage)
+
+    # Add to business employees
+    engine.business_mgr.assign_npc_to_business(
+        biz.id, npc.npc_id, npc.name,
+        role=role, skill_level=skill_val, wage=wage)
+
+    npc.adjust_relationship(5)
+    engine.add_message(
+        f"Hired {npc.name} as {role} at ${wage:.2f}/day.", "normal")
+
+
 def _show_ledger(engine, console, ctx, biz):
     """Main tabbed ledger display."""
     from src.business import TIER_LABELS
@@ -210,6 +267,10 @@ def _show_ledger(engine, console, ctx, biz):
             cy += 1
             total_wages = sum(e.wage for e in biz.employees)
             console.print(X + 2, cy, f"Total wages: ${total_wages:.2f}/day", fg=(200, 180, 100), bg=BG)
+            cy += 2
+            if is_present:
+                console.print(X + 2, cy, "[H] Hire nearby NPC  [M] Promote to manager",
+                              fg=(140, 140, 140), bg=BG)
 
         elif tab == 2:  # Inventory
             console.print(X + 2, cy, "Business inventory:", fg=(180, 180, 180), bg=BG)
@@ -430,6 +491,23 @@ def _show_ledger(engine, console, ctx, biz):
                         biz.cash_reserve -= amt
                         engine.player.cash += amt
                         engine.add_message(f"Withdrew ${amt:.2f} from business.", "normal")
+                    break
+
+                # Hire NPC as employee [H] (Employees tab, present)
+                if sym == K.h and tab == 1 and is_present:
+                    _hire_nearby_npc(engine, console, ctx, biz)
+                    break
+
+                # Promote employee to manager [M] (Employees tab)
+                if sym == K.m and tab == 1 and biz.employees:
+                    from src.menus import pick_from_list
+                    labels = [f"{e.name} ({e.role})" for e in biz.employees]
+                    idx = pick_from_list(console, ctx, "Promote who to manager?", labels)
+                    if idx is not None:
+                        emp = biz.employees[idx]
+                        engine.business_mgr.set_manager(biz.id, emp.npc_id)
+                        engine.add_message(
+                            f"{emp.name} is now manager of {biz.name}.", "normal")
                     break
 
                 # Close business [Q] (overview tab only)

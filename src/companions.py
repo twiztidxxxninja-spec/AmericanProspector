@@ -270,6 +270,8 @@ class TaskResult:
     time_taken: int = 0         # actual minutes
     npc_injured: bool = False
     injury_desc: str = ""
+    for_business: bool = False  # if True, items go to business inventory
+    cost: float = 0.0           # cash spent on purchases
 
 
 def resolve_task(link: CompanionLink, npc: "NPC",
@@ -322,6 +324,15 @@ def resolve_task(link: CompanionLink, npc: "NPC",
             items.append("Water (quart)")
         elif task_key == "gather_stone":
             items.extend(["Stone"] * rng.randint(2, 5))
+        elif task_key == "buy_goods":
+            # Generate stock items based on quality — more skill = better deals
+            count = max(1, int(3 * quality))
+            stock_pool = [
+                "Whiskey", "Flour", "Salt", "Coffee", "Tobacco",
+                "Beans", "Sugar", "Hardtack", "Bacon", "Rope",
+                "Nails", "Canvas", "Lamp Oil",
+            ]
+            items.extend(rng.choices(stock_pool, k=count))
 
     # Gold found (prospecting tasks)
     gold = 0.0
@@ -372,12 +383,20 @@ def resolve_task(link: CompanionLink, npc: "NPC",
     if task_def.unpleasant:
         link.morale = max(0, link.morale - 2)
 
+    # Business tasks: items go to business inventory, track cost
+    is_biz_task = task_key in ("buy_goods", "sell_goods", "process_goods")
+    purchase_cost = 0.0
+    if task_key == "buy_goods" and items:
+        # Rough cost per item purchased
+        purchase_cost = len(items) * rng.uniform(0.50, 2.00)
+
     return TaskResult(
         task_key=task_key, npc_name=link.name,
         success=success, quality=quality, message=msg,
         items_produced=items, gold_found=gold,
         time_taken=task_def.base_minutes,
         npc_injured=injured, injury_desc=injury_desc,
+        for_business=is_biz_task, cost=purchase_cost,
     )
 
 

@@ -375,9 +375,9 @@ def enter_fishing_mode(engine: "Engine", console, ctx) -> None:
                         engine.advance_time(method["time"] // 2)
                         break
 
-                    # Base catch chance from method + skill
-                    skill = player.skills.get("survival", 0)
-                    catch_chance = method["base_chance"] + skill * 0.04
+                    # Base catch chance from fishing skill
+                    skill = player.skills.get("fishing", 0)
+                    catch_chance = method["base_chance"] + skill * 0.05
 
                     # Bait bonus if species match
                     if bait_species_tags:
@@ -445,7 +445,7 @@ def enter_fishing_mode(engine: "Engine", console, ctx) -> None:
                         msg += f" ({weight:.1f} lb, ${caught.base_value:.2f})"
                         session_messages.append(msg)
 
-                        player.gain_skill_xp("survival", 1.5 + fish.catch_difficulty * 0.5)
+                        player.gain_skill_xp("fishing", 2.0 + fish.catch_difficulty * 0.5)
 
                         # Gill net catches multiple fish per check
                         if method_key == "gill_net" and rng.random() < 0.6:

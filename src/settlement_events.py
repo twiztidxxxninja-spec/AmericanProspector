@@ -89,7 +89,9 @@ def _skill_check(player, skill: str, difficulty: int, rng) -> bool:
                 "firstAid": "wisdom", "firearms": "agility",
                 "survival": "wisdom", "tracking": "wisdom",
                 "engineering": "intelligence", "geology": "intelligence",
-                "placer": "wisdom", "chemistry": "intelligence"}
+                "placer": "wisdom", "chemistry": "intelligence",
+                "fishing": "wisdom", "cooking": "wisdom",
+                "trapping": "wisdom", "furriery": "agility"}
     attr_name = attr_map.get(skill, "intelligence")
     attr_val = player.attributes.get(attr_name, 10)
     roll = rng.randint(1, 20) + skill_val // 2 + attr_val // 3

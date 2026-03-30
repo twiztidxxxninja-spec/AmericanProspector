@@ -3428,8 +3428,12 @@ class Engine:
             else:
                 self.player.inventory.remove(item)
             self.player.inventory.append(cooked)
+            # Cooking skill affects nutrition bonus
+            cook_skill = self.player.skills.get("cooking", 0)
+            bonus = 1.0 + cook_skill * 0.05  # up to 50% more nutrition at skill 10
+            cooked.nutrition *= bonus
             self.add_message(f"You cook the {item.name} over the fire. Smells good.", "normal")
-            self.player.gain_skill_xp("survival", 1.5)
+            self.player.gain_skill_xp("cooking", 2.0)
             self.advance_time(20)
             return
 

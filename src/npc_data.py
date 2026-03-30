@@ -383,7 +383,7 @@ PROF_SKILLS: Dict[str, Dict[str, int]] = {
     "Hunter":             {"tracking": 4, "survival": 3, "firearms": 4},
     "Trapper":            {"trapping": 5, "tracking": 4, "survival": 4, "furriery": 3, "engineering": 2, "trading": 2},
     "Mountain Man":       {"trapping": 6, "tracking": 5, "survival": 5, "firearms": 4, "furriery": 4, "engineering": 3},
-    "Cook":               {"survival": 2},
+    "Cook":               {"cooking": 5, "survival": 2},
     "Teamster":           {"driving": 3, "survival": 2},
     "Freighter":          {"driving": 3, "trading": 2, "survival": 2},
     "Sheriff":            {"firearms": 4, "law": 3, "tracking": 2},

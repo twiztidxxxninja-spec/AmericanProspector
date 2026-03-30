@@ -58,6 +58,7 @@ ALL_SKILLS = [
     "coalMining", "survival", "tracking", "firstAid", "trading",
     "law", "engineering", "chemistry", "firearms", "driving",
     "farming", "literacy", "trapping", "furriery",
+    "fishing", "cooking",
 ]
 
 

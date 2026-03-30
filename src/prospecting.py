@@ -56,7 +56,8 @@ def _skill_roll(player: "Player", skill: str, difficulty: int) -> bool:
     """d20 + floor(skill/2) + floor(attr/3) vs difficulty."""
     import random
     governing = {"placer": "wisdom", "geology": "intelligence",
-                 "survival": "constitution"}.get(skill, "wisdom")
+                 "survival": "constitution", "fishing": "wisdom",
+                 "cooking": "wisdom"}.get(skill, "wisdom")
     skill_val = player.skills.get(skill, 0)
     attr_val  = player.attributes.get(governing, 10)
     roll = random.randint(1, 20) + skill_val // 2 + attr_val // 3

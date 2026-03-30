@@ -15,22 +15,118 @@ if TYPE_CHECKING:
     from src.engine import Engine
 
 
-# Bait items that improve catch chance
+# Bait → bonus AND which species it attracts
 BAIT_ITEMS = {
-    "worm":          0.15,   # dug from ground, common
-    "insect":        0.10,   # caught from air
-    "fresh_venison": 0.20,   # meat scraps
-    "fresh_fish":    0.10,   # cut bait
-    "wild_berries":  0.05,   # some fish like fruit
+    "worm":          (0.15, {"trout", "bass", "perch", "sunfish", "bluegill"}),
+    "insect":        (0.12, {"trout", "bass", "perch"}),
+    "fresh_venison": (0.20, {"catfish", "pike", "eel"}),    # blood/meat = catfish bait
+    "fresh_fish":    (0.15, {"bass", "pike", "catfish", "sturgeon"}),  # cut bait
+    "wild_berries":  (0.05, {"trout", "sucker"}),
 }
 
-# Methods available to player
-METHODS = [
-    ("pole",  "Fishing pole",     "Sit and wait. Best all-around method."),
-    ("spear", "Spear fishing",    "Fast but requires agility. Best in shallows."),
-    ("hand",  "Bare hands",       "Desperation. Low chance but no gear needed."),
-    ("net",   "Net",              "Wide catch. Requires a net or woven basket."),
-]
+# Method definitions with what they can realistically catch
+# method_id, label, description, tool_tag needed, species_tags catchable, size_max_lb
+METHODS = {
+    "pole": {
+        "label": "Pole & line",
+        "desc": "Sit and wait. Trout, bass, catfish, perch bite on bait.",
+        "tool": "fish",        # needs fishing_line or pole in inventory
+        "time": 30,
+        "base_chance": 0.50,
+        "species_tags": {"trout", "bass", "catfish", "perch", "sunfish",
+                         "bluegill", "walleye", "minnow", "sucker", "whitefish"},
+        "max_weight": 30,      # can't land a 60lb sturgeon on a line
+    },
+    "spear": {
+        "label": "Spear",
+        "desc": "Stab visible fish in shallows. Salmon runs, sturgeon, lamprey.",
+        "tool": "",            # any sharp stick works
+        "time": 15,
+        "base_chance": 0.30,
+        "species_tags": {"salmon", "steelhead", "sturgeon", "lamprey",
+                         "pike", "sucker", "blackfish"},
+        "max_weight": 80,      # can spear a sturgeon if strong enough
+    },
+    "hand": {
+        "label": "Bare hands",
+        "desc": "Noodling for catfish in mud holes. Tickling trout under rocks.",
+        "tool": "",
+        "time": 20,
+        "base_chance": 0.15,
+        "species_tags": {"catfish", "trout", "sucker", "eel", "lamprey"},
+        "max_weight": 15,
+    },
+    "dip_net": {
+        "label": "Dip net",
+        "desc": "Scoop small fish from shallows. Fast, catches many small ones.",
+        "tool": "net",
+        "time": 10,
+        "base_chance": 0.60,
+        "species_tags": {"minnow", "perch", "sunfish", "bluegill", "sucker",
+                         "lamprey", "hitch"},
+        "max_weight": 5,       # small net, small fish
+    },
+    "gill_net": {
+        "label": "Gill net",
+        "desc": "Stretch across stream. Set and wait. Catches everything swimming through.",
+        "tool": "gill_net",
+        "time": 120,           # set and come back
+        "base_chance": 0.75,
+        "species_tags": {"salmon", "steelhead", "trout", "bass", "catfish",
+                         "pike", "walleye", "sturgeon", "perch", "whitefish",
+                         "sucker", "blackfish", "striped_bass"},
+        "max_weight": 60,      # catches anything
+    },
+    "weir": {
+        "label": "Fish weir/trap",
+        "desc": "Block the stream with rocks and stakes. Fish pile up. "
+                "Best during spawning runs.",
+        "tool": "",            # build from rocks and sticks
+        "time": 180,           # build + wait
+        "base_chance": 0.85,
+        "species_tags": {"salmon", "steelhead", "lamprey", "sucker"},
+        "max_weight": 40,
+    },
+}
+
+# Map fish species to method tags (what method groups can catch them)
+SPECIES_METHOD_TAGS = {
+    "chinook_salmon":     {"salmon"},
+    "coho_salmon":        {"salmon"},
+    "sockeye_salmon":     {"salmon"},
+    "pink_salmon":        {"salmon"},
+    "chum_salmon":        {"salmon"},
+    "steelhead_trout":    {"steelhead", "trout"},
+    "rainbow_trout":      {"trout"},
+    "cutthroat_trout":    {"trout"},
+    "brook_trout":        {"trout"},
+    "atlantic_salmon":    {"salmon"},
+    "lake_trout":         {"trout"},
+    "largemouth_bass":    {"bass"},
+    "smallmouth_bass":    {"bass"},
+    "bluegill":           {"bluegill", "sunfish"},
+    "channel_catfish":    {"catfish"},
+    "flathead_catfish":   {"catfish"},
+    "northern_pike":      {"pike"},
+    "walleye":            {"walleye", "perch"},
+    "yellow_perch":       {"perch"},
+    "white_sturgeon":     {"sturgeon"},
+    "green_sturgeon":     {"sturgeon"},
+    "american_eel":       {"eel"},
+    "sacramento_pikeminnow": {"minnow", "sucker"},
+    "sacramento_sucker":  {"sucker"},
+    "tule_perch":         {"perch", "minnow"},
+    "hardhead_minnow":    {"minnow"},
+    "sacramento_blackfish": {"blackfish", "sucker"},
+    "hitch":              {"minnow", "hitch"},
+    "mountain_whitefish": {"whitefish", "trout"},
+    "bull_trout":         {"trout"},
+    "dolly_varden":       {"trout"},
+    "green_sunfish":      {"sunfish", "bluegill"},
+    "white_catfish":      {"catfish"},
+    "striped_bass":       {"bass", "striped_bass"},
+    "pacific_lamprey":    {"lamprey"},
+}
 
 
 def enter_fishing_mode(engine: "Engine", console, ctx) -> None:
@@ -56,17 +152,25 @@ def enter_fishing_mode(engine: "Engine", console, ctx) -> None:
     season = engine.time.season
     period = engine.time.period
 
-    # Check for fishing gear
+    # Check for fishing gear in inventory
     has_pole = any("fish" in getattr(i, "tool_tags", []) for i in player.inventory)
-    has_net = any(i.id in ("net", "fishing_net") for i in player.inventory)
+    has_dip_net = any("net" in getattr(i, "tool_tags", []) for i in player.inventory)
+    has_gill_net = any("gill_net" in getattr(i, "tool_tags", []) for i in player.inventory)
 
-    # Available methods
-    available = [("hand", "Bare hands", "No gear needed. Low chance.")]
+    # Build available methods based on gear
+    available = []
     if has_pole:
-        available.insert(0, ("pole", "Fishing pole & line", "Best all-around. Sit and wait."))
-    available.append(("spear", "Spear fishing", "Fast, needs agility. Works in shallows."))
-    if has_net:
-        available.append(("net", "Net", "Wide catch area. Good for small fish."))
+        available.append("pole")
+    available.append("spear")
+    available.append("hand")
+    if has_dip_net:
+        available.append("dip_net")
+    if has_gill_net:
+        available.append("gill_net")
+    # Weir always available if you have logs
+    has_logs = any(i.id == "log" for i in player.inventory)
+    if has_logs:
+        available.append("weir")
 
     # What fish are available this season in this region?
     possible_fish = [f for f in FISH_DB.values()
@@ -134,8 +238,9 @@ def enter_fishing_mode(engine: "Engine", console, ctx) -> None:
         y += 1
         console.print(X + 2, y, "METHOD:", fg=YELLOW, bg=BG)
         y += 1
-        for i, (mid, mlabel, mdesc) in enumerate(available):
-            console.print(X + 4, y, f"[{i+1}] {mlabel} — {mdesc}",
+        for i, mid in enumerate(available):
+            m = METHODS[mid]
+            console.print(X + 4, y, f"[{i+1}] {m['label']} — {m['desc'][:40]}",
                           fg=WHITE, bg=BG)
             y += 1
 
@@ -170,36 +275,75 @@ def enter_fishing_mode(engine: "Engine", console, ctx) -> None:
                 elif sym in (K.N4, K.KP_4): method_idx = 3
 
                 if method_idx is not None and method_idx < len(available):
-                    method_key = available[method_idx][0]
+                    method_key = available[method_idx]
+                    method = METHODS[method_key]
 
-                    # Check bait
+                    # Check bait — what species does it attract?
                     bait_bonus = 0.0
-                    for bait_id, bonus in BAIT_ITEMS.items():
+                    bait_species_tags = set()
+                    for bait_id, (bonus, btags) in BAIT_ITEMS.items():
                         for item in player.inventory:
                             if item.id == bait_id:
                                 bait_bonus = bonus
+                                bait_species_tags = btags
                                 break
                         if bait_bonus > 0:
                             break
 
-                    # Attempt catch with spot quality modifier
-                    fish = FishingMechanics.attempt_catch(
-                        region, method_key,
-                        player.skills.get("survival", 0),
-                        season, rng)
+                    # Filter possible fish by:
+                    # 1. Season and region (already filtered in possible_fish)
+                    # 2. Method can catch them (species tags match)
+                    # 3. Not too big for the method
+                    method_tags = method["species_tags"]
+                    catchable = []
+                    for f in possible_fish:
+                        fish_tags = SPECIES_METHOD_TAGS.get(f.id, set())
+                        if fish_tags & method_tags:  # intersection
+                            if f.avg_weight_lb <= method["max_weight"]:
+                                catchable.append(f)
 
-                    # Apply spot quality and bait
-                    if fish and rng.random() > (spot_quality + bait_bonus):
-                        fish = None  # spot too degraded / no bait
+                    if not catchable:
+                        session_messages.append(
+                            f"Nothing that a {method['label'].lower()} can catch here "
+                            f"this time of year.")
+                        engine.advance_time(method["time"] // 2)
+                        break
 
-                    # Night fishing — catfish and eels are easier
-                    if fish and period == "night":
-                        if fish.catch_difficulty <= 2:
-                            pass  # easier fish caught more at night
-                        elif rng.random() < 0.3:
-                            fish = None  # harder fish harder to see at night
+                    # Base catch chance from method + skill
+                    skill = player.skills.get("survival", 0)
+                    catch_chance = method["base_chance"] + skill * 0.04
 
-                    time_cost = FishingMechanics.time_cost(method_key)
+                    # Bait bonus if species match
+                    if bait_species_tags:
+                        bait_match = any(
+                            SPECIES_METHOD_TAGS.get(f.id, set()) & bait_species_tags
+                            for f in catchable)
+                        if bait_match:
+                            catch_chance += bait_bonus
+
+                    # Spot quality
+                    catch_chance *= spot_quality
+
+                    # Night modifier
+                    if period == "night":
+                        # Catfish/eel better at night, others worse
+                        night_species = {"catfish", "eel", "lamprey"}
+                        has_night_fish = any(
+                            SPECIES_METHOD_TAGS.get(f.id, set()) & night_species
+                            for f in catchable)
+                        if has_night_fish:
+                            catch_chance *= 1.3
+                        else:
+                            catch_chance *= 0.6
+
+                    # Roll
+                    fish = None
+                    if rng.random() < catch_chance:
+                        # Weight by inverse difficulty
+                        weights = [max(1, 6 - f.catch_difficulty) for f in catchable]
+                        fish = rng.choices(catchable, weights=weights, k=1)[0]
+
+                    time_cost = method["time"]
 
                     if fish is None:
                         no_catch = [

@@ -304,6 +304,7 @@ STOCK_POOLS: Dict[str, Dict[str, float]] = {
         "mash_barrel": 0.4,
         # Canned goods (luxury)
         "canned_peaches": 0.3, "canned_oysters": 0.2,
+        "dip_net": 0.3, "gill_net": 0.2,
     },
     "blacksmith": {
         "pickaxe": 0.9, "shovel": 0.9, "hand_axe": 0.8,

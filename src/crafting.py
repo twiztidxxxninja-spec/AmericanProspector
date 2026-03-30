@@ -992,6 +992,23 @@ RECIPES: List[Recipe] = [
         category="trapping",
     ),
     Recipe(
+        id="make_dip_net", name="Dip Net",
+        description="Weave a small hand net from cordage. Scoop fish from shallows.",
+        materials=[("cordage", 3), ("log", 1)],
+        tool_required="cut", skill="survival", difficulty=6, time_minutes=45,
+        output_id="dip_net",
+        category="tools",
+    ),
+    Recipe(
+        id="make_gill_net", name="Gill Net",
+        description="Weave a wide mesh net from cordage and sinew. "
+                    "Stretch across a stream to catch everything swimming through.",
+        materials=[("cordage", 6), ("sinew", 2), ("log", 2)],
+        tool_required="cut", skill="survival", difficulty=9, time_minutes=180,
+        output_id="gill_net",
+        category="tools",
+    ),
+    Recipe(
         id="pelt_frame", name="Pelt Stretching Frame",
         description="For drying raw pelts. Place on ground, load pelt, wait 24h.",
         materials=[("log", 2), ("cordage", 1)],

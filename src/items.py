@@ -171,6 +171,21 @@ ITEM_TEMPLATES: Dict[str, dict] = {
         "description": "Rendered fat mixed with dried meat and berries. Dense trail ration.",
         "base_value": 0.15, "stackable": True, "perishable": False,
     },
+    "dip_net": {
+        "id": "dip_net", "name": "Dip Net", "weight": 1.0,
+        "category": "tool",
+        "description": "A small hand net for scooping fish from shallows. "
+                       "Fast, catches small fish.",
+        "base_value": 1.50, "tool_tags": ["net"],
+    },
+    "gill_net": {
+        "id": "gill_net", "name": "Gill Net", "weight": 3.0,
+        "category": "tool",
+        "description": "A wide mesh net stretched across a stream. "
+                       "Fish swim in and get caught by the gills. "
+                       "Set and come back — catches everything.",
+        "base_value": 5.00, "tool_tags": ["gill_net"],
+    },
     "quicksilver": {
         "id": "quicksilver", "name": "Quicksilver (Mercury)", "weight": 3.0,
         "category": "material",

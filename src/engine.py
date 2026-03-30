@@ -1133,7 +1133,7 @@ class Engine:
 
     # ── Input handling ────────────────────────────────────────────────────
 
-    _last_keydown_handled = False
+    _last_keydown_char = ""  # character from last KeyDown (for dedup)
 
     def handle_event(self, event: tcod.event.Event) -> bool:
         """Returns False to quit."""
@@ -1141,7 +1141,13 @@ class Engine:
             return False
 
         if isinstance(event, tcod.event.KeyDown):
-            self._last_keydown_handled = True
+            # Track which character this KeyDown corresponds to
+            # so we can skip the matching TextInput (prevents double-fire)
+            sym = event.sym
+            if 97 <= sym <= 122:  # a-z
+                self._last_keydown_char = chr(sym)
+            else:
+                self._last_keydown_char = ""
             try:
                 return self._handle_key(event)
             except Exception as _exc:
@@ -1152,14 +1158,16 @@ class Engine:
                 self.add_message(f"Error: {_exc}", "critical")
                 return True
 
-        # Handle TextInput as key presses — SDL3 on Windows sends
-        # letter keys as TextInput, not KeyDown, when text input is active.
-        # Skip if KeyDown already handled this key (prevents double-toggle).
+        # Handle TextInput as key presses — for RDP, iPad, and SDL3
+        # where letter keys arrive as TextInput not KeyDown.
+        # Only skip if this EXACT character was already handled by KeyDown.
         if isinstance(event, tcod.event.TextInput):
-            if self._last_keydown_handled:
-                self._last_keydown_handled = False
+            text = event.text.lower()
+            if len(text) == 1 and text == self._last_keydown_char:
+                # Same key already handled by KeyDown — skip duplicate
+                self._last_keydown_char = ""
                 return True
-            self._last_keydown_handled = False
+            self._last_keydown_char = ""
             with open("keylog.txt", "a") as _kf:
                 _kf.write(f"TEXTINPUT: text={repr(event.text)}\n")
                 _kf.flush()

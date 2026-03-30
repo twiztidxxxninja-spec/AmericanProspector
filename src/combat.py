@@ -31,6 +31,135 @@ def _attr_bonus(v: int) -> int:
     return v // 3
 
 
+def _dismember_msg(part_label: str, weapon: str, npc_name: str,
+                   gender: str = "M") -> str:
+    """Generate a graphic dismemberment message when a body part is destroyed."""
+    is_firearm = any(w in weapon.lower() for w in
+                     ("rifle", "pistol", "shotgun", "revolver", "musket",
+                      "carbine", "derringer", "gun"))
+    is_shotgun = "shotgun" in weapon.lower()
+    is_blade = any(w in weapon.lower() for w in
+                   ("knife", "axe", "machete", "sword", "hatchet", "bowie"))
+    is_male = gender in ("M", "m", "male", "Male")
+
+    # Groin-specific messages
+    if "groin" in part_label:
+        if is_male:
+            if is_shotgun:
+                return (f"{npc_name}'s dick is obliterated by the blast. "
+                        f"What's left sprays across the dirt.")
+            if is_firearm:
+                msgs = [
+                    f"{npc_name}'s dick is shot clean off. "
+                    f"The severed part tumbles through the air and lands in the dust.",
+                    f"The bullet tears {npc_name}'s dick off. "
+                    f"It hits the ground with a wet slap.",
+                    f"{npc_name}'s dick explodes in a spray of blood. "
+                    f"He looks down. He screams.",
+                ]
+                return random.choice(msgs)
+            if is_blade:
+                return (f"The blade cleaves through {npc_name}'s groin. "
+                        f"His dick falls to the ground. "
+                        f"The screaming is inhuman.")
+            return (f"{npc_name}'s dick is destroyed by the impact. "
+                    f"He doubles over, shrieking.")
+        else:
+            if is_firearm:
+                return (f"The shot tears through {npc_name}'s groin. "
+                        f"She collapses, screaming.")
+            return (f"{npc_name}'s groin is destroyed. "
+                    f"She goes down, shrieking.")
+
+    # Hand messages
+    if "hand" in part_label:
+        side = "left" if "left" in part_label else "right"
+        if is_firearm:
+            return (f"{npc_name}'s {side} hand disintegrates. "
+                    f"Fingers fly in different directions.")
+        if is_blade:
+            return (f"The {side} hand separates at the wrist and "
+                    f"drops to the ground, fingers still twitching.")
+        return f"{npc_name}'s {side} hand is destroyed."
+
+    # Arm messages
+    if "arm" in part_label:
+        side = "left" if "left" in part_label else "right"
+        if is_shotgun:
+            return (f"{npc_name}'s {side} arm is blown off at the elbow. "
+                    f"It cartwheels through the air trailing blood.")
+        if is_firearm:
+            return (f"The bone in {npc_name}'s {side} arm shatters. "
+                    f"The forearm hangs by a strip of flesh, useless.")
+        return (f"{npc_name}'s {side} arm is mangled beyond use. "
+                f"It dangles at a wrong angle.")
+
+    # Leg messages
+    if "leg" in part_label or "thigh" in part_label:
+        side = "left" if "left" in part_label else "right"
+        if is_shotgun:
+            return (f"The shotgun blast takes {npc_name}'s {side} leg "
+                    f"clean off below the knee. He goes down hard.")
+        if is_firearm:
+            return (f"{npc_name}'s {side} leg buckles — the bone is "
+                    f"shattered. A shard of femur pokes through the skin.")
+        return (f"{npc_name}'s {side} leg is destroyed. "
+                f"He collapses, clutching the stump.")
+
+    # Generic
+    if is_firearm:
+        return (f"{npc_name}'s {part_label} is blown apart. "
+                f"Chunks of flesh scatter.")
+    return f"{npc_name}'s {part_label} is destroyed."
+
+
+def _dismember_msg_player(part_label: str, weapon: str) -> str:
+    """Dismemberment message when the PLAYER loses a body part."""
+    is_firearm = any(w in weapon.lower() for w in
+                     ("rifle", "pistol", "shotgun", "revolver", "musket",
+                      "carbine", "derringer", "gun"))
+    is_shotgun = "shotgun" in weapon.lower()
+
+    if "groin" in part_label:
+        if is_shotgun:
+            return ("Your dick is obliterated by the shotgun blast. "
+                    "The shredded remains paint the dirt behind you.")
+        if is_firearm:
+            msgs = [
+                "Your dick is shot off. You watch it arc through the air "
+                "and land in the dust three feet away.",
+                "The bullet tears your dick clean off. It hits the ground "
+                "with a wet thud. The pain hasn't hit yet. It will.",
+                "Your manhood explodes in a spray of blood. "
+                "You look down. You scream.",
+            ]
+            return random.choice(msgs)
+        return ("A devastating blow to your groin. Your dick is gone. "
+                "The shock is total.")
+
+    if "hand" in part_label:
+        side = "left" if "left" in part_label else "right"
+        if is_firearm:
+            return (f"Your {side} hand disintegrates. Fingers scatter. "
+                    f"Where your hand was there's a ragged stump spraying red.")
+        return f"Your {side} hand is severed. It falls to the ground."
+
+    if "arm" in part_label:
+        side = "left" if "left" in part_label else "right"
+        if is_shotgun:
+            return (f"Your {side} arm is blown off at the elbow. "
+                    f"It spins through the air trailing a ribbon of blood.")
+        return (f"Your {side} arm is shattered beyond saving. "
+                f"It hangs by a strip of skin.")
+
+    if "leg" in part_label or "thigh" in part_label:
+        side = "left" if "left" in part_label else "right"
+        return (f"Your {side} leg gives way — the bone is gone. "
+                f"You go down screaming.")
+
+    return f"Your {part_label} is destroyed."
+
+
 # ── Result dataclass ───────────────────────────────────────────────────────
 
 @dataclass
@@ -197,12 +326,22 @@ def player_attack_npc(player: "Player", npc: "NPC",
     # damage "overflows" to the body. Excess becomes bleed damage, not HP loss.
     # A hand can't absorb a .50 cal — it's destroyed, but you're still alive.
     # The bleeding from the stump is what kills you.
-    from src.health_system import PART_HP
+    from src.health_system import PART_HP, PART_DATA, BP
     part_hit = wound.part if hasattr(wound, 'part') else ""
     part_cap = PART_HP.get(part_hit, 100)
     hp_dmg = min(dmg, part_cap)
     npc.health = max(0.0, npc.health - hp_dmg)
     _check_npc_morale(npc)
+
+    # Dismemberment check — damage exceeds part HP cap by 50%+
+    dismember_msg = ""
+    part_info = PART_DATA.get(part_hit, {})
+    part_label = part_info.get("label", part_hit).lower()
+    is_vital = part_info.get("vital", True)
+    if dmg > part_cap * 1.5 and not is_vital and part_hit:
+        npc.wounds.part_state[part_hit] = "disabled"
+        npc_gender = getattr(npc, "gender", "M")
+        dismember_msg = _dismember_msg(part_label, weapon_name, npc.name, npc_gender)
 
     killed      = npc.combat_state == "dead"
     fled        = npc.combat_state == "fleeing"
@@ -214,6 +353,8 @@ def player_attack_npc(player: "Player", npc: "NPC",
     else:
         msg = _hit_msg(player.name, npc.name, weapon_name, dmg, npc.health)
         msg += wound_desc
+        if dismember_msg:
+            msg += f" {dismember_msg}"
         if fled:
             msg += f" {npc.name} breaks and runs."
         elif surrendered:
@@ -302,6 +443,18 @@ def npc_attack_player(npc: "NPC", player: "Player",
         if hasattr(wound, "bleed_level") and wound.is_bleeding:
             wound_desc += f" Bleeding: {wound.bleed_level}."
 
+    # Dismemberment check for player
+    dismember_msg = ""
+    part_hit_p = wound.part if hasattr(wound, 'part') else ""
+    from src.health_system import PART_HP as _PHP
+    p_cap = _PHP.get(part_hit_p, 100)
+    p_info = PART_DATA.get(part_hit_p, {})
+    p_label = p_info.get("label", part_hit_p).lower()
+    p_vital = p_info.get("vital", True)
+    if dmg > p_cap * 1.5 and not p_vital and part_hit_p:
+        player.wounds.part_state[part_hit_p] = "disabled"
+        dismember_msg = _dismember_msg_player(p_label, weapon_name)
+
     if killed:
         msg = (f"{npc.name} drives the {weapon_name} home. "
                f"You collapse. Everything goes dark.")
@@ -310,6 +463,8 @@ def npc_attack_player(npc: "NPC", player: "Player",
         if clothing_msg:
             msg += f" {clothing_msg}"
         msg += wound_desc
+        if dismember_msg:
+            msg += f" {dismember_msg}"
 
     return CombatEvent(
         attacker=npc.name, defender=player.name,

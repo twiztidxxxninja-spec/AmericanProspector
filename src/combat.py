@@ -56,6 +56,7 @@ AIMED_SHOTS = [
     ("Legs — slow them",     -3, 0.7, "legs"),
     ("Arms — disarm",        -4, 0.6, "arms"),
     ("Torso — heavy bleed",  -2, 1.2, "torso"),
+    ("Groin — cripple",      -5, 1.0, "groin"),
 ]
 
 
@@ -177,9 +178,20 @@ def player_attack_npc(player: "Player", npc: "NPC",
     elif aim_special == "arms":
         # Arm shot: reduce NPC damage capability
         npc.attributes["strength"] = max(1, npc.attributes.get("strength", 10) - 4)
+    elif aim_special == "groin":
+        # Groin shot: extreme pain, movement crippled
+        npc.attributes["agility"] = max(1, npc.attributes.get("agility", 10) - 6)
+
+    # Map aim_special to target body part for wound system
+    _AIM_TO_PART = {
+        "head": "head", "torso": "chest", "legs": "r_thigh",
+        "arms": "r_upper_arm", "groin": "groin",
+    }
+    wound_target = _AIM_TO_PART.get(aim_special)
 
     # Apply wound through the wound system (creates DetailedWound if available)
     wound = npc.wounds.apply_hit(dmg, _weapon_damage_type(weapon_name),
+                                 target_part=wound_target,
                                  weapon_key=_weapon_key(weapon_name))
     # Body part HP caps — extremities can only absorb so much before the
     # damage "overflows" to the body. Excess becomes bleed damage, not HP loss.

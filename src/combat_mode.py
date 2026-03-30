@@ -651,10 +651,10 @@ def enter_combat_mode(engine: "Engine", console, ctx) -> None:
                     break
 
                 # Aimed body part
-                if sym in (K.N1, K.N2, K.N3, K.N4, K.N5,
-                           K.KP_1, K.KP_2, K.KP_3, K.KP_4, K.KP_5):
-                    idx_map = {K.N1: 0, K.N2: 1, K.N3: 2, K.N4: 3, K.N5: 4,
-                               K.KP_1: 0, K.KP_2: 1, K.KP_3: 2, K.KP_4: 3, K.KP_5: 4}
+                if sym in (K.N1, K.N2, K.N3, K.N4, K.N5, K.N6,
+                           K.KP_1, K.KP_2, K.KP_3, K.KP_4, K.KP_5, K.KP_6):
+                    idx_map = {K.N1: 0, K.N2: 1, K.N3: 2, K.N4: 3, K.N5: 4, K.N6: 5,
+                               K.KP_1: 0, K.KP_2: 1, K.KP_3: 2, K.KP_4: 3, K.KP_5: 4, K.KP_6: 5}
                     aimed_part = idx_map.get(sym, 0)
                     add_msg(f"Aim: {AIMED_SHOTS[aimed_part][0]}", "advisory")
                     break

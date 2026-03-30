@@ -52,10 +52,11 @@ class BP:
     R_THIGH     = "r_thigh"
     L_LOWER_LEG = "l_lower_leg"
     R_LOWER_LEG = "r_lower_leg"
+    GROIN       = "groin"
 
 
 ALL_BODY_PARTS = [
-    BP.HEAD, BP.NECK, BP.CHEST, BP.ABDOMEN,
+    BP.HEAD, BP.NECK, BP.CHEST, BP.ABDOMEN, BP.GROIN,
     BP.L_UPPER_ARM, BP.R_UPPER_ARM, BP.L_FOREARM, BP.R_FOREARM,
     BP.L_HAND, BP.R_HAND,
     BP.L_THIGH, BP.R_THIGH, BP.L_LOWER_LEG, BP.R_LOWER_LEG,
@@ -72,9 +73,12 @@ PART_DATA: Dict[str, dict] = {
     BP.CHEST:       {"label": "Chest",          "hit_w": 20, "vital": True,  "arterial": True,
                      "treat_diff": 4, "clothing": "torso",
                      "impair": "chest wound — breathing difficulty"},
-    BP.ABDOMEN:     {"label": "Abdomen",        "hit_w": 14, "vital": True,  "arterial": False,
+    BP.ABDOMEN:     {"label": "Abdomen",        "hit_w": 12, "vital": True,  "arterial": False,
                      "treat_diff": 5, "clothing": "torso",
                      "impair": "gut wound — high infection risk, severe pain"},
+    BP.GROIN:       {"label": "Groin",          "hit_w": 4,  "vital": False, "arterial": True,
+                     "treat_diff": 4, "clothing": "legs",
+                     "impair": "groin wound — extreme pain, movement impaired"},
     BP.L_UPPER_ARM: {"label": "Left Upper Arm", "hit_w": 6,  "vital": False, "arterial": True,
                      "treat_diff": 2, "clothing": "outer",
                      "impair": "left arm weakened — can't swing or lift"},
@@ -126,6 +130,7 @@ PART_HP = {
     BP.R_THIGH:     40,
     BP.L_LOWER_LEG: 25,
     BP.R_LOWER_LEG: 25,
+    BP.GROIN:       50,   # femoral artery proximity, extreme pain/shock
 }
 
 # Adjacent parts for aim scatter
@@ -133,7 +138,8 @@ SCATTER_MAP: Dict[str, List[str]] = {
     BP.HEAD:        [BP.NECK],
     BP.NECK:        [BP.HEAD, BP.CHEST],
     BP.CHEST:       [BP.NECK, BP.ABDOMEN, BP.L_UPPER_ARM, BP.R_UPPER_ARM],
-    BP.ABDOMEN:     [BP.CHEST, BP.L_THIGH, BP.R_THIGH],
+    BP.ABDOMEN:     [BP.CHEST, BP.GROIN, BP.L_THIGH, BP.R_THIGH],
+    BP.GROIN:       [BP.ABDOMEN, BP.L_THIGH, BP.R_THIGH],
     BP.L_UPPER_ARM: [BP.CHEST, BP.L_FOREARM],
     BP.R_UPPER_ARM: [BP.CHEST, BP.R_FOREARM],
     BP.L_FOREARM:   [BP.L_UPPER_ARM, BP.L_HAND],
@@ -162,8 +168,10 @@ _OLD_TO_NEW = {
     "abdomen":   BP.ABDOMEN,
     "stomach":   BP.ABDOMEN,
     "gut":       BP.ABDOMEN,
-    "groin":     BP.ABDOMEN,
-    "pelvis":    BP.ABDOMEN,
+    "groin":     BP.GROIN,
+    "pelvis":    BP.GROIN,
+    "crotch":    BP.GROIN,
+    "genitals":  BP.GROIN,
     "rectum":    BP.ABDOMEN,
     "buttock":   BP.ABDOMEN,
     "buttocks":  BP.ABDOMEN,

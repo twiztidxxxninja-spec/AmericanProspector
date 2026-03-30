@@ -290,8 +290,6 @@ def _record_prices_for_businesses(player, stock, region):
         location = region or "unknown"
         for entry in stock.items:
             for biz in mgr.businesses.values():
-                if entry.item_id not in biz.known_prices:
-                    biz.known_prices[entry.item_id] = {}
-                biz.known_prices[entry.item_id][location] = entry.base_price
+                biz.record_price(entry.item_id, location, entry.base_price)
     except Exception:
         pass

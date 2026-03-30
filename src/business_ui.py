@@ -192,6 +192,7 @@ def _show_ledger(engine, console, ctx, biz):
 
     tabs = ["Overview", "Employees", "Inventory", "Finances", "Orders", "Market"]
     tab = 0
+    inv_scroll = 0  # scroll offset for inventory tab
     W, H = 76, 40
     X = (console.width - W) // 2
     Y = (console.height - H) // 2
@@ -280,14 +281,20 @@ def _show_ledger(engine, console, ctx, biz):
             console.print(X + 2, cy, f"Items: {len(biz.inventory)}  Value: ${total_val:.2f}",
                           fg=(200, 200, 200), bg=BG)
             cy += 1
-            for item in biz.inventory[:12]:
+            max_visible = H - 14  # leave room for header/footer
+            inv_scroll = max(0, min(inv_scroll, max(0, len(biz.inventory) - max_visible)))
+            visible_items = biz.inventory[inv_scroll:inv_scroll + max_visible]
+            for item in visible_items:
                 qty = f" x{item.quantity}" if getattr(item, 'stackable', False) and item.quantity > 1 else ""
                 console.print(X + 4, cy,
                     f"{item.name}{qty}  ${item.base_value:.2f}",
                     fg=(200, 200, 200), bg=BG)
                 cy += 1
-            if len(biz.inventory) > 12:
-                console.print(X + 4, cy, f"...and {len(biz.inventory)-12} more", fg=(120, 120, 120), bg=BG)
+            if len(biz.inventory) > max_visible:
+                console.print(X + 4, cy,
+                    f"[↑↓ scroll]  Showing {inv_scroll+1}-{inv_scroll+len(visible_items)} "
+                    f"of {len(biz.inventory)}",
+                    fg=(120, 120, 120), bg=BG)
                 cy += 1
             cy += 1
             if is_present:
@@ -531,6 +538,14 @@ def _show_ledger(engine, console, ctx, biz):
                 # Clear orders (X key)
                 if sym == K.x and tab == 4:
                     biz.clear_pending_orders()
+                    break
+
+                # Scroll inventory
+                if tab == 2 and sym in (K.UP, K.KP_8):
+                    inv_scroll = max(0, inv_scroll - 1)
+                    break
+                if tab == 2 and sym in (K.DOWN, K.KP_2):
+                    inv_scroll += 1
                     break
 
                 if sym in (K.RIGHT, K.PERIOD):

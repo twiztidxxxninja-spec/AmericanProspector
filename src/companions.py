@@ -383,11 +383,11 @@ def resolve_task(link: CompanionLink, npc: "NPC",
     if task_def.unpleasant:
         link.morale = max(0, link.morale - 2)
 
-    # Business tasks: items go to business inventory, track cost
+    # Business tasks: items go to business inventory
     is_biz_task = task_key in ("buy_goods", "sell_goods", "process_goods")
     purchase_cost = 0.0
-    if task_key == "buy_goods" and items:
-        # Rough cost per item purchased
+    if task_key == "buy_goods" and items and success:
+        # Only buy_goods has a purchase cost
         purchase_cost = len(items) * rng.uniform(0.50, 2.00)
 
     return TaskResult(

@@ -450,6 +450,15 @@ class BusinessEntity:
         }.get(self.settlement_type, 1.0)
         rev *= sett_mult
 
+        # Competition penalty on base revenue (not just customer sales)
+        if self._all_businesses:
+            competitors = sum(1 for b in self._all_businesses
+                              if b.id != self.id and b.active and not b.paused
+                              and b.world_x == self.world_x and b.world_y == self.world_y
+                              and b.category == self.category)
+            if competitors > 0:
+                rev *= 1.0 / (1.0 + competitors * 0.3)
+
         # Randomness (±15%)
         rev *= random.uniform(0.85, 1.15)
 
@@ -466,7 +475,31 @@ class BusinessEntity:
                 mgr_skill = emp.skill_level
                 break
 
-        # Auto-restock if low on key supplies and has cash
+        # ── Execute standing orders ──────────────────────────────────
+        for order in self.standing_orders:
+            otype = order.get("type", "")
+            if otype == "maintain_stock":
+                item_id = order.get("item_id", "")
+                min_qty = order.get("min_qty", 5)
+                max_price = order.get("max_price", 2.0)
+                current = sum(1 for i in self.inventory if i.id == item_id)
+                if current < min_qty:
+                    price_mult = max(0.7, 1.3 - mgr_skill * 0.06)
+                    qty = min_qty - current
+                    cost = qty * max_price * price_mult
+                    if self.cash_reserve >= cost:
+                        self.cash_reserve -= cost
+                        try:
+                            from src.items import make_item
+                            for _ in range(qty):
+                                self.inventory.append(make_item(item_id))
+                        except Exception:
+                            pass
+            elif otype == "set_price":
+                # Future: adjust pricing strategy
+                pass
+
+        # ── Auto-restock if low on key supplies and has cash ─────────
         _RESTOCK_MAP = {
             "saloon": [("whiskey", 10, 0.50)],
             "bakery": [("hardtack", 10, 0.15)],
@@ -475,6 +508,10 @@ class BusinessEntity:
             "hotel": [("candle", 3, 0.10)],
             "brothel": [("whiskey", 5, 0.50)],
             "dancehall": [("whiskey", 5, 0.50)],
+            "blacksmith": [("iron_ingot", 3, 1.00)],
+            "fur_trading": [("salt", 5, 0.30)],
+            "freight_line": [("rope_10ft", 3, 0.20)],
+            "mining_company": [("dynamite", 5, 1.50), ("candle", 5, 0.10)],
         }
         restock_list = _RESTOCK_MAP.get(self.blueprint_key, [])
         for item_id, min_qty, buy_price in restock_list:
@@ -655,8 +692,8 @@ class BusinessEntity:
         if self.manager_npc_id and not self.paused:
             self._manager_auto_decisions()
 
-        # Employee morale
-        can_pay = self.cash_reserve >= 0
+        # Employee morale — wages already deducted via profit calculation
+        can_pay = self.cash_reserve >= self.daily_wages
         for emp in self.employees:
             emp.days_employed += 1
             emp.tick_morale(can_pay, self.tier >= Tier.ESTABLISHED)
@@ -673,6 +710,20 @@ class BusinessEntity:
 
         # Check tier upgrade
         self._check_tier()
+
+        # Bankruptcy check — if cash negative for 7+ consecutive days
+        if self.cash_reserve < 0:
+            self.debt += abs(self.cash_reserve)
+            self.cash_reserve = 0
+            # Count consecutive loss days
+            loss_streak = 0
+            for h in reversed(self.history[-7:]):
+                if h.profit < 0:
+                    loss_streak += 1
+                else:
+                    break
+            if loss_streak >= 7:
+                self.active = False  # business shuts down
 
         return record
 
@@ -742,6 +793,12 @@ class BusinessEntity:
         return evt
 
     # ── Remote Management ─────────────────────────────────────────────
+
+    def record_price(self, item_id: str, location: str, price: float):
+        """Record a market price the player has observed."""
+        if item_id not in self.known_prices:
+            self.known_prices[item_id] = {}
+        self.known_prices[item_id][location] = round(price, 2)
 
     def add_standing_order(self, order_type: str, **params):
         """Add a persistent rule: buy X at Y price, maintain Z stock, etc."""
@@ -870,6 +927,12 @@ class BusinessEntity:
             "inventory": [_serialize_biz_item(i) for i in self.inventory],
             # Active shipments
             "shipments": getattr(self, 'shipments', []),
+            # History
+            "history": [
+                {"day": h.day, "revenue": h.revenue, "expenses": h.expenses,
+                 "wages": h.wages, "supplies": h.supplies, "other_costs": h.other_costs}
+                for h in self.history
+            ],
         }
 
     @classmethod
@@ -880,10 +943,13 @@ class BusinessEntity:
                 biz.employees = [Employee(**ed) for ed in v]
             elif k == "inventory":
                 biz.inventory = [_deserialize_biz_item(i) for i in v]
-            elif k not in ("history", "events"):
+            elif k == "history":
+                biz.history = [DailyFinance(**h) for h in v] if v else []
+            elif k != "events":
                 setattr(biz, k, v)
-        biz.history = []
-        biz.events = []
+        if not hasattr(biz, 'history'):
+            biz.history = []
+        biz.events = []  # events are transient, don't persist
         # Ensure new fields exist on old saves
         for attr, default in [("manager_npc_id", ""), ("standing_orders", []),
                               ("pending_orders", []), ("last_report_day", 0),
@@ -1030,7 +1096,7 @@ class BusinessManager:
                 sell_value = total_value * 2.0  # rough 2x markup at destination
                 biz.cash_reserve += sell_value
                 results.append((biz.name,
-                    f"Shipment arrived! {len(items)} items sold for "
+                    f"Shipment arrived! {len(raw_items)} items sold for "
                     f"${sell_value:.2f} at destination."))
         return results
 

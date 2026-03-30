@@ -168,6 +168,13 @@ def save_game(engine: "Engine", slot: str = "autosave") -> str:
         except Exception:
             pass
 
+    # Mining claims
+    if hasattr(engine, "claim_mgr") and engine.claim_mgr:
+        try:
+            data["claims"] = engine.claim_mgr.to_dict()
+        except Exception:
+            pass
+
     # Settlement price effects
     if hasattr(engine, "_settlement_price_effects"):
         data["settlement_price_effects"] = engine._settlement_price_effects
@@ -328,6 +335,11 @@ def load_game(engine: "Engine", slot: str = "autosave") -> bool:
         from src.pack_animals import PackAnimalManager
         engine.animal_mgr = PackAnimalManager.from_dict(data["pack_animals"])
         engine.player._animal_mgr = engine.animal_mgr
+
+    # Mining claims
+    if "claims" in data:
+        from src.claims import ClaimManager
+        engine.claim_mgr = ClaimManager.from_dict(data["claims"])
 
     # Settlement price effects
     if "settlement_price_effects" in data:

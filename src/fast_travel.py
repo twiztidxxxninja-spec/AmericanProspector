@@ -99,9 +99,14 @@ def calculate_trip(player: "Player", world_map: "WorldMap",
             total_minutes += int(cost)
             path.append((cx, cy))
 
-    # Horse bonus
-    has_horse = any(pa.get("type_id") == "horse" for pa in player.pack_animals)
-    if has_horse:
+    # Mount bonus — new pack animal system or legacy
+    has_mount = False
+    if hasattr(player, '_animal_mgr') and player._animal_mgr:
+        has_mount = player._animal_mgr.has_rideable()
+    else:
+        has_mount = any(pa.get("type_id") in ("horse", "mule")
+                        for pa in player.pack_animals)
+    if has_mount:
         total_minutes = int(total_minutes * 0.4)
 
     total_hours = total_minutes / 60.0
@@ -311,6 +316,117 @@ def _teleport_player(engine, wx: int, wy: int) -> None:
         engine.player.local_x, engine.player.local_y)
     engine._preload_neighbors()
     engine.recompute_fov()
+    # Place pack animals near player
+    if hasattr(engine, 'animal_mgr') and engine.animal_mgr.animals:
+        engine.animal_mgr.place_all_near(
+            engine.player.local_x, engine.player.local_y, lmap)
+
+
+# ============================================================================
+#  STAGECOACH & STEAMBOAT ROUTES (1840s California)
+# ============================================================================
+
+@dataclass
+class TransportRoute:
+    """A scheduled transport route between two towns."""
+    route_id: str
+    origin: str                 # town name
+    destination: str
+    method: str                 # "stagecoach" | "steamboat"
+    fare: float                 # one-way fare in dollars
+    travel_hours: int           # total travel time
+    era_start: int = 1849       # year route becomes available
+    luggage_limit_lb: float = 30.0  # max personal luggage
+
+
+# Historical routes for 1840s-1850s California
+TRANSPORT_ROUTES: List[TransportRoute] = [
+    # Steamboat routes (Sacramento River)
+    TransportRoute("steam_sf_sac", "San Francisco", "Sacramento",
+                   "steamboat", 25.0, 8, era_start=1849, luggage_limit_lb=100),
+    TransportRoute("steam_sac_sf", "Sacramento", "San Francisco",
+                   "steamboat", 25.0, 8, era_start=1849, luggage_limit_lb=100),
+    TransportRoute("steam_sac_mary", "Sacramento", "Marysville",
+                   "steamboat", 15.0, 6, era_start=1850, luggage_limit_lb=100),
+    TransportRoute("steam_mary_sac", "Marysville", "Sacramento",
+                   "steamboat", 15.0, 6, era_start=1850, luggage_limit_lb=100),
+
+    # Stagecoach routes
+    TransportRoute("stage_sac_plac", "Sacramento", "Placerville",
+                   "stagecoach", 10.0, 8, era_start=1849),
+    TransportRoute("stage_plac_sac", "Placerville", "Sacramento",
+                   "stagecoach", 10.0, 8, era_start=1849),
+    TransportRoute("stage_sac_aub", "Sacramento", "Auburn",
+                   "stagecoach", 8.0, 6, era_start=1849),
+    TransportRoute("stage_aub_sac", "Auburn", "Sacramento",
+                   "stagecoach", 8.0, 6, era_start=1849),
+    TransportRoute("stage_stock_son", "Stockton", "Sonora",
+                   "stagecoach", 12.0, 10, era_start=1850),
+    TransportRoute("stage_son_stock", "Sonora", "Stockton",
+                   "stagecoach", 12.0, 10, era_start=1850),
+    TransportRoute("stage_sac_mary", "Sacramento", "Marysville",
+                   "stagecoach", 15.0, 12, era_start=1850),
+    TransportRoute("stage_mary_sac", "Marysville", "Sacramento",
+                   "stagecoach", 15.0, 12, era_start=1850),
+    TransportRoute("stage_sf_sj", "San Francisco", "San Jose",
+                   "stagecoach", 8.0, 6, era_start=1849),
+    TransportRoute("stage_sj_sf", "San Jose", "San Francisco",
+                   "stagecoach", 8.0, 6, era_start=1849),
+]
+
+
+def get_available_routes(town_name: str, year: int) -> List[TransportRoute]:
+    """Get transport routes departing from a town in the given year."""
+    return [r for r in TRANSPORT_ROUTES
+            if r.origin == town_name and year >= r.era_start]
+
+
+def take_transport(engine: "Engine", route: TransportRoute) -> str:
+    """Execute a transport route. Deducts fare, advances time, teleports.
+    Returns result message."""
+    player = engine.player
+
+    if player.cash < route.fare:
+        return f"You can't afford the ${route.fare:.0f} fare."
+
+    # Check luggage
+    carry_weight = player.carried_weight
+    if carry_weight > route.luggage_limit_lb:
+        return (f"Too much luggage — {route.method} allows "
+                f"{route.luggage_limit_lb:.0f}lb, you're carrying {carry_weight:.0f}lb. "
+                f"Leave some with your animals or store it.")
+
+    # Deduct fare
+    player.cash -= route.fare
+
+    # Find destination world coordinates
+    dest_loc = None
+    for name, loc in engine.world.locations.items():
+        if loc.name == route.destination:
+            dest_loc = loc
+            break
+
+    if not dest_loc:
+        player.cash += route.fare  # refund
+        return f"Can't find {route.destination} on the map."
+
+    # Advance time
+    total_minutes = route.travel_hours * 60
+    _advance_days(engine, total_minutes)
+
+    # Teleport
+    _teleport_player(engine, dest_loc.x, dest_loc.y)
+
+    # Set arrival condition (well-rested from riding)
+    s = player.survival
+    s.hunger = max(s.hunger, 60)
+    s.thirst = max(s.thirst, 70)
+    s.fatigue = max(s.fatigue, 50)
+    s.warmth = 75
+
+    method_name = "Steamboat" if route.method == "steamboat" else "Stagecoach"
+    return (f"{method_name} to {route.destination} — ${route.fare:.0f}, "
+            f"{route.travel_hours} hours. You arrive tired but intact.")
     engine.state = "local_map"
     engine.map_level_index = 0
 
@@ -338,11 +454,14 @@ BG_SEL = ( 35,  35,  65)
 
 def fast_travel_ui(con: tcod.console.Console, ctx,
                     estimate: TripEstimate, player: "Player",
-                    dest_name: str = "") -> Optional[str]:
+                    dest_name: str = "",
+                    transport_routes: Optional[List[TransportRoute]] = None
+                    ) -> Optional[str]:
     """
-    Show trip confirmation screen. Returns TravelStyle or None if cancelled.
+    Show trip confirmation screen. Returns TravelStyle, "transport_N"
+    (where N is route index), or None if cancelled.
     """
-    W, H = 52, 24
+    W, H = 56, 28
     X = (con.width - W) // 2
     Y = (con.height - H) // 2
     K = tcod.event.KeySym
@@ -363,6 +482,17 @@ def fast_travel_ui(con: tcod.console.Console, ctx,
         (TravelStyle.FORAGE,  f"Forage along the way (+20% time)", can_forage),
         (TravelStyle.HUNGRY,  f"Go hungry (arrive weakened)", True),
     ]
+
+    # Add available transport routes
+    if transport_routes:
+        for i, route in enumerate(transport_routes):
+            method = "Steamboat" if route.method == "steamboat" else "Stage"
+            can_afford = player.cash >= route.fare
+            label = (f"{method} to {route.destination} — ${route.fare:.0f}, "
+                     f"{route.travel_hours}hr")
+            if not can_afford:
+                label += " (can't afford)"
+            options.append((f"transport_{i}", label, can_afford))
     selected = 0
 
     while True:

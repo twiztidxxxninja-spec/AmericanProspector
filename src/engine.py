@@ -129,6 +129,8 @@ class Engine:
         from src.pack_animals import PackAnimalManager
         self.animal_mgr      = PackAnimalManager()
         self.player._animal_mgr = self.animal_mgr
+        from src.claims import ClaimManager
+        self.claim_mgr       = ClaimManager()
         self.music           = MusicManager("music")
 
         # Start on local map at Sacramento (center patch of world tile)
@@ -837,6 +839,10 @@ class Engine:
                 e for e in self._settlement_price_effects
                 if e["expires"] > current_day
             ]
+
+        # Mining claim maintenance
+        for msg in self.claim_mgr.tick_daily(current_day):
+            self.add_message(msg, "warning")
 
         # Pack animal daily care
         if self.animal_mgr.animals:
@@ -3195,6 +3201,52 @@ class Engine:
             self.advance_time(3)
             return
 
+        # ── Stake claim ───────────────────────────────────────────────────
+        if "stake" in a and ("claim" in a or "ground" in a):
+            # Need wooden stakes (or just logs) and paper
+            has_stakes = any(i.id in ("log", "wooden_stake")
+                            for i in self.player.inventory)
+            has_paper = any(i.id in ("paper", "pencil")
+                           for i in self.player.inventory)
+            if not has_stakes:
+                self.add_message("You need wooden stakes (or logs) to mark your claim.", "advisory")
+                return
+            claim, msg = self.claim_mgr.stake_claim(
+                self.player.name,
+                self.player.world_x, self.player.world_y,
+                self.player.area_x, self.player.area_y,
+                self.player.local_x, self.player.local_y,
+                self.time.total_minutes // 1440)
+            self.add_message(msg, "advisory" if claim else "normal")
+            if claim:
+                self.player.gain_skill_xp("law", 2.0)
+                self.advance_time(30)
+            return
+
+        # ── Register claim at land office ─────────────────────────────────
+        if "register" in a and "claim" in a:
+            claims = self.claim_mgr.player_claims(self.player.name)
+            unregistered = [c for c in claims if not c.registered]
+            if not unregistered:
+                self.add_message("No unregistered claims.", "normal")
+                return
+            # Check if near a land office
+            lmap = self.current_local
+            in_town = hasattr(lmap, 'town_layout') and lmap.town_layout
+            if not in_town:
+                self.add_message("You need to be at a land office in town to register.", "advisory")
+                return
+            if self.player.cash < 5.0:
+                self.add_message("Registration costs $5. You can't afford it.", "advisory")
+                return
+            # Register the first unregistered claim
+            c = unregistered[0]
+            self.player.cash -= 5.0
+            ok, msg = self.claim_mgr.register_claim(c.claim_id)
+            self.add_message(msg, "advisory")
+            self.advance_time(20)
+            return
+
         # ── Test pan (quick sample) ───────────────────────────────────────
         if ("test" in a and "pan" in a) or "sample" in a:
             from src.prospecting import test_pan
@@ -3270,6 +3322,16 @@ class Engine:
                 self.player.gain_skill_xp("placer",  result.xp_placer)
                 self.player.gain_skill_xp("geology", result.xp_geology)
                 self.player.gold_oz += result.gold_oz
+                # Track claim work
+                claim = self.claim_mgr.claim_at(
+                    self.player.world_x, self.player.world_y,
+                    self.player.area_x, self.player.area_y,
+                    self.player.local_x, self.player.local_y)
+                if claim and claim.owner == self.player.name:
+                    self.claim_mgr.work_claim(
+                        claim.claim_id,
+                        self.time.total_minutes // 1440,
+                        result.gold_oz)
                 # Significant find = reputation boost + triumph music
                 if result.gold_oz > 0.05:
                     self.reputation.adjust(lmap._region_name, 3)
@@ -5039,7 +5101,9 @@ class Engine:
             self.add_message("Can't travel there.", "normal")
             return
 
-        from src.fast_travel import calculate_trip, fast_travel_ui, execute_trip, encounter_ui
+        from src.fast_travel import (calculate_trip, fast_travel_ui,
+                                      execute_trip, encounter_ui,
+                                      get_available_routes, take_transport)
 
         # Calculate trip
         estimate = calculate_trip(self.player, self.world, cx, cy)
@@ -5049,17 +5113,42 @@ class Engine:
             self.add_message("Route crosses ocean — can't travel there.", "normal")
             return
 
-        # Get destination name
+        # Get destination name and check for transport routes
         loc = self.world.get_location_at(cx, cy)
         dest_name = loc.name if loc else f"({cx}, {cy})"
 
-        # Show confirmation UI
+        # Find transport routes from current town to destination
+        current_loc = self.world.get_location_at(
+            self.player.world_x, self.player.world_y)
+        transport_routes = []
+        if current_loc and loc:
+            from src.fast_travel import TRANSPORT_ROUTES
+            for r in TRANSPORT_ROUTES:
+                if (r.origin == current_loc.name
+                        and r.destination == loc.name
+                        and self.time.year >= r.era_start):
+                    transport_routes.append(r)
+
+        # Show confirmation UI with transport options
         style = fast_travel_ui(self._console, self._ctx, estimate,
-                                self.player, dest_name)
+                                self.player, dest_name,
+                                transport_routes=transport_routes or None)
         if style is None:
             return  # cancelled
 
-        # Execute the trip
+        # Handle transport route selection
+        if isinstance(style, str) and style.startswith("transport_"):
+            route_idx = int(style.split("_")[1])
+            if route_idx < len(transport_routes):
+                route = transport_routes[route_idx]
+                msg = take_transport(self, route)
+                self.add_message(msg, "advisory")
+                self.state = GameState.LOCAL_MAP
+                self.map_level_index = 0
+                self.recompute_fov()
+                return
+
+        # Execute the trip (overland)
         result, final_pos = execute_trip(self, estimate, style)
 
         if result == "encounter":

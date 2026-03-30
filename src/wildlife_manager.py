@@ -168,7 +168,8 @@ SPECIES_BODY_PLAN = {
 class WildlifeInstance:
     __slots__ = ("species", "species_type", "local_x", "local_y", "local_z",
                  "health", "alert", "state", "last_attack_tick",
-                 "wound_flee_steps", "butchered", "wounds")
+                 "wound_flee_steps", "butchered", "wounds",
+                 "death_time", "decayed")
 
     def __init__(self, species_type: WildlifeType, species: WildlifeSpecies,
                  x: int, y: int):
@@ -191,6 +192,8 @@ class WildlifeInstance:
         self.last_attack_tick = 0
         self.wound_flee_steps = 0    # steps remaining before wounded animal collapses
         self.butchered        = False
+        self.death_time       = 0      # game minute when died (0 = alive)
+        self.decayed          = False   # True = skeleton, no meat left
         self.wounds           = HealthTracker(
             MAX_BLOOD.get(species.size, 80.0),
             body_plan=SPECIES_BODY_PLAN.get(species_type, "quadruped"))
@@ -406,6 +409,29 @@ class WildlifeManager:
                     animal.last_attack_tick = self._tick
                     dmg, msg = self._animal_attack(animal, player)
                     messages.append(msg)
+
+        # ── Body decay ──────────────────────────────────────────────────
+        # Dead animals decay over time. After ~24 hours → skeleton,
+        # no longer butcherable. Attracts scavengers before that.
+        current_min = getattr(self, '_game_minutes', 0)
+        for animal in animals:
+            if animal.state == "dead" and not animal.decayed:
+                if animal.death_time == 0:
+                    animal.death_time = current_min
+                hours_dead = (current_min - animal.death_time) / 60.0
+                # After 24 hours: decayed, can't butcher
+                if hours_dead >= 24:
+                    animal.decayed = True
+                    animal.butchered = True  # nothing left to take
+                    messages.append(
+                        f"The {animal.species.display_name} carcass "
+                        f"has rotted. Nothing left but bones.")
+                # After 12 hours: warn
+                elif hours_dead >= 12 and animal.recoverable:
+                    if self.rng.random() < 0.05:  # occasional reminder
+                        messages.append(
+                            f"The {animal.species.display_name} carcass "
+                            f"is starting to smell. Butcher it soon.")
 
         return messages
 

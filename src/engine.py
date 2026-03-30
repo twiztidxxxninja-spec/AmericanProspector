@@ -707,6 +707,7 @@ class Engine:
             self._npc_wander_tick(minutes)
             lmap = self.current_local
             if lmap:
+                self.wildlife_mgr._game_minutes = self.time.total_minutes
                 for msg in self.wildlife_mgr.update_all(minutes, self.player, lmap):
                     severity = "critical" if "mauls" in msg or "claws" in msg or "charges" in msg else "advisory"
                     self.add_message(msg, severity)
@@ -814,6 +815,102 @@ class Engine:
                                     animal.state = "fleeing"
                                     animal.alert = True
                                     break
+
+                # Scavenger attraction — food/carcasses on ground draw predators
+                self._scavenger_check(lmap, minutes)
+
+    def _scavenger_check(self, lmap, minutes: int):
+        """Food, carcasses, or fish guts on the ground attract scavengers.
+        Bears for large food piles, coyotes/wolves for smaller ones.
+        Higher chance at night. Fire nearby repels them."""
+        import random as _scrng
+        px, py = self.player.local_x, self.player.local_y
+
+        # Only check once per ~30 min of game time (not every tick)
+        if _scrng.random() > minutes / 30.0:
+            return
+
+        # Count food/meat items on ground within 20 tiles of player
+        food_score = 0
+        for dy in range(-20, 21, 4):  # sample, not every tile
+            for dx in range(-20, 21, 4):
+                tx, ty = px + dx, py + dy
+                if not lmap.in_bounds(tx, ty):
+                    continue
+                tile = lmap.tile_at(tx, ty)
+                for gi in tile.ground_items:
+                    if gi.category == "food":
+                        food_score += gi.weight
+                    if gi.id in ("fish_guts", "fresh_fish", "fresh_venison"):
+                        food_score += gi.weight * 3  # strong smell
+                # Dead animals = massive attraction
+                for a in self.wildlife_mgr.get_animals(
+                        self.player.world_x, self.player.world_y,
+                        self.player.area_x, self.player.area_y):
+                    if a.state == "dead" and not a.recoverable:
+                        continue
+                    if a.state == "dead" and abs(a.local_x - tx) < 3 and abs(a.local_y - ty) < 3:
+                        food_score += 10
+
+        if food_score < 2:
+            return  # not enough to attract anything
+
+        # Fire repels scavengers
+        has_fire = self._nearby_structure("cook", radius=10)
+        if has_fire:
+            food_score *= 0.3
+
+        # Night = more scavengers
+        if self.time.period == "night":
+            food_score *= 2.0
+
+        # Chance scales with food score
+        chance = min(0.15, food_score * 0.01)
+        if _scrng.random() > chance:
+            return
+
+        # Pick scavenger type based on food score
+        from src.wildlife import WildlifeType, WILDLIFE_DB
+        from src.wildlife_manager import WildlifeInstance
+        if food_score >= 15:
+            # Big attraction = bear
+            scav_type = _scrng.choice([WildlifeType.GRIZZLY_BEAR, WildlifeType.BLACK_BEAR])
+            msg = "smell of food"
+        elif food_score >= 8:
+            # Medium = wolf or coyote
+            scav_type = _scrng.choice([WildlifeType.GRAY_WOLF, WildlifeType.COYOTE])
+            msg = "scent of meat"
+        else:
+            # Small = coyote or fox
+            scav_type = WildlifeType.COYOTE
+            msg = "smell of food scraps"
+
+        sp = WILDLIFE_DB.get(scav_type)
+        if not sp:
+            return
+
+        # Spawn near the food source, approaching from edge
+        edge_dir = _scrng.choice([(1, 0), (-1, 0), (0, 1), (0, -1)])
+        sx = px + edge_dir[0] * _scrng.randint(15, 25)
+        sy = py + edge_dir[1] * _scrng.randint(15, 25)
+        sx = max(5, min(lmap.width - 5, sx))
+        sy = max(5, min(lmap.height - 5, sy))
+
+        key = (self.player.world_x, self.player.world_y,
+               self.player.area_x, self.player.area_y)
+        animal = WildlifeInstance(scav_type, sp, sx, sy)
+        animal.local_z = lmap.ground_z(sx, sy)
+        self.wildlife_mgr.active.setdefault(key, []).append(animal)
+
+        if self.time.period == "night":
+            self.add_message(
+                f"Something is moving in the dark. The {msg} "
+                f"has drawn a {sp.display_name}.",
+                "warning")
+        else:
+            self.add_message(
+                f"A {sp.display_name} approaches, drawn by the {msg}.",
+                "advisory")
 
     def _run_daily_ticks(self, current_day: int):
         """Run all once-per-day system updates."""

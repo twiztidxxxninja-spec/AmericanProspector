@@ -180,8 +180,32 @@ ITEM_TEMPLATES: Dict[str, dict] = {
     "wild_berries": {
         "id": "wild_berries", "name": "Wild Berries", "weight": 0.2,
         "category": "food", "nutrition": 8.0,
-        "description": "Foraged berries. Eat fresh or mix into pemmican.",
+        "description": "Foraged berries. Eat fresh, mix into pemmican, or ferment into fruit beer.",
         "base_value": 0.05, "stackable": True, "perishable": True, "days_until_spoil": 3,
+    },
+    "juniper_berries": {
+        "id": "juniper_berries", "name": "Juniper Berries", "weight": 0.1,
+        "category": "food", "nutrition": 2.0,
+        "description": "Aromatic juniper berries. Flavor spirits into gin. Also medicinal.",
+        "base_value": 0.10, "stackable": True,
+    },
+    "wild_honey": {
+        "id": "wild_honey", "name": "Wild Honey", "weight": 0.5,
+        "category": "food", "nutrition": 12.0,
+        "description": "Honey from a wild hive. Sweet, preservative, ferments into mead.",
+        "base_value": 0.30, "stackable": True,
+    },
+    "corn": {
+        "id": "corn", "name": "Corn", "weight": 1.0,
+        "category": "food", "nutrition": 10.0,
+        "description": "Dried corn. Eat it, grind it, or ferment it into corn whiskey.",
+        "base_value": 0.15, "stackable": True,
+    },
+    "wild_mint": {
+        "id": "wild_mint", "name": "Wild Mint", "weight": 0.1,
+        "category": "food", "nutrition": 1.0,
+        "description": "Fresh mint leaves. Tea, flavoring, or medicinal.",
+        "base_value": 0.05, "stackable": True, "perishable": True, "days_until_spoil": 5,
     },
     "smoked_meat": {
         "id": "smoked_meat", "name": "Smoked Meat", "weight": 0.5,

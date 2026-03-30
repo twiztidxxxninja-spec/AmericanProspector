@@ -19,10 +19,23 @@ There are two ways to run the game. Pick whichever is easier for you.
 1. **Download the game folder** (zip file) and unzip it anywhere
 2. **Double-click `AmericanProspector.exe`**
 
-**Windows SmartScreen warning:** Windows will say "Windows protected your PC" because the exe isn't signed by a big company. This is normal for all indie games and homebrew software.
+**Windows SmartScreen warning:** Windows will pop up saying "Windows protected your PC." Here's why:
+
+Microsoft charges developers $200-400/year for a "code signing certificate" that makes this warning go away. I didn't pay them. That's the only reason you see it. Every indie game, modding tool, and homebrew app made by a solo developer shows this same warning.
+
+**The game does not:**
+- Install anything to your system
+- Modify your registry or system files
+- Run at startup or in the background
+- Access anything outside its own folder
+- Collect personal information
+
+Everything the game does stays inside its own folder (saves, config, bug reports). Delete the folder and it's completely gone.
+
+**To get past the warning:**
 - Click **"More info"**
 - Click **"Run anyway"**
-- This only happens the first time. It will not harm your computer.
+- This only happens the first time
 
 **That's it. You're playing.**
 

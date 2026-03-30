@@ -4533,67 +4533,158 @@ class Engine:
 
         return fall_dist
 
-    def _river_crossing_check(self, lmap):
-        """When player steps into water, chance to lose/soak items."""
+    def _river_crossing_check(self, lmap, move_dx: int, move_dy: int):
+        """Water crossing risk. Only triggers for crossings wider than 2 tiles.
+        Risks scale with load, constitution, and crossing width.
+        Lost items wash downstream and can be found on the bank."""
         import random as _rng
+        from src.local_map import LocalTerrain as _LT
         p = self.player
-        if not p.inventory:
+        px, py = p.local_x, p.local_y
+
+        # Measure water width in the direction of movement
+        width = 0
+        cx, cy = px, py
+        for _ in range(20):
+            cx += move_dx
+            cy += move_dy
+            if not lmap.in_bounds(cx, cy):
+                break
+            if lmap.tile_at(cx, cy).terrain != _LT.WATER:
+                break
+            width += 1
+
+        # Also check behind us
+        cx, cy = px, py
+        for _ in range(20):
+            cx -= move_dx
+            cy -= move_dy
+            if not lmap.in_bounds(cx, cy):
+                break
+            if lmap.tile_at(cx, cy).terrain != _LT.WATER:
+                break
+            width += 1
+
+        # Narrow water (0-2 tiles) = wade safely, no risk
+        if width <= 2:
             return
 
-        # Shallow crossing: low risk. Deep water (surrounded by water): high risk
-        from src.local_map import LocalTerrain as _LT
-        water_adj = 0
-        for dx in range(-1, 2):
-            for dy in range(-1, 2):
-                nx, ny = p.local_x + dx, p.local_y + dy
-                if lmap.in_bounds(nx, ny) and lmap.tile_at(nx, ny).terrain == _LT.WATER:
-                    water_adj += 1
+        # First step into deep water = warning
+        if not hasattr(p, '_in_water_warned') or not p._in_water_warned:
+            p._in_water_warned = True
+            load_pct = p.carried_weight / max(1, p.carry_capacity)
+            con = p.attributes.get("constitution", 10)
+            danger = "DANGEROUS" if load_pct > 0.8 or con < 8 else \
+                     "risky" if load_pct > 0.5 else "manageable"
+            self.add_message(
+                f"Deep water ahead — crossing looks {width} tiles wide. "
+                f"Your load is {p.carried_weight:.0f}lb. "
+                f"This will be {danger}.",
+                "warning" if danger != "manageable" else "advisory")
+            return
 
-        # Risk scales with water depth (more adjacent water = deeper)
-        if water_adj <= 2:
-            return  # shallow edge, no risk
+        # ── Risk calculation ──────────────────────────────────────────
+        con = p.attributes.get("constitution", 10)
+        survival = p.skills.get("survival", 0)
+        load_pct = p.carried_weight / max(1, p.carry_capacity)
 
-        risk = 0.03 * water_adj  # ~9-24% in deep water
+        # Base risk per step in deep water
+        base_risk = 0.05 * (width - 2)  # 5% per tile beyond 2
+        # Load multiplier: heavier = more risk
+        load_mult = 1.0 + max(0, load_pct - 0.3) * 3.0  # 30%+ load starts adding risk
+        # Fitness helps
+        fitness_mult = max(0.3, 1.5 - (con + survival) * 0.05)
+        risk = base_risk * load_mult * fitness_mult
 
-        if _rng.random() < risk:
-            # Something gets wet or lost
+        if _rng.random() >= risk:
+            return  # safe this step
+
+        # ── Something goes wrong ──────────────────────────────────────
+        roll = _rng.random()
+
+        if roll < 0.25 and p.gold_oz > 0.01:
+            # Gold dust washes away
+            lost = min(p.gold_oz * 0.15, p.gold_oz)
+            p.gold_oz -= lost
+            self.add_message(
+                f"Water surges over your pack — {lost:.3f} oz of gold "
+                f"dust washes into the current!",
+                "warning")
+
+        elif roll < 0.55:
+            # Item lost — washes downstream, lands on bank
             droppable = [i for i in p.inventory
-                         if i.weight > 0.5 and i.category != "misc"
+                         if i.weight > 0.3
                          and not getattr(i, 'extra', {}).get('carry_capacity_lb')]
+            if droppable:
+                item = _rng.choice(droppable)
+                p.inventory.remove(item)
 
-            if not droppable:
-                return
+                # Place item downstream on the nearest bank
+                downstream_dist = _rng.randint(15, 40)
+                # Flow direction: downstream = positive y generally
+                flow_dx = 0 if abs(move_dx) > 0 else _rng.choice([-1, 1])
+                flow_dy = 1 if move_dy == 0 else move_dy
+                placed = False
+                for dist in range(downstream_dist, downstream_dist + 20):
+                    bx = px + flow_dx * dist + _rng.randint(-3, 3)
+                    by = py + flow_dy * dist + _rng.randint(-2, 2)
+                    if lmap.in_bounds(bx, by):
+                        bank_tile = lmap.tile_at(bx, by)
+                        if bank_tile.terrain not in (_LT.WATER, _LT.ROCK):
+                            bank_tile.ground_items.append(item)
+                            placed = True
+                            break
 
-            roll = _rng.random()
-            item = _rng.choice(droppable)
-
-            if roll < 0.4:
-                # Item gets soaked — food spoils faster
-                if item.perishable and item.days_until_spoil:
-                    item.days_until_spoil = max(1, item.days_until_spoil // 2)
+                if placed:
                     self.add_message(
-                        f"Your {item.name} got soaked crossing the water!",
+                        f"Your {item.name} is torn from your pack by the "
+                        f"current! It might wash up downstream.",
                         "warning")
                 else:
                     self.add_message(
-                        f"Your {item.name} got wet. No real damage.",
-                        "normal")
-            elif roll < 0.7:
-                # Item dropped in water — lost
-                p.inventory.remove(item)
-                self.add_message(
-                    f"Your {item.name} slips from your pack and sinks "
-                    f"into the current. Gone.",
-                    "warning")
-            else:
-                # Gold dust lost
-                if p.gold_oz > 0.01:
-                    lost = min(p.gold_oz * 0.1, p.gold_oz)
-                    p.gold_oz -= lost
-                    self.add_message(
-                        f"Your gold pouch dips into the water — "
-                        f"{lost:.3f} oz of dust washes away!",
+                        f"Your {item.name} is swept away by the river. Gone.",
                         "warning")
+
+        elif roll < 0.75:
+            # Soaked — food spoils
+            food = [i for i in p.inventory
+                    if i.perishable and i.days_until_spoil and i.days_until_spoil > 1]
+            if food:
+                item = _rng.choice(food)
+                item.days_until_spoil = max(1, item.days_until_spoil // 3)
+                self.add_message(
+                    f"Your {item.name} is completely waterlogged. "
+                    f"It'll spoil much faster now.",
+                    "warning")
+
+        else:
+            # Drowning risk — heavy load + low CON
+            if load_pct > 0.7 and con < 10:
+                drown_dmg = int((load_pct - 0.5) * 40 + (10 - con) * 3)
+                p.survival.health -= drown_dmg
+                p.survival.fatigue = max(0, p.survival.fatigue - 30)
+                self.add_message(
+                    f"The weight drags you under! You thrash and fight "
+                    f"for the surface, swallowing water. "
+                    f"({drown_dmg} damage, exhausted)",
+                    "critical")
+                if p.survival.health <= 0:
+                    self.add_message(
+                        "The river takes you. The current is stronger "
+                        "than you are. Your pack drags you down.",
+                        "critical")
+            elif load_pct > 0.5:
+                p.survival.fatigue = max(0, p.survival.fatigue - 15)
+                self.add_message(
+                    "You struggle against the current. The weight of "
+                    "your pack makes every stroke a fight.",
+                    "advisory")
+
+    def _clear_water_warning(self):
+        """Reset water warning flag when player leaves water."""
+        if hasattr(self.player, '_in_water_warned'):
+            self.player._in_water_warned = False
 
     def _record_gossip(self, content: str, severity: float) -> None:
         """Add a gossip entry for the current region."""
@@ -5562,12 +5653,14 @@ class Engine:
                         self.player.local_x, self.player.local_y, lmap)
                 self.recompute_fov()
 
-                # River crossing risk — items can get wet or lost
+                # River crossing — warn and risk check
                 from src.local_map import LocalTerrain as _LT
                 new_terrain = lmap.tile_at(
                     self.player.local_x, self.player.local_y).terrain
                 if new_terrain == _LT.WATER:
-                    self._river_crossing_check(lmap)
+                    self._river_crossing_check(lmap, dx, dy)
+                else:
+                    self._clear_water_warning()
 
                 # Random walking event (very rare on local movement)
                 from src.walking_events import roll_walking_event

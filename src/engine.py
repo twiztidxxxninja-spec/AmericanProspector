@@ -1854,38 +1854,13 @@ class Engine:
                 "advisory")
 
     def _open_crafting(self):
-        """Crafting menu — make items from raw materials."""
-        from src.menus import pick_from_list
-        from src.crafting import RECIPES, RECIPE_CATEGORIES, can_craft, execute_craft
-
-        # Group recipes by category, show craftability
-        cat_names = list(RECIPE_CATEGORIES.keys())
-        cat_idx = pick_from_list(self._console, self._ctx, "Craft — Category",
-                                  [c.capitalize() for c in cat_names])
-        if cat_idx is None:
-            return
-        category = cat_names[cat_idx]
-        recipes = RECIPE_CATEGORIES[category]
-
-        # Show recipes with availability
-        labels = []
-        for r in recipes:
-            ok, reason = can_craft(r, self.player.inventory)
-            mats = ", ".join(f"{q}x {mid}" for mid, q in r.materials)
-            status = "" if ok else f" [NEED: {reason}]"
-            labels.append(f"{r.name} ({mats}){status}")
-
-        ridx = pick_from_list(self._console, self._ctx, f"Craft — {category.capitalize()}", labels)
-        if ridx is None:
-            return
-        recipe = recipes[ridx]
-
-        ok, msg = execute_craft(recipe, self.player)
-        self.add_message(msg, "normal" if ok else "advisory")
-        if ok:
-            self.advance_time(recipe.time_minutes)
-        else:
-            self.advance_time(5)  # wasted attempt
+        """Crafting menu — tabbed interface by category."""
+        from src.ui_crafting import open_crafting
+        result = open_crafting(self._console, self._ctx, self.player)
+        if result:
+            status, msg, minutes = result
+            self.add_message(msg, "normal" if status == "crafted" else "advisory")
+            self.advance_time(minutes)
 
     def _open_throw(self):
         """[V] — select an item to throw, then select a target."""

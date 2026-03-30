@@ -352,8 +352,8 @@ RECIPES: List[Recipe] = [
     ),
     Recipe(
         id="make_hardtack", name="Hardtack",
-        description="Flour and water baked into rock-hard biscuits. Lasts forever.",
-        materials=[("flour", 2)],
+        description="Flour, water, and salt baked into rock-hard biscuits. Lasts forever.",
+        materials=[("flour", 2), ("salt", 1)],
         skill="survival", difficulty=3, time_minutes=60,
         output_id="hardtack", output_qty=6,
         category="food",
@@ -681,8 +681,8 @@ RECIPES: List[Recipe] = [
     # ── Medical ──────────────────────────────────────────────────────
     Recipe(
         id="bandage", name="Cloth Bandage",
-        description="Tear cloth into bandages for treating wounds.",
-        materials=[("raw_hide", 1)],
+        description="Tear clean cloth into bandages for treating wounds.",
+        materials=[("canvas", 1)],
         skill="firstAid", difficulty=4, time_minutes=10,
         output_custom={"id": "bandage", "name": "Bandage", "weight": 0.1,
                        "category": "tool", "base_value": 0.20, "stackable": True,

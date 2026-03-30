@@ -74,12 +74,12 @@ REGION_PRICE_MULT: Dict[str, float] = {
 
 # Settlement type modifiers (multiply on top of region)
 SETTLEMENT_PRICE_MULT: Dict[str, float] = {
-    "mining_camp_small":   2.0,    # markup from scarcity
-    "mining_camp_medium":  1.6,
-    "boomtown":            1.3,    # competitive merchants
-    "small_town":          1.0,    # baseline
-    "trading_post":        1.8,    # remote but stocked
-    "city":                0.85,   # bulk supply, lower prices
+    "mining_camp_small":   2.5,    # everything hauled by mule, extreme scarcity
+    "mining_camp_medium":  2.0,    # slightly better supply
+    "boomtown":            1.8,    # high demand, growing supply
+    "small_town":          1.2,    # established but limited
+    "trading_post":        1.5,    # frontier post, markup for convenience
+    "city":                0.9,    # bulk supply, competition keeps prices down
 }
 
 

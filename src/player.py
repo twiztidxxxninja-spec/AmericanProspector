@@ -120,7 +120,7 @@ class Player:
 
     # Gold carried (troy oz)
     gold_oz: float = 0.0
-    cash:    float = 50.0   # starting cash in dollars
+    cash:    float = 150.0  # starting cash — a Forty-Niner's savings
 
     # Pack animals: each entry is a dict with keys:
     #   type_id (str), name (str), condition (0-100), carrying_capacity_lb (float)

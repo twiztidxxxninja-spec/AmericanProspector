@@ -92,14 +92,14 @@ ITEM_TEMPLATES: Dict[str, dict] = {
         "base_value": 1.50, "quality": "standard",
     },
     "pickaxe": {
-        "id": "pickaxe", "name": "Pickaxe", "weight": 5.0,
+        "id": "pickaxe", "name": "Pickaxe", "weight": 7.0,
         "category": "tool", "tool_tags": ["dig", "break_rock"],
         "description": "A heavy iron pickaxe for breaking rock and moving earth.",
         "base_value": 2.00, "quality": "standard",
         "damage_min": 15, "damage_max": 35, "weapon_type": "melee",  # heavy iron spike
     },
     "shovel": {
-        "id": "shovel", "name": "Shovel", "weight": 4.0,
+        "id": "shovel", "name": "Shovel", "weight": 5.5,
         "category": "tool", "tool_tags": ["dig", "move_earth"],
         "description": "A long-handled iron shovel.",
         "base_value": 1.50, "quality": "standard",
@@ -150,7 +150,7 @@ ITEM_TEMPLATES: Dict[str, dict] = {
         "id": "salt_pork", "name": "Salt Pork", "weight": 0.5,
         "category": "food", "nutrition": 25.0,
         "description": "Heavily salted cured pork. Lasts weeks without refrigeration.",
-        "base_value": 0.10, "stackable": True, "perishable": True, "days_until_spoil": 30,
+        "base_value": 0.10, "stackable": True, "perishable": True, "days_until_spoil": 60,
     },
     "jerky": {
         "id": "jerky", "name": "Beef Jerky", "weight": 0.1,
@@ -173,7 +173,7 @@ ITEM_TEMPLATES: Dict[str, dict] = {
     },
     "flour": {
         "id": "flour", "name": "Flour", "weight": 2.0,
-        "category": "food", "nutrition": 5.0,
+        "category": "food", "nutrition": 12.0,
         "description": "Sack of wheat flour. Makes hardtack, bread, or thickens stew.",
         "base_value": 0.30, "stackable": True,
     },
@@ -532,11 +532,12 @@ ITEM_TEMPLATES: Dict[str, dict] = {
                   "two_handed": True, "capacity": 1},
     },
     "percussion_revolver": {
-        "id": "percussion_revolver", "name": "Colt Revolver", "weight": 2.5,
+        "id": "percussion_revolver", "name": "Colt Dragoon", "weight": 4.0,
         "category": "weapon",
-        "description": "A .36 caliber Colt Navy revolver. Six shots.",
+        "description": "A .44 caliber Colt Dragoon revolver. Six shots. "
+                       "Heavy, powerful, the standard sidearm of 1848.",
         "base_value": 25.00, "weapon_type": "firearm",
-        "damage_min": 20, "damage_max": 40,  # .36 cal — lethal at close range
+        "damage_min": 25, "damage_max": 50,  # .44 cal — heavier than Navy
         "extra": {"loaded": 0, "ammo_type": "revolver_ball", "reload_time": 60,
                   "two_handed": False, "capacity": 6},
     },
@@ -753,9 +754,10 @@ ITEM_TEMPLATES: Dict[str, dict] = {
         "base_value": 0.05, "tool_tags": ["write"],
     },
     "pen": {
-        "id": "pen", "name": "Pen", "weight": 0.05,
+        "id": "pen", "name": "Dip Pen", "weight": 0.05,
         "category": "tool",
-        "description": "A steel-nib dip pen. Better than a quill. Requires ink.",
+        "description": "A pen with a metal nib. Requires ink. "
+                       "Better than a quill for formal documents.",
         "base_value": 0.50, "tool_tags": ["write"],
     },
     "pencil": {
@@ -1005,18 +1007,6 @@ ITEM_TEMPLATES: Dict[str, dict] = {
         "base_value": 0.0,
         "extra": {"lot_wx": 0, "lot_wy": 0, "lot_x": 0, "lot_y": 0,
                   "lot_w": 10, "lot_h": 8},
-    },
-    "pencil": {
-        "id": "pencil", "name": "Pencil", "weight": 0.05,
-        "category": "tool",
-        "description": "A graphite pencil. Write notes, mark maps, sketch plans.",
-        "base_value": 0.10, "tool_tags": ["write"],
-    },
-    "paper": {
-        "id": "paper", "name": "Paper", "weight": 0.05,
-        "category": "material",
-        "description": "A sheet of writing paper. For letters, notes, and sketches.",
-        "base_value": 0.08, "stackable": True,
     },
 }
 

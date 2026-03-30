@@ -226,6 +226,12 @@ ITEM_TEMPLATES: Dict[str, dict] = {
         "description": "Golden honey mead. Sweet and strong.",
         "base_value": 1.00, "stackable": True, "perishable": True, "days_until_spoil": 30,
     },
+    "wine": {
+        "id": "wine", "name": "Berry Wine", "weight": 1.0,
+        "category": "drink", "hydration": 8.0,
+        "description": "Dark berry wine. Not French, but it'll do.",
+        "base_value": 0.75, "stackable": True, "perishable": True, "days_until_spoil": 60,
+    },
     "bowstring": {
         "id": "bowstring", "name": "Bowstring", "weight": 0.05,
         "category": "material",

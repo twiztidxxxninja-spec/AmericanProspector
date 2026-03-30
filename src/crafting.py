@@ -427,12 +427,7 @@ RECIPES: List[Recipe] = [
                     "Just berries, time, and a barrel.",
         materials=[("wild_berries", 6)],
         skill="chemistry", difficulty=6, time_minutes=360,
-        output_custom={"id": "wine", "name": "Berry Wine", "weight": 1.0,
-                       "category": "drink", "base_value": 0.75, "hydration": 8.0,
-                       "stackable": True, "perishable": True, "days_until_spoil": 60,
-                       "extra": {"warmth_bonus": 10, "aim_penalty": -2, "courage_bonus": 3},
-                       "description": "Dark berry wine. Not French, but it'll do."},
-        output_qty=3, category="food",
+        output_id="wine", output_qty=3, category="food",
     ),
 
     # Step 2: Beer/Mead/Wine + Still → Whiskey/Spirits (distillation)
@@ -468,6 +463,19 @@ RECIPES: List[Recipe] = [
                        "extra": {"warmth_bonus": 20, "aim_penalty": -3, "courage_bonus": 5,
                                  "disinfect": True},
                        "description": "Fruit brandy. Rich, smooth, expensive."},
+        output_qty=2, category="food",
+    ),
+    Recipe(
+        id="distill_wine_brandy", name="Brandy (from wine)",
+        description="Distill wine into brandy. The classic method.",
+        materials=[("wine", 3)],
+        skill="chemistry", difficulty=10, time_minutes=480,
+        output_custom={"id": "brandy", "name": "Brandy", "weight": 1.5,
+                       "category": "drink", "base_value": 3.00, "hydration": 3.0,
+                       "stackable": True,
+                       "extra": {"warmth_bonus": 20, "aim_penalty": -3, "courage_bonus": 5,
+                                 "disinfect": True},
+                       "description": "Wine brandy. The proper way to make it."},
         output_qty=2, category="food",
     ),
     Recipe(

@@ -502,7 +502,7 @@ RECIPES: List[Recipe] = [
         id="make_bitters", name="Bitters",
         description="Steep roots, bark, and herbs in whiskey for weeks. "
                     "Medicinal tonic and cocktail ingredient.",
-        materials=[("whiskey", 1), ("wild_mint", 1), ("brush_bundle", 1)],
+        materials=[("whiskey", 1), ("brush_bundle", 2)],
         skill="chemistry", difficulty=8, time_minutes=60,
         output_custom={"id": "bitters", "name": "Bitters", "weight": 0.3,
                        "category": "drink", "base_value": 2.50, "stackable": True,

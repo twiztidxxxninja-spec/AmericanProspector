@@ -466,6 +466,11 @@ def talk_menu(con: tcod.console.Console, ctx,
     waiting_llm = False          # True while blocking on LLM reply
     state_extra_cache = {}       # per-session cache for merchant stock etc.
 
+    # Record NPC in journal
+    if journal and npc.memory.knows_name:
+        journal.add_person(npc.name, npc.occupation,
+                           notes=f"Met {date_str}" if date_str else "")
+
     # Opening greeting (with regional reputation)
     _rep = 0.0
     if kwargs.get("legal"):

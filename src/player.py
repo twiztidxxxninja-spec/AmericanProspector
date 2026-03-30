@@ -210,17 +210,32 @@ class Player:
         idx = available.index(self.speed) if self.speed in available else 0
         self.speed = available[(idx + 1) % len(available)]
 
-    def gain_skill_xp(self, skill: str, xp: float):
+    def gain_skill_xp(self, skill: str, xp: float) -> str:
+        """Add XP to a skill. Returns level-up message or empty string.
+        Also queues the message in _pending_levelups for engine to flush."""
         if skill not in self.skills:
-            return
+            return ""
         # INT multiplier: faster learning
         int_mult = 1.0 + (self.attributes.get("intelligence", 10) - 10) * 0.05
         effective_xp = xp * int_mult
         self.skill_xp[skill] = self.skill_xp.get(skill, 0.0) + effective_xp
         threshold = 100 + 10 * self.skills[skill]
         if self.skill_xp[skill] >= threshold and self.skills[skill] < 10:
+            old = self.skills[skill]
             self.skills[skill] += 1
             self.skill_xp[skill] = 0.0
+            msg = f"SKILL UP: {skill} improved ({old} -> {self.skills[skill]})"
+            if not hasattr(self, '_pending_levelups'):
+                self._pending_levelups = []
+            self._pending_levelups.append(msg)
+            return msg
+        return ""
+
+    def flush_levelups(self) -> list:
+        """Return and clear any pending skill level-up messages."""
+        msgs = getattr(self, '_pending_levelups', [])
+        self._pending_levelups = []
+        return msgs
 
     def recalc_weight(self):
         """Recalculate carried_weight from inventory + hands."""

@@ -633,6 +633,10 @@ class Engine:
             if not self.messages or self.messages[-1][0] != text:
                 self.add_message(text, severity)
 
+        # Skill level-up announcements
+        for lvl_msg in p.flush_levelups():
+            self.add_message(lvl_msg, "advisory")
+
         # Exhaustion collapse — forced rest if fatigue hits 0
         if self.player.survival.fatigue <= 0:
             self.add_message(
@@ -2307,6 +2311,7 @@ class Engine:
                 ("    1=Center  2=Head  3=Legs  4=Arms  5=Torso  6=Groin", WHITE),
                 ("  SPACE = Wait (enemies act, you don't)", WHITE),
                 ("  V = Free look (snap camera to target)", WHITE),
+                ("  Q = Flee combat (enemies get parting shot)", WHITE),
                 ("  ESC = Exit combat (access menus)", WHITE),
                 ("", GREY),
                 ("COVER", YELLOW),
@@ -2679,6 +2684,10 @@ class Engine:
             else:
                 actions.append("Check traps")
 
+        # Camp — always available outdoors
+        if not (hasattr(lmap, 'town_layout') and lmap.town_layout):
+            actions.append("Make camp")
+
         # Crafting — always available if player has any raw materials
         raw_mats = ("raw_hide", "animal_bones", "tallow", "sinew", "antlers",
                     "bird_feathers", "log", "plank", "rope_10ft")
@@ -2845,8 +2854,24 @@ class Engine:
                     pelt.name = f"{gname} {pelt.name}"
                     pelt.base_value *= grade_multiplier(quality)
                     self.player.inventory.append(pelt)
+                    # Quality feedback — tell player what affected the grade
+                    factors = []
+                    if hours_in > 24:
+                        factors.append(f"sat {hours_in:.0f}hrs (too long)")
+                    elif hours_in < 4:
+                        factors.append("fresh catch")
+                    if self.time.season == "winter":
+                        factors.append("winter coat (premium)")
+                    elif self.time.season == "summer":
+                        factors.append("thin summer fur")
+                    if has_sk:
+                        factors.append("skinning knife (clean cut)")
+                    if self.player.skills.get("trapping", 0) >= 5:
+                        factors.append("expert handling")
+                    factor_str = ", ".join(factors) if factors else "standard"
                     self.add_message(
-                        f"You skin it: {pelt.name} (${pelt.base_value:.2f})",
+                        f"You skin it: {pelt.name} (${pelt.base_value:.2f}) "
+                        f"[{factor_str}]",
                         "normal")
                     self.player.gain_skill_xp("trapping", 5.0)
                     self.player.gain_skill_xp("furriery", 2.0)
@@ -3347,6 +3372,12 @@ class Engine:
             self.add_message(result.message, "advisory" if result.success else "normal")
             self.player.gain_skill_xp("placer", result.xp_placer)
             self.player.gain_skill_xp("geology", result.xp_geology)
+            # Log to journal for prospecting records
+            if self.journal and result.success:
+                self.journal.add_diary(
+                    self.time.date_string,
+                    f"Test pan at ({self.player.local_x},{self.player.local_y}): "
+                    f"{result.grade_seen}. {result.message[:60]}")
             self.advance_time(result.time_minutes)
             return
 
@@ -4048,8 +4079,48 @@ class Engine:
             return
 
         # ── Rest / camp / sleep ───────────────────────────────────────────
-        if "rest" in a or "camp" in a or "sleep" in a:
+        if "rest" in a or "sleep" in a:
             self._open_wait()
+            return
+
+        if "camp" in a or "make camp" in a or "set up camp" in a:
+            # Set up camp — place campfire + tent if available
+            lmap = self.current_local
+            px, py = self.player.local_x, self.player.local_y
+            messages_camp = []
+
+            # Auto-build campfire if not already nearby
+            fire = self._nearby_structure("cook", radius=3)
+            if not fire:
+                result = self.construction.start_equipment(
+                    "campfire", lmap, px + 1, py, self.player.inventory)
+                if result[0]:
+                    self.construction.work_on_equipment(result[0], 15, 3)
+                    messages_camp.append("You build a campfire.")
+                else:
+                    messages_camp.append("No logs for a fire.")
+
+            # Note tent in inventory
+            has_tent = any(i.id == "canvas_tent" for i in self.player.inventory)
+            has_bedroll = any(i.id == "bedroll" for i in self.player.inventory)
+            if has_tent:
+                messages_camp.append("You set up your tent.")
+            if has_bedroll:
+                messages_camp.append("You lay out your bedroll.")
+            if not has_tent and not has_bedroll:
+                messages_camp.append("No tent or bedroll — sleeping on bare ground.")
+
+            for m in messages_camp:
+                self.add_message(m, "normal")
+
+            # Journal entry
+            if self.journal:
+                self.journal.add_diary(
+                    self.time.date_string,
+                    f"Made camp. {'Tent up. ' if has_tent else ''}{'Bedroll down. ' if has_bedroll else ''}Fire {'lit.' if not fire else 'already burning.'}")
+
+            self.advance_time(20)
+            self._open_wait()  # then offer to rest
             return
 
         # ── Look / search ─────────────────────────────────────────────────

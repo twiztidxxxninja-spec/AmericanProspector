@@ -13,6 +13,7 @@ Controls:
   Arrows  Move (costs time — enemies may act while you move)
   SPACE   Wait 1 second (watch what happens)
   V       Free look (snap camera to target)
+  Q       Flee combat (enemies get parting shot)
   ESC     Exit combat mode
 """
 
@@ -516,6 +517,24 @@ def enter_combat_mode(engine: "Engine", console, ctx) -> None:
                 K = tcod.event.KeySym
 
                 if sym in (K.ESCAPE, K.k):
+                    return
+
+                # Retreat — run away, hostiles get one free shot
+                if sym == K.r and sym != K.r:  # R is reload, use Shift+R
+                    pass  # reserved
+                if sym == K.q:
+                    # Flee combat — enemies get a parting shot
+                    add_msg("You turn and run!", "critical")
+                    for npc in hostiles:
+                        if npc.alive and npc.combat_state == "hostile":
+                            from src.combat import npc_attack_player
+                            cover = 0  # running = no cover
+                            evt = npc_attack_player(npc, engine.player, cover)
+                            if evt.hit:
+                                add_msg(f"  {evt.message}", "critical")
+                            else:
+                                add_msg(f"  {npc.name} fires — misses!", "advisory")
+                    add_msg("You break contact and flee.", "advisory")
                     return
 
                 # Melee attack (X) — move to target if within 3, attack adjacent

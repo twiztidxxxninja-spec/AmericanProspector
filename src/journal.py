@@ -84,7 +84,18 @@ class Journal:
         self.places:  List[PlaceNote]   = []
         self.combat_log: List[AfterActionReport] = []
         self._active_combat: Optional[AfterActionReport] = None
-        # People tab is derived from npc manager
+        self.people:  List[Dict]        = []   # {"name", "occupation", "location", "notes"}
+
+    def add_person(self, name: str, occupation: str, location: str = "",
+                   notes: str = ""):
+        """Record an NPC in the People tab."""
+        for p in self.people:
+            if p["name"] == name:
+                if notes:
+                    p["notes"] = notes
+                return
+        self.people.append({"name": name, "occupation": occupation,
+                            "location": location, "notes": notes})
 
     def add_diary(self, date_str: str, text: str):
         self.diary.append(DiaryEntry(date_str, text))

@@ -143,4 +143,8 @@ def roll_location_discovery(engine: "Engine", wx: int, wy: int
     )
     engine.dynamic_locs.add(loc)
 
+    # Auto-add to journal
+    if hasattr(engine, 'journal') and engine.journal:
+        engine.journal.add_place(name, wx, wy, disc["notes"])
+
     return f"DISCOVERY: {message} ({name} at {wx},{wy})"

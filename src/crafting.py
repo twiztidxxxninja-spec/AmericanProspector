@@ -271,11 +271,26 @@ RECIPES: List[Recipe] = [
     ),
     Recipe(
         id="make_pemmican", name="Pemmican",
-        description="Pound dried jerky, mix with rendered tallow and berries. "
-                    "The ultimate trail food — keeps for 6 months.",
+        description="Pound dried jerky, mix with rendered tallow. "
+                    "Dense trail food. Keeps for months.",
+        materials=[("jerky", 2), ("tallow", 1)],
+        skill="survival", difficulty=7, time_minutes=120,
+        output_id="pemican", output_qty=3,
+        category="food",
+    ),
+    Recipe(
+        id="make_berry_pemmican", name="Berry Pemmican",
+        description="Pemmican with wild berries mixed in. Tastes better, "
+                    "more nutritious, and the berries help it keep even longer.",
         materials=[("jerky", 2), ("tallow", 1), ("wild_berries", 1)],
         skill="survival", difficulty=8, time_minutes=120,
-        output_id="pemican", output_qty=3,
+        output_custom={"id": "pemican_berry", "name": "Berry Pemmican",
+                       "weight": 0.2, "category": "food", "nutrition": 40.0,
+                       "description": "Pemmican with dried berries. "
+                                      "Richer flavor, more energy, keeps longer.",
+                       "base_value": 0.25, "stackable": True,
+                       "perishable": True, "days_until_spoil": 365},
+        output_qty=3,
         category="food",
     ),
     Recipe(

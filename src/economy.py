@@ -84,6 +84,36 @@ SETTLEMENT_PRICE_MULT: Dict[str, float] = {
 
 
 # ============================================================================
+#  BARTER CURRENCIES — alternate payment accepted by some NPCs
+# ============================================================================
+# In 1849, not everyone accepted cash or gold dust. Tobacco, ammunition,
+# and whiskey were universal trade goods — sometimes worth more than coins.
+
+BARTER_ITEMS: Dict[str, float] = {
+    # item_id → dollar value per unit when used as barter currency
+    "tobacco":      0.50,    # universal frontier currency
+    "whiskey":      0.60,    # always in demand
+    "rifle_ball":   0.08,    # ammunition = survival
+    "revolver_ball": 0.05,
+    "shotgun_shell": 0.10,
+    "coffee_beans":  1.00,   # luxury, always welcome
+    "salt":          0.40,   # essential preservative
+    "flour":         0.40,   # staple food
+}
+
+# NPCs that prefer barter over cash (by occupation)
+BARTER_PREFERRED: Dict[str, List[str]] = {
+    "Native Trader":   ["tobacco", "whiskey", "rifle_ball", "salt"],
+    "Native Guide":    ["tobacco", "rifle_ball", "coffee_beans"],
+    "Native Hunter":   ["rifle_ball", "tobacco"],
+    "Mountain Man":    ["tobacco", "whiskey", "rifle_ball", "coffee_beans"],
+    "Trapper":         ["tobacco", "whiskey", "rifle_ball"],
+    "Chinese Laborer": ["tobacco", "salt", "flour"],
+    "Drifter":         ["whiskey", "tobacco"],
+}
+
+
+# ============================================================================
 #  SUPPLY / DEMAND CATEGORIES
 # ============================================================================
 # Each category has a regional demand multiplier.
@@ -865,6 +895,52 @@ class BusinessLedger:
         for bid, bd in d.get("businesses", {}).items():
             ledger.businesses[bid] = Business(**bd)
         return ledger
+
+
+# ============================================================================
+#  GRUBSTAKE — investor funds prospecting expedition for a share
+# ============================================================================
+
+@dataclass
+class Grubstake:
+    """An investment deal: backer gives player cash/supplies,
+    player owes a percentage of all gold found."""
+    backer_name: str
+    backer_npc_id: str = ""
+    investment: float = 0.0     # total $ invested
+    share_pct: float = 0.50     # backer gets this fraction of gold
+    gold_owed_oz: float = 0.0   # accumulated gold owed to backer
+    gold_paid_oz: float = 0.0   # gold already paid
+    active: bool = True
+    day_started: int = 0
+
+    def record_gold(self, oz_found: float):
+        """When player finds gold, backer's share accumulates."""
+        if self.active:
+            self.gold_owed_oz += oz_found * self.share_pct
+
+    def pay_backer(self, oz: float) -> float:
+        """Pay gold to backer. Returns oz actually paid."""
+        paid = min(oz, self.gold_owed_oz)
+        self.gold_owed_oz -= paid
+        self.gold_paid_oz += paid
+        return paid
+
+    def to_dict(self) -> dict:
+        return {
+            "backer_name": self.backer_name,
+            "backer_npc_id": self.backer_npc_id,
+            "investment": self.investment,
+            "share_pct": self.share_pct,
+            "gold_owed_oz": self.gold_owed_oz,
+            "gold_paid_oz": self.gold_paid_oz,
+            "active": self.active,
+            "day_started": self.day_started,
+        }
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "Grubstake":
+        return cls(**d)
 
 
 # ============================================================================

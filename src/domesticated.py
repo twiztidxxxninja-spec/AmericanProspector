@@ -24,9 +24,9 @@ class DomesticType(Enum):
     CHICKEN = "chicken"
     DOG = "dog"                    # herding, guard, hunting
 
-    # Less common but possible
-    LLAMA = "llama"                # rare, post-1850s
-    CAMEL = "camel"                # experimental in Southwest deserts
+    # Future era animals (not available in 1849)
+    # LLAMA = "llama"              # not in California until much later
+    # CAMEL = "camel"              # US Army experiment 1857-1861
 
 
 @dataclass

@@ -169,7 +169,22 @@ ITEM_TEMPLATES: Dict[str, dict] = {
         "id": "pemican", "name": "Pemmican", "weight": 0.2,
         "category": "food", "nutrition": 30.0,
         "description": "Rendered fat mixed with dried meat and berries. Dense trail ration.",
-        "base_value": 0.15, "stackable": True, "perishable": True, "days_until_spoil": 180,
+        "base_value": 0.15, "stackable": True, "perishable": False,
+    },
+    "canned_peaches": {
+        "id": "canned_peaches", "name": "Canned Peaches", "weight": 1.0,
+        "category": "food", "nutrition": 18.0,
+        "description": "Tinned peaches from back east. Luxury item in mining camps. "
+                       "Prevents scurvy. The tin itself is worth something.",
+        "base_value": 0.50, "stackable": True, "perishable": False,
+        "extra": {"scurvy_cure": True},
+    },
+    "canned_oysters": {
+        "id": "canned_oysters", "name": "Canned Oysters", "weight": 0.5,
+        "category": "food", "nutrition": 15.0,
+        "description": "Tinned oysters. An unlikely delicacy in the goldfields. "
+                       "Popular in San Francisco saloons.",
+        "base_value": 0.75, "stackable": True, "perishable": False,
     },
     "flour": {
         "id": "flour", "name": "Flour", "weight": 2.0,
@@ -565,9 +580,10 @@ ITEM_TEMPLATES: Dict[str, dict] = {
         "base_value": 0.03, "stackable": True,
     },
     "shotgun_shell": {
-        "id": "shotgun_shell", "name": "Shotgun Shell", "weight": 0.06,
+        "id": "shotgun_shell", "name": "Shot & Powder Charge", "weight": 0.06,
         "category": "material",
-        "description": "A loaded shotshell with shot and powder.",
+        "description": "Loose shot, powder, and wadding for a shotgun. "
+                       "Load down the barrel — no metal cartridges in this era.",
         "base_value": 0.08, "stackable": True,
     },
 

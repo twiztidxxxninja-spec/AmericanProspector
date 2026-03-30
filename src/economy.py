@@ -272,6 +272,8 @@ STOCK_POOLS: Dict[str, Dict[str, float]] = {
         # Wool blanket & tobacco
         "wool_blanket": 0.4, "tobacco": 0.6,
         "mash_barrel": 0.4,
+        # Canned goods (luxury)
+        "canned_peaches": 0.3, "canned_oysters": 0.2,
     },
     "blacksmith": {
         "pickaxe": 0.9, "shovel": 0.9, "hand_axe": 0.8,

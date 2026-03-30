@@ -182,8 +182,9 @@ _g("fur_cap", "Fur Cap", "head", "fur", 0.6, 8, 0.03, 3.00,
    "Raccoon or beaver fur cap. Warm in mountain winters.", tags=["insulating"])
 _g("bandana_head", "Bandana (head)", "head", "cotton", 0.05, 1, 0.0, 0.10,
    "Cotton bandana tied over the head. Keeps dust and sweat out.")
-_g("sombrero", "Sombrero", "head", "felt", 0.5, 3, 0.02, 2.00,
-   "Wide-brimmed Mexican hat. Excellent sun protection.", tags=["sun_shade"])
+_g("sombrero", "Sombrero", "head", "felt", 0.5, 3, 0.02, 5.00,
+   "Wide-brimmed Mexican hat. Excellent sun protection. "
+   "Uncommon in Anglo camps — a mark of the vaquero.", tags=["sun_shade"])
 _g("bowler_hat", "Bowler Hat", "head", "felt", 0.4, 2, 0.02, 3.00,
    "A stiff felt hat favored by merchants and city folk.")
 _g("coonskin_cap", "Coonskin Cap", "head", "fur", 0.7, 9, 0.03, 4.00,
@@ -248,8 +249,9 @@ _g("brogans", "Brogans", "feet", "leather", 1.5, 3, 0.06, 2.50,
    "Heavy work shoes. Cheaper than boots but less ankle support.")
 _g("moccasins", "Moccasins", "feet", "buckskin", 0.4, 2, 0.02, 1.50,
    "Soft buckskin moccasins. Quiet and comfortable; wear out fast.")
-_g("rubber_boots", "Rubber Boots", "feet", "rubber", 3.0, 2, 0.05, 8.00,
-   "Vulcanized rubber boots. Waterproof for creek work.", spd=0.02, tags=["waterproof"])
+_g("oiled_boots", "Oiled Leather Boots", "feet", "leather", 3.0, 4, 0.06, 10.00,
+   "Heavy leather boots treated with tallow and beeswax. Water-resistant for creek work.",
+   spd=0.02, tags=["waterproof"])
 
 # ── Hands ───────────────────────────────────────────────────────────────────
 _g("leather_gloves", "Leather Work Gloves", "hands", "leather", 0.3, 2, 0.05, 1.00,

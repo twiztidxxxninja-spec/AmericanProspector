@@ -699,6 +699,22 @@ _eq("ladder_up", "Ladder Up", 1, 1,
     [("Log", 2), ("Rope (10 ft)", 1)], 30, "survival", 5,
     "A crude ladder ascending one z-level.", ["z_up"],
     glyph="H", fg=(130, 100, 55))
+# Brewing & Distilling
+_eq("copper_still", "Copper Still", 2, 2,
+    [("Iron Bar", 3), ("Plank", 4), ("Rope (10 ft)", 1)], 480, "engineering", 14,
+    "A copper pot still for distilling spirits. Turns fermented mash into whiskey.",
+    ["distill", "brew"],
+    glyph="U", fg=(200, 140, 60))
+_eq("mash_barrel", "Mash Barrel", 1, 1,
+    [("Plank", 6), ("Nails", 1)], 120, "engineering", 10,
+    "A wooden barrel for fermenting grain mash. First step in whiskey-making.",
+    ["ferment"],
+    glyph="O", fg=(140, 100, 50))
+_eq("rain_barrel", "Rain Barrel", 1, 1,
+    [("Plank", 4), ("Nails", 1)], 60, "engineering", 7,
+    "Collects rainwater. Clean water source without a stream.",
+    ["water_source"],
+    glyph="O", fg=(80, 100, 160))
 
 
 def _keyword_match_equipment(description: str) -> Optional[EquipmentBlueprint]:

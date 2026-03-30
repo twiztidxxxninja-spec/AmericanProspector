@@ -15,6 +15,16 @@ def main():
     game_root = os.path.dirname(os.path.abspath(__file__))
     print(f"American Prospector {VERSION} ({VERSION_NAME})")
 
+    # Ensure working directory is the game root (where exe lives)
+    # so config.json, saves/, bug_reports.json are found correctly
+    os.chdir(game_root)
+
+    # For PyInstaller: set GAME_DATA_ROOT so engine can find bundled data/music
+    if getattr(sys, '_MEIPASS', None):
+        os.environ['GAME_DATA_ROOT'] = sys._MEIPASS
+    else:
+        os.environ['GAME_DATA_ROOT'] = game_root
+
     # Check for updates from GitHub
     try:
         from src.updater import run_update_check

@@ -2,6 +2,7 @@
 Main game engine: event loop, state management, input dispatch.
 """
 
+import os
 import tcod
 import tcod.event
 from tcod import libtcodpy
@@ -131,7 +132,9 @@ class Engine:
         self.player._animal_mgr = self.animal_mgr
         from src.claims import ClaimManager
         self.claim_mgr       = ClaimManager()
-        self.music           = MusicManager("music")
+        _music_dir = os.path.join(
+            os.environ.get('GAME_DATA_ROOT', '.'), "music")
+        self.music           = MusicManager(_music_dir)
 
         # Start on local map at Sacramento (center patch of world tile)
         self.world.mark_visited(self.player.world_x, self.player.world_y)
@@ -6087,10 +6090,13 @@ class Engine:
     # ── Main loop ─────────────────────────────────────────────────────────
 
     def run(self):
-        tileset = tcod.tileset.load_truetype_font(
-            "data/fonts/DejaVuSansMono.ttf", 12, 12
-        ) if False else tcod.tileset.load_tilesheet(
-            "data/fonts/terminal12x12_gs_ro.png", 16, 16,
+        # Resolve data path — works both from source and PyInstaller exe
+        _data_root = os.path.join(
+            os.environ.get('GAME_DATA_ROOT', '.'), "data")
+        _font_path = os.path.join(_data_root, "fonts", "terminal12x12_gs_ro.png")
+
+        tileset = tcod.tileset.load_tilesheet(
+            _font_path, 16, 16,
             tcod.tileset.CHARMAP_CP437,
         )
 

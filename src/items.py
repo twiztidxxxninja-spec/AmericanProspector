@@ -171,6 +171,18 @@ ITEM_TEMPLATES: Dict[str, dict] = {
         "description": "Rendered fat mixed with dried meat and berries. Dense trail ration.",
         "base_value": 0.15, "stackable": True, "perishable": True, "days_until_spoil": 180,
     },
+    "wild_berries": {
+        "id": "wild_berries", "name": "Wild Berries", "weight": 0.2,
+        "category": "food", "nutrition": 8.0,
+        "description": "Foraged berries. Eat fresh or mix into pemmican.",
+        "base_value": 0.05, "stackable": True, "perishable": True, "days_until_spoil": 3,
+    },
+    "smoked_meat": {
+        "id": "smoked_meat", "name": "Smoked Meat", "weight": 0.5,
+        "category": "food", "nutrition": 25.0,
+        "description": "Meat hung over a smoky fire for hours. Rich flavor, keeps well.",
+        "base_value": 0.12, "stackable": True, "perishable": True, "days_until_spoil": 21,
+    },
     "fresh_venison": {
         "id": "fresh_venison", "name": "Fresh Venison", "weight": 1.0,
         "category": "food", "nutrition": 35.0,

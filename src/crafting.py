@@ -242,6 +242,52 @@ RECIPES: List[Recipe] = [
                        "description": "A tallow candle. Burns for hours."},
         category="general",
     ),
+    # ── Food Preservation ──────────────────────────────────────────────
+    Recipe(
+        id="smoke_meat", name="Smoked Meat",
+        description="Hang fresh meat over a smoky fire. Takes hours but keeps for weeks. "
+                    "Requires a campfire or drying rack nearby.",
+        materials=[("fresh_venison", 1)],
+        skill="survival", difficulty=6, time_minutes=180,
+        output_id="smoked_meat", output_qty=2,
+        category="food",
+    ),
+    Recipe(
+        id="smoke_fish", name="Smoked Fish",
+        description="Hang fish over a smoky fire. Preserves for weeks.",
+        materials=[("fresh_fish", 2)],
+        skill="survival", difficulty=5, time_minutes=120,
+        output_id="smoked_meat", output_qty=2,
+        category="food",
+    ),
+    Recipe(
+        id="make_jerky", name="Jerky",
+        description="Cut meat thin, salt it, dry it on a rack. Lasts months on the trail. "
+                    "Requires salt and a drying rack or campfire.",
+        materials=[("fresh_venison", 1), ("salt", 1)],
+        skill="survival", difficulty=7, time_minutes=240,
+        output_id="jerky", output_qty=3,
+        category="food",
+    ),
+    Recipe(
+        id="make_pemmican", name="Pemmican",
+        description="Pound dried jerky, mix with rendered tallow and berries. "
+                    "The ultimate trail food — keeps for 6 months.",
+        materials=[("jerky", 2), ("tallow", 1), ("wild_berries", 1)],
+        skill="survival", difficulty=8, time_minutes=120,
+        output_id="pemican", output_qty=3,
+        category="food",
+    ),
+    Recipe(
+        id="render_tallow", name="Render Tallow",
+        description="Boil animal fat over a fire to render it into clean tallow. "
+                    "Used for candles, pemmican, waterproofing, and soap.",
+        materials=[("bear_fat", 1)],
+        skill="survival", difficulty=4, time_minutes=60,
+        output_id="tallow", output_qty=2,
+        category="food",
+    ),
+
     Recipe(
         id="bandage", name="Cloth Bandage",
         description="Tear cloth into bandages for treating wounds.",

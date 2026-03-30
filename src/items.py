@@ -226,6 +226,22 @@ ITEM_TEMPLATES: Dict[str, dict] = {
         "description": "Golden honey mead. Sweet and strong.",
         "base_value": 1.00, "stackable": True, "perishable": True, "days_until_spoil": 30,
     },
+    "copper_still": {
+        "id": "copper_still", "name": "Copper Still", "weight": 25.0,
+        "category": "tool",
+        "description": "A portable copper pot still. Distill fermented mash into "
+                       "whiskey, brandy, gin, or any spirit. Place on the ground to use.",
+        "base_value": 18.00,
+        "tool_tags": ["distill", "brew"],
+    },
+    "mash_barrel": {
+        "id": "mash_barrel", "name": "Mash Barrel", "weight": 15.0,
+        "category": "tool",
+        "description": "A small wooden barrel for fermenting grain, fruit, or honey. "
+                       "Place on the ground to use.",
+        "base_value": 6.00,
+        "tool_tags": ["ferment"],
+    },
     "wine": {
         "id": "wine", "name": "Berry Wine", "weight": 1.0,
         "category": "drink", "hydration": 8.0,
@@ -666,6 +682,13 @@ ITEM_TEMPLATES: Dict[str, dict] = {
         "category": "material",
         "description": "A bar of wrought iron. Used for heavy construction and toolmaking.",
         "base_value": 1.50, "stackable": True,
+    },
+    "copper_sheet": {
+        "id": "copper_sheet", "name": "Copper Sheet", "weight": 5.0,
+        "category": "material",
+        "description": "A sheet of hammered copper. Used for stills, cookware, and roofing. "
+                       "Copper doesn't rust and conducts heat evenly.",
+        "base_value": 2.00, "stackable": True,
     },
     "canvas": {
         "id": "canvas", "name": "Canvas", "weight": 2.0,

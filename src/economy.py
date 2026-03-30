@@ -271,12 +271,15 @@ STOCK_POOLS: Dict[str, Dict[str, float]] = {
         "shotgun_shell": 0.5,
         # Wool blanket & tobacco
         "wool_blanket": 0.4, "tobacco": 0.6,
+        "mash_barrel": 0.4,
     },
     "blacksmith": {
         "pickaxe": 0.9, "shovel": 0.9, "hand_axe": 0.8,
         "hunting_knife": 0.7, "skinning_knife": 0.5,
         "iron_bar": 0.8, "nails": 0.9,
+        "copper_sheet": 0.5,
         "steel_trap": 0.4,
+        "copper_still": 0.3,
     },
     "saloon": {
         "hardtack": 0.5, "jerky": 0.6,

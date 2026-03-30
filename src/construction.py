@@ -701,8 +701,9 @@ _eq("ladder_up", "Ladder Up", 1, 1,
     glyph="H", fg=(130, 100, 55))
 # Brewing & Distilling
 _eq("copper_still", "Copper Still", 2, 2,
-    [("Iron Bar", 3), ("Plank", 4), ("Rope (10 ft)", 1)], 480, "engineering", 14,
-    "A copper pot still for distilling spirits. Turns fermented mash into whiskey.",
+    [("Copper Sheet", 3), ("Plank", 4), ("Rope (10 ft)", 1)], 480, "engineering", 14,
+    "A copper pot still for distilling spirits. Copper conducts heat evenly "
+    "and doesn't taint the flavor.",
     ["distill", "brew"],
     glyph="U", fg=(200, 140, 60))
 _eq("mash_barrel", "Mash Barrel", 1, 1,

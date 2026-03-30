@@ -1,4 +1,4 @@
 tcod>=16.0
 numpy>=1.24
-llama-cpp-python>=0.3.0
 pygame-ce>=2.5.0
+# Optional: llama-cpp-python>=0.3.0 (only if using local LLM mode with GPU)

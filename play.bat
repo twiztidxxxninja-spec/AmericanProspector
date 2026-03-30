@@ -25,9 +25,9 @@ if not exist ".deps_installed" (
     echo  First run — installing game libraries...
     echo  This takes about 30 seconds. Please wait.
     echo.
-    pip install python-tcod pygame-ce --quiet 2>nul
+    pip install tcod pygame-ce numpy --quiet 2>nul
     if errorlevel 1 (
-        python -m pip install python-tcod pygame-ce --quiet 2>nul
+        python -m pip install tcod pygame-ce numpy --quiet 2>nul
     )
     echo done > .deps_installed
     echo  Done. Starting game...

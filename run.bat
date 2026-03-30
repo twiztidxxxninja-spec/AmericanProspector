@@ -17,7 +17,7 @@ if errorlevel 1 (
 
 REM Install dependencies if needed
 echo Checking dependencies...
-pip install python-tcod pygame-ce --quiet 2>nul
+pip install tcod pygame-ce numpy --quiet 2>nul
 
 REM Check for config.json
 if not exist config.json (

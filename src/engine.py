@@ -3090,6 +3090,31 @@ class Engine:
             self.advance_time(5)
             return
 
+        # ── Dry soaked food (requires nearby campfire) ─────────────────
+        if "dry" in a and ("food" in a or "meat" in a or "soaked" in a):
+            fire = self._nearby_structure("cook", radius=2)
+            if not fire:
+                self.add_message("You need a campfire nearby to dry food.", "advisory")
+                self.advance_time(2)
+                return
+            soaked = [i for i in self.player.inventory
+                      if getattr(i, 'extra', {}) and i.extra.get("soaked")]
+            if not soaked:
+                self.add_message("You don't have any soaked food.", "normal")
+                return
+            for item in soaked:
+                orig = item.extra.get("original_spoil", item.days_until_spoil * 2)
+                item.days_until_spoil = max(item.days_until_spoil,
+                                            int(orig * 0.75))
+                item.extra.pop("soaked", None)
+                item.extra.pop("original_spoil", None)
+                self.add_message(
+                    f"You spread your {item.name} near the fire to dry. "
+                    f"Salvaged — won't spoil as fast now.",
+                    "advisory")
+            self.advance_time(30)
+            return
+
         # ── Cook food (requires nearby campfire/fireplace) ─────────────
         if "cook" in a:
             fire = self._nearby_structure("cook", radius=2)
@@ -4647,15 +4672,20 @@ class Engine:
                         "warning")
 
         elif roll < 0.75:
-            # Soaked — food spoils
+            # Soaked — food marked as wet, spoils faster, can be dried
             food = [i for i in p.inventory
                     if i.perishable and i.days_until_spoil and i.days_until_spoil > 1]
             if food:
                 item = _rng.choice(food)
+                orig_spoil = item.days_until_spoil
                 item.days_until_spoil = max(1, item.days_until_spoil // 3)
+                if not hasattr(item, 'extra') or item.extra is None:
+                    item.extra = {}
+                item.extra["soaked"] = True
+                item.extra["original_spoil"] = orig_spoil
                 self.add_message(
                     f"Your {item.name} is completely waterlogged. "
-                    f"It'll spoil much faster now.",
+                    f"Dry it near a fire before it spoils!",
                     "warning")
 
         else:
@@ -4670,16 +4700,94 @@ class Engine:
                     f"({drown_dmg} damage, exhausted)",
                     "critical")
                 if p.survival.health <= 0:
-                    self.add_message(
-                        "The river takes you. The current is stronger "
-                        "than you are. Your pack drags you down.",
-                        "critical")
+                    # 60% chance to survive — wash up downstream without pack
+                    if _rng.random() < 0.60:
+                        self._drown_survive(lmap, _rng)
+                    else:
+                        self.add_message(
+                            "The river takes you. The current is stronger "
+                            "than you are. Your pack drags you down.",
+                            "critical")
             elif load_pct > 0.5:
                 p.survival.fatigue = max(0, p.survival.fatigue - 15)
                 self.add_message(
                     "You struggle against the current. The weight of "
                     "your pack makes every stroke a fight.",
                     "advisory")
+
+    def _drown_survive(self, lmap, rng):
+        """Player nearly drowns but survives. Wake up downstream on the bank
+        without backpack/rucksack. Inventory scattered in the river."""
+        from src.local_map import LocalTerrain as _LT
+        p = self.player
+
+        # Drop ALL inventory into the river downstream
+        # Scatter items on banks 20-60 tiles downstream
+        flow_dy = 1  # downstream = south-ish
+        for item in list(p.inventory):
+            dist = rng.randint(20, 60)
+            placed = False
+            for offset in range(dist, dist + 30):
+                bx = p.local_x + rng.randint(-5, 5)
+                by = p.local_y + flow_dy * offset + rng.randint(-3, 3)
+                if lmap.in_bounds(bx, by):
+                    bank = lmap.tile_at(bx, by)
+                    if bank.terrain not in (_LT.WATER, _LT.ROCK):
+                        bank.ground_items.append(item)
+                        placed = True
+                        break
+            # If can't place on bank, item is truly lost
+        p.inventory.clear()
+        p.left_hand = None
+        p.right_hand = None
+
+        # Lose gold dust
+        gold_lost = p.gold_oz
+        p.gold_oz = 0.0
+
+        # Teleport player downstream onto a bank
+        new_x, new_y = p.local_x, p.local_y
+        for dist in range(30, 80):
+            bx = p.local_x + rng.randint(-3, 3)
+            by = p.local_y + flow_dy * dist
+            if lmap.in_bounds(bx, by):
+                bank = lmap.tile_at(bx, by)
+                if bank.terrain not in (_LT.WATER, _LT.ROCK):
+                    new_x, new_y = bx, by
+                    break
+
+        p.local_x = new_x
+        p.local_y = new_y
+        p.local_z = lmap.ground_z(new_x, new_y)
+
+        # Time passes — several hours unconscious
+        hours = rng.randint(3, 8)
+        self.time.advance(hours * 60)
+
+        # Survival state — alive but wrecked
+        p.survival.health = max(5, p.survival.health)  # don't actually die
+        p.survival.fatigue = 5
+        p.survival.hunger = max(10, p.survival.hunger - 40)
+        p.survival.thirst = max(5, p.survival.thirst - 30)
+        p.survival.warmth = 30  # wet and cold
+
+        self.add_message(
+            f"...You wake face-down in the mud on the riverbank. "
+            f"Coughing water. Everything hurts. {hours} hours have passed.",
+            "critical")
+        self.add_message(
+            "Your pack is gone. Your gold is gone. Everything was "
+            "ripped away by the current.",
+            "critical")
+        if gold_lost > 0:
+            self.add_message(
+                f"  [{gold_lost:.3f} oz gold dust lost]",
+                "critical")
+        self.add_message(
+            "Some of your gear might have washed up downstream. "
+            "Search the banks.",
+            "advisory")
+        self.recompute_fov()
 
     def _clear_water_warning(self):
         """Reset water warning flag when player leaves water."""

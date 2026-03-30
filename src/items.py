@@ -171,6 +171,12 @@ ITEM_TEMPLATES: Dict[str, dict] = {
         "description": "Rendered fat mixed with dried meat and berries. Dense trail ration.",
         "base_value": 0.15, "stackable": True, "perishable": True, "days_until_spoil": 180,
     },
+    "flour": {
+        "id": "flour", "name": "Flour", "weight": 2.0,
+        "category": "food", "nutrition": 5.0,
+        "description": "Sack of wheat flour. Makes hardtack, bread, or thickens stew.",
+        "base_value": 0.30, "stackable": True,
+    },
     "wild_berries": {
         "id": "wild_berries", "name": "Wild Berries", "weight": 0.2,
         "category": "food", "nutrition": 8.0,

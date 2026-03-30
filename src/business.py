@@ -1231,11 +1231,11 @@ class BusinessManager:
     def _categorize_custom(self, idea: str,
                             context: Dict) -> Optional[BusinessBlueprint]:
         if not self.llm or not self.llm.available:
-            return None
+            return _keyword_categorize(idea)
 
         self.llm._load()
         if not self.llm.available:
-            return None
+            return _keyword_categorize(idea)
 
         prompt = _build_biz_prompt(idea, context)
         try:
@@ -1289,6 +1289,66 @@ class BusinessManager:
 # ============================================================================
 #  LLM CUSTOM BUSINESS CATEGORIZATION
 # ============================================================================
+
+def _keyword_categorize(idea: str) -> Optional[BusinessBlueprint]:
+    """Keyword-match a business idea to the closest existing blueprint.
+    Used when LLM is unavailable."""
+    low = idea.lower()
+
+    _KEYWORD_MAP = {
+        "saloon":     ("saloon",        {"bar", "saloon", "tavern", "pub", "drink", "whiskey", "beer"}),
+        "hotel":      ("hotel",         {"hotel", "boarding", "inn", "lodging", "room", "bed"}),
+        "general_store": ("general_store", {"store", "shop", "mercantile", "supply", "goods", "provisions"}),
+        "blacksmith_shop": ("blacksmith_shop", {"blacksmith", "forge", "anvil", "iron", "horseshoe", "metalwork"}),
+        "bakery":     ("bakery",        {"bakery", "bread", "bake", "pastry", "oven", "flour"}),
+        "laundry":    ("laundry",       {"laundry", "wash", "clothes", "cleaning"}),
+        "barbershop": ("barbershop",    {"barber", "haircut", "shave", "dentist"}),
+        "stable":     ("stable",        {"stable", "livery", "horse", "mule", "animal", "corral"}),
+        "sawmill":    ("sawmill",       {"sawmill", "lumber", "timber", "wood", "plank"}),
+        "mining_company": ("mining_company", {"mine", "mining", "shaft", "ore", "tunnel", "dig"}),
+        "freight_line": ("freight_line", {"freight", "haul", "wagon", "transport", "teamster", "delivery"}),
+        "newspaper":  ("newspaper",     {"newspaper", "press", "print", "gazette", "editor", "news"}),
+        "assay_office": ("assay_office", {"assay", "test", "ore test", "gold test"}),
+        "ferry":      ("ferry",         {"ferry", "boat", "river crossing", "crossing"}),
+        "gun_shop":   ("gun_shop",      {"gun", "rifle", "pistol", "ammunition", "ammo", "weapon"}),
+        "outfitter":  ("outfitter",     {"outfit", "clothing", "tailor", "sew", "boots", "hat"}),
+        "workshop":   ("workshop",      {"workshop", "invent", "craft", "build", "machine", "repair"}),
+        "express_service": ("express_service", {"express", "mail", "courier", "post", "delivery", "letter"}),
+        "logging_outfit": ("logging_outfit", {"logging", "chop", "fell", "timber", "forest"}),
+    }
+
+    # Score each blueprint by keyword matches
+    best_key = None
+    best_score = 0
+    for bp_key, (_, keywords) in _KEYWORD_MAP.items():
+        score = sum(1 for kw in keywords if kw in low)
+        if score > best_score:
+            best_score = score
+            best_key = bp_key
+
+    if best_key and best_score > 0:
+        # Clone the matched blueprint with the custom name
+        base = BUSINESS_BLUEPRINTS.get(best_key)
+        if base:
+            custom_key = f"custom_{idea.lower().replace(' ', '_')[:20]}"
+            return BusinessBlueprint(
+                key=custom_key,
+                name=idea[:30],
+                description=f"A {base.category} business: {idea}.",
+                category=base.category,
+                startup_cost=base.startup_cost,
+                daily_base_revenue=base.daily_base_revenue,
+                daily_base_expenses=base.daily_base_expenses,
+                revenue_per_employee=base.revenue_per_employee,
+                wage_per_employee=base.wage_per_employee,
+                skill_used=base.skill_used,
+                building_required=base.building_required,
+                inventory_categories=base.inventory_categories,
+                tags=base.tags + ["custom"],
+                source="keyword",
+            )
+    return None
+
 
 _BIZ_CATEGORIZE_SYSTEM = """\
 You are a business analyst in 1849 frontier America. A prospector wants \

@@ -217,10 +217,10 @@ class LLMClient:
         Returns plain text, not JSON.
         """
         if not self.enabled:
-            return "Their story ends here, unrecorded."
+            return _hardcoded_obituary(player_context)
         self._load()
         if not self.enabled:
-            return "Their story ends here, unrecorded."
+            return _hardcoded_obituary(player_context)
 
         obit_system = (
             "You are a narrator writing a long, detailed account of a prospector's "
@@ -393,3 +393,73 @@ class LLMClient:
             time_cost=0,
             outcome="failure",
         )
+
+
+def _hardcoded_obituary(context: str) -> str:
+    """Generate a templated obituary from the player context string."""
+    import re
+
+    # Extract fields from context string
+    def _extract(label):
+        m = re.search(rf"{label}:\s*(.+?)(?:\n|$)", context)
+        return m.group(1).strip() if m else ""
+
+    name = _extract("CHARACTER") or "The prospector"
+    year = _extract("YEAR") or "the frontier era"
+    region = _extract("LOCATION") or "the frontier"
+    cause = _extract("CAUSE OF DEATH") or "unknown causes"
+    gold = _extract("GOLD ACCUMULATED") or "0"
+    cash = _extract("CASH ON PERSON") or "$0"
+
+    # Extract wound lines
+    wounds = []
+    in_wounds = False
+    for line in context.split("\n"):
+        if "WOUNDS AT TIME OF DEATH" in line:
+            in_wounds = True
+            continue
+        if in_wounds:
+            if line.strip().startswith("-"):
+                wounds.append(line.strip().lstrip("- "))
+            elif line.strip() and not line.startswith(" "):
+                break
+
+    wound_desc = ""
+    if wounds:
+        wound_desc = (f" The body bore the marks of {wounds[0].lower()}"
+                      + (f", and {wounds[1].lower()}" if len(wounds) > 1 else "")
+                      + ".")
+
+    # Build paragraphs
+    para1 = (f"{name} died in {region}, in the year {year}. "
+             f"The cause: {cause.lower()}.{wound_desc} "
+             f"The end came as it comes for so many out here — "
+             f"sudden, ugly, and far from anyone who might have helped.")
+
+    gold_f = 0.0
+    try:
+        gold_f = float(gold.split()[0])
+    except (ValueError, IndexError):
+        pass
+    if gold_f > 1.0:
+        para2 = (f"In life, {name.split(',')[0]} had accumulated "
+                 f"{gold} of gold and carried {cash}. "
+                 f"Whether that was enough to justify the suffering "
+                 f"that brought them here is a question for philosophers, "
+                 f"not prospectors.")
+    elif gold_f > 0:
+        para2 = (f"{name.split(',')[0]} had little to show for the effort — "
+                 f"a trace of gold dust, {cash} in coin, "
+                 f"and the clothes on their back. "
+                 f"The frontier took more than it gave.")
+    else:
+        para2 = (f"{name.split(',')[0]} died with {cash} to their name "
+                 f"and no gold worth mentioning. "
+                 f"Another soul chewed up and spit out by the dream "
+                 f"of easy riches that brought so many west.")
+
+    para3 = ("The frontier does not mourn long. By tomorrow the claim "
+             "will be restaked, the tent taken down, the name forgotten. "
+             "The land endures. The people pass through it like weather.")
+
+    return f"{para1}\n\n{para2}\n\n{para3}"

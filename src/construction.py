@@ -701,6 +701,53 @@ _eq("ladder_up", "Ladder Up", 1, 1,
     glyph="H", fg=(130, 100, 55))
 
 
+def _keyword_match_equipment(description: str) -> Optional[EquipmentBlueprint]:
+    """Match a custom equipment description to closest existing blueprint."""
+    low = description.lower()
+    _EQUIP_KEYWORDS = {
+        "campfire":      {"fire", "campfire", "flame", "cook fire", "hearth"},
+        "lean_to":       {"lean-to", "lean to", "shelter", "shade", "awning"},
+        "drying_rack":   {"drying", "rack", "jerky", "dry meat", "smoke"},
+        "rocker_box":    {"rocker", "cradle", "gold wash"},
+        "sluice_box":    {"sluice", "riffle", "gold catch"},
+        "long_tom":      {"long tom", "hopper"},
+        "arrastra":      {"arrastra", "ore mill", "crush", "grind"},
+        "ore_bin":       {"ore bin", "ore storage", "bin", "stockpile"},
+        "windlass":      {"windlass", "hoist", "winch", "crank", "pulley"},
+        "well":          {"well", "water hole", "dig well"},
+        "hitching_rail": {"hitching", "hitch", "tie post", "rail"},
+        "water_channel": {"channel", "flume", "aqueduct", "ditch", "divert water"},
+        "stone_fireplace": {"fireplace", "chimney", "stone fire", "hearth stone"},
+        "stairs_down":   {"stairs down", "staircase down", "descend"},
+        "stairs_up":     {"stairs up", "staircase up", "ascend"},
+        "ladder_down":   {"ladder down"},
+        "ladder_up":     {"ladder up", "ladder"},
+    }
+    best_key = None
+    best_score = 0
+    for bp_key, keywords in _EQUIP_KEYWORDS.items():
+        score = sum(1 for kw in keywords if kw in low)
+        if score > best_score:
+            best_score = score
+            best_key = bp_key
+
+    if best_key and best_score > 0:
+        base = EQUIPMENT_BLUEPRINTS.get(best_key)
+        if base:
+            custom_key = f"custom_{description.lower().replace(' ', '_')[:20]}"
+            return EquipmentBlueprint(
+                key=custom_key, name=description[:30],
+                width=base.width, height=base.height,
+                materials=base.materials, build_minutes=base.build_minutes,
+                skill=base.skill, difficulty=base.difficulty,
+                description=f"Custom: {description}.",
+                functional_tags=base.functional_tags,
+                glyph=base.glyph, fg_color=base.fg_color,
+                source="keyword",
+            )
+    return None
+
+
 # ============================================================================
 #  PLACED EQUIPMENT (on-map instance)
 # ============================================================================
@@ -941,16 +988,20 @@ class ConstructionManager:
                 return zone
         return None
 
+    # ── Keyword fallback for custom equipment ─────────────────────────
+
+    # (see module-level _keyword_match_equipment below)
+
     # ── LLM custom equipment ──────────────────────────────────────────
 
     def categorize_custom_equipment(self, description: str,
                                      context: Dict[str, Any]
                                      ) -> Optional[EquipmentBlueprint]:
         if not self.llm or not self.llm.available:
-            return None
+            return _keyword_match_equipment(description)
         self.llm._load()
         if not self.llm.available:
-            return None
+            return _keyword_match_equipment(description)
 
         prompt = _build_equip_prompt(description, context)
         try:

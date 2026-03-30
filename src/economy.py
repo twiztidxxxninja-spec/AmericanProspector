@@ -642,18 +642,101 @@ def evaluate_custom_item(llm: "LLMClient", item_name: str,
 
 
 def _heuristic_value(name: str) -> float:
-    """Rough value estimate when LLM unavailable."""
+    """Rough value estimate when LLM unavailable.
+    Based on 1849 frontier pricing."""
     low = name.lower()
-    if any(w in low for w in ("gold", "silver", "nugget")):
+    # Precious metals
+    if any(w in low for w in ("gold nugget", "gold bar", "gold dust")):
+        return 20.0
+    if any(w in low for w in ("silver", "nugget")):
         return 10.0
-    if any(w in low for w in ("rifle", "pistol", "gun")):
+    if "gold" in low:
+        return 15.0
+    # Firearms & weapons
+    if any(w in low for w in ("rifle", "musket", "carbine")):
+        return 15.0
+    if any(w in low for w in ("pistol", "revolver", "derringer")):
+        return 10.0
+    if "shotgun" in low:
         return 12.0
-    if any(w in low for w in ("knife", "axe", "saw", "tool")):
-        return 2.0
-    if any(w in low for w in ("food", "meat", "bread", "flour")):
-        return 0.50
-    if any(w in low for w in ("hide", "fur", "pelt", "leather")):
+    if any(w in low for w in ("dynamite", "black powder", "blasting")):
+        return 3.0
+    if any(w in low for w in ("ammunition", "ammo", "cartridge", "bullet")):
+        return 1.0
+    # Tools
+    if any(w in low for w in ("pickaxe", "shovel", "hammer", "drill")):
+        return 2.50
+    if any(w in low for w in ("knife", "axe", "saw", "tool", "pliers")):
+        return 2.00
+    if any(w in low for w in ("pan", "sluice", "rocker")):
         return 3.00
+    if any(w in low for w in ("compass", "telescope", "spyglass")):
+        return 5.00
+    if any(w in low for w in ("lantern", "lamp", "candle")):
+        return 0.50
+    # Pelts & leather
+    if any(w in low for w in ("beaver", "otter", "mink", "marten")):
+        return 5.00
+    if any(w in low for w in ("bear", "buffalo", "elk")):
+        return 4.00
+    if any(w in low for w in ("deer", "hide", "pelt", "fur", "skin")):
+        return 3.00
+    if "leather" in low:
+        return 2.50
+    # Clothing & gear
+    if any(w in low for w in ("coat", "jacket", "boots", "hat", "blanket")):
+        return 3.00
+    if any(w in low for w in ("shirt", "pants", "trousers", "gloves")):
+        return 1.50
+    if any(w in low for w in ("saddle", "bridle", "harness")):
+        return 8.00
+    if any(w in low for w in ("rope", "canvas", "tent")):
+        return 1.50
+    # Food & provisions
+    if any(w in low for w in ("whiskey", "brandy", "wine", "spirits")):
+        return 1.00
+    if any(w in low for w in ("coffee", "tea", "tobacco")):
+        return 0.75
+    if any(w in low for w in ("flour", "sugar", "salt", "beans", "rice")):
+        return 0.40
+    if any(w in low for w in ("meat", "venison", "bacon", "jerky")):
+        return 0.60
+    if any(w in low for w in ("bread", "biscuit", "hardtack")):
+        return 0.20
+    if any(w in low for w in ("food", "ration", "meal")):
+        return 0.50
+    # Medical
+    if any(w in low for w in ("medicine", "tonic", "laudanum", "quinine")):
+        return 2.00
+    if any(w in low for w in ("bandage", "splint", "poultice")):
+        return 0.50
+    # Raw materials
+    if any(w in low for w in ("iron", "steel", "copper", "lead")):
+        return 1.50
+    if any(w in low for w in ("log", "plank", "board", "lumber")):
+        return 0.30
+    if any(w in low for w in ("stone", "rock", "gravel")):
+        return 0.10
+    if any(w in low for w in ("nail", "screw", "bolt")):
+        return 0.15
+    # Books & paper
+    if any(w in low for w in ("book", "manual", "guide", "map")):
+        return 1.50
+    if any(w in low for w in ("paper", "pencil", "ink")):
+        return 0.25
+    # Jewelry & valuables
+    if any(w in low for w in ("watch", "ring", "jewelry", "gem")):
+        return 8.00
+    if any(w in low for w in ("deed", "claim", "certificate")):
+        return 5.00
+    # Animals
+    if any(w in low for w in ("horse", "pony")):
+        return 50.0
+    if any(w in low for w in ("mule", "donkey", "burro")):
+        return 30.0
+    if any(w in low for w in ("ox", "cow", "cattle")):
+        return 25.0
+    # Default — minor trinket
     return 0.25
 
 

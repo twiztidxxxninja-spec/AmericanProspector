@@ -177,6 +177,12 @@ ITEM_TEMPLATES: Dict[str, dict] = {
         "description": "Clean fish fillet. Cook, smoke, or dry.",
         "base_value": 0.04, "stackable": True, "perishable": True, "days_until_spoil": 2,
     },
+    "bone_needle": {
+        "id": "bone_needle", "name": "Bone Needle", "weight": 0.01,
+        "category": "tool", "base_value": 0.10,
+        "tool_tags": ["sew"],
+        "description": "A thin bone needle. Needed for leatherwork and sutures.",
+    },
     "fish_guts": {
         "id": "fish_guts", "name": "Fish Guts", "weight": 0.2,
         "category": "material",

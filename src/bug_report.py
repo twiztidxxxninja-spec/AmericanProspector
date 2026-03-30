@@ -180,7 +180,10 @@ def _send_discord_webhook(url: str, description: str, state: dict) -> bool:
         req = urllib.request.Request(
             url,
             data=payload,
-            headers={"Content-Type": "application/json"},
+            headers={
+                "Content-Type": "application/json",
+                "User-Agent": "AmericanProspector/0.3.0",
+            },
             method="POST",
         )
         with urllib.request.urlopen(req, timeout=5) as resp:

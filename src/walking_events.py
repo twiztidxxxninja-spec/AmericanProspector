@@ -73,6 +73,9 @@ def roll_walking_event(engine: "Engine", lmap: "LocalMap",
     if period in ("night", "dusk"):
         events.append((_robbery_encounter, 2))
 
+    # ── Superstitions & frontier flavor ──────────────────────────
+    events.append((_superstition_event, 2))
+
     # ── Time-specific ─────────────────────────────────────────────
     if period == "night":
         events.append((_night_event, 12))
@@ -502,3 +505,66 @@ def _discover_mineral_outcrop(engine, lmap, px, py, terrain, period, season, rng
            f"Your geology training tells you this area could be "
            f"productive. The ground around here just got more interesting.")
     return msg, "advisory"
+
+
+def _superstition_event(engine, lmap, px, py, terrain, period, season, rng):
+    """Frontier prospector superstitions and omens. Pure flavor, some with
+    minor mechanical effects to make them feel real."""
+    events = [
+        # Pure flavor
+        ("A magpie lands on a rock and watches you. Old miners say "
+         "one magpie means sorrow, two means gold. Just the one today.",
+         "normal", None),
+        ("You find a horseshoe half-buried in the trail. "
+         "You hang it on your pack, open end up. Can't hurt.",
+         "normal", None),
+        ("A crow follows you for a quarter mile, hopping from tree to tree. "
+         "Some say that's a dead man's spirit. You walk faster.",
+         "normal", None),
+        ("You whistle while you walk. An old prospector once told you: "
+         "\"Never whistle in a mine. Bad luck.\" You stop.",
+         "normal", None),
+        ("Three buzzards circling overhead. Old superstition says "
+         "they know something you don't. Probably just a dead coyote.",
+         "normal", None),
+        ("You pass a grave marker on the trail — just a board with a name "
+         "and a date. 1849. You tip your hat and keep walking.",
+         "normal", None),
+        ("A dust devil spins across the flat ground ahead. Some Mexican "
+         "miners call them 'remolinos del diablo.' You give it room.",
+         "normal", None),
+        ("The campfire crackles and pops. An ember jumps toward you. "
+         "\"That means a stranger's coming,\" your partner would say.",
+         "normal", None),
+        # Minor mechanical effects
+        ("A raven drops a shiny pebble at your feet and flies off. "
+         "Quartz with iron staining. Good omen — or good geology.",
+         "advisory", "geo_xp"),
+        ("You find a coin in the creek — an old Spanish real. "
+         "Some say that means gold nearby. Worth a test pan, at least.",
+         "advisory", "gold_hint"),
+        ("Full moon tonight. Old miners swear gold pans better "
+         "under a full moon. Nonsense, probably. But you feel lucky.",
+         "advisory", "luck"),
+        ("You stub your toe on a rock. When you look down, "
+         "it's a chunk of quartz. Sometimes bad luck turns good.",
+         "advisory", "geo_xp"),
+    ]
+
+    msg, severity, effect = rng.choice(events)
+
+    if effect == "geo_xp":
+        engine.player.gain_skill_xp("geology", 1.5)
+    elif effect == "gold_hint":
+        # Slightly boost gold grade on current tile
+        tile = lmap.tile_at(px, py)
+        tile.gold_grade = max(tile.gold_grade, rng.uniform(0.1, 0.3))
+    elif effect == "luck":
+        # Tiny gold boost to next few tiles
+        for dx in range(-3, 4):
+            for dy in range(-3, 4):
+                nx, ny = px + dx, py + dy
+                if lmap.in_bounds(nx, ny) and rng.random() < 0.1:
+                    lmap.tile_at(nx, ny).gold_grade += 0.05
+
+    return msg, severity

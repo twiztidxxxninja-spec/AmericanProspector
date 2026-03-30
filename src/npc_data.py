@@ -260,6 +260,7 @@ PROF_WEIGHTS_M: Dict[str, Dict[str, int]] = {
         "Carpenter": 4, "Chinese Laborer": 7, "Barber": 2, "Drifter": 3,
         "Sheriff": 1, "Newspaper Editor": 1, "Express Rider": 2,
         "Preacher": 2, "Hunter": 2, "Scout": 2, "Cook": 2,
+        "Native Guide": 2, "Native Trader": 1,
     },
     "small_town": {
         "Merchant": 10, "Farmer": 10, "Rancher": 8, "Blacksmith": 6,
@@ -269,11 +270,13 @@ PROF_WEIGHTS_M: Dict[str, Dict[str, int]] = {
         "Prospector": 6, "Miner": 5, "Gambler": 4, "Barber": 3,
         "Cook": 3, "Freighter": 3, "Scout": 2, "Drifter": 3,
         "Chinese Laborer": 4, "Land Agent": 1,
+        "Native Guide": 1, "Native Trader": 1,
     },
     "trading_post": {
         "Merchant": 25, "Teamster": 12, "Scout": 10, "Hunter": 10,
         "Trapper": 15, "Mountain Man": 8,
         "Cook": 8, "Drifter": 5, "Freighter": 5, "Blacksmith": 2,
+        "Native Trader": 8, "Native Guide": 5, "Native Hunter": 4,
     },
     "city": {
         "Merchant": 8, "Farmer": 6, "Rancher": 4, "Blacksmith": 5,
@@ -402,6 +405,9 @@ PROF_SKILLS: Dict[str, Dict[str, int]] = {
     "Telegraph Operator": {"literacy": 2, "engineering": 1},
     "Express Rider":      {"driving": 3, "firearms": 3, "survival": 3},
     "Land Agent":         {"law": 4, "trading": 3},
+    "Native Guide":       {"tracking": 6, "survival": 5, "geology": 2},
+    "Native Trader":      {"trading": 4, "survival": 3, "tracking": 2},
+    "Native Hunter":      {"tracking": 5, "survival": 4, "firearms": 2},
 }
 
 PROF_KNOWLEDGE: Dict[str, Dict[str, int]] = {
@@ -427,6 +433,9 @@ PROF_KNOWLEDGE: Dict[str, Dict[str, int]] = {
     "Teamster":     {"horse handling": 3, "navigation": 1},
     "Chinese Laborer": {"placer": 2, "cooking": 2},
     "Land Agent":      {"law": 4, "trading": 2, "surveying": 3},
+    "Native Guide":    {"tracking": 5, "survival": 5, "navigation": 4, "herbalism": 3},
+    "Native Trader":   {"trading": 3, "survival": 2, "herbalism": 2},
+    "Native Hunter":   {"tracking": 4, "survival": 4, "butchering": 3},
 }
 
 # Personal background knowledge — random extras added during generation

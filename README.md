@@ -14,13 +14,15 @@ That's it. If Python isn't installed, it opens the Microsoft Store for you — c
 
 **First run** takes ~30 seconds to install game libraries. After that it starts instantly.
 
-**The game does not:**
-- Install anything to your system
-- Modify your registry or system files
-- Run at startup or in the background
-- Access anything outside its own folder
+**What the game does:**
+- First run installs 3 Python libraries (tcod, pygame-ce, numpy) via pip
+- Bug reports (optional, in-game ESC menu) send to developer's Discord
+- Saves go in a saves/ folder inside the game directory
+- That's it. No registry changes, no startup entries, no background processes
 
-Delete the folder and it's completely gone.
+**To fully uninstall:**
+- Delete the game folder
+- Optionally run `pip uninstall tcod pygame-ce numpy` to remove the libraries
 
 ---
 

@@ -474,10 +474,12 @@ def create_wound(damage: float, damage_type: str = DmgType.BLUNT,
     if part in (BP.ABDOMEN, BP.L_HAND, BP.R_HAND):
         pain *= 1.3   # gut wounds and hand wounds hurt more
 
-    # Dirty
+    # Dirty — only wounds that break the skin can get contaminated
+    # Bruises and crushes don't expose tissue to bacteria
     dirty = wpn.get("dirty", False)
-    if not dirty and rng.random() < 0.15:
-        dirty = True   # 15% chance any wound gets contaminated
+    skin_broken = wound_type not in (WndType.BRUISE, WndType.CRUSH)
+    if not dirty and skin_broken and rng.random() < 0.15:
+        dirty = True   # 15% chance open wounds get contaminated
 
     # Lodged object — bullets have ~60% chance, arrows ~80%, shot ~40%
     lodged = ""

@@ -123,6 +123,8 @@ def roll_location_discovery(engine: "Engine", wx: int, wy: int
     else:
         weights = [2, 2, 2, 1, 1, 1]
 
+    if not any(w > 0 for w in weights):
+        weights = [1] * len(weights)
     disc = rng.choices(_DISCOVERY_TYPES, weights=weights, k=1)[0]
 
     name = rng.choice(disc["names"])

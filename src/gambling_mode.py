@@ -351,55 +351,7 @@ def _enter_poker(engine: "Engine", console, ctx) -> None:
                             n.combat_state = "hostile"
                             break
 
-        elif action == "custom":
-            # Freeform action — player types what they want to do
-            # Use a simple text input
-            console.print(4, 34, "What do you do? > " + " " * 60,
-                          fg=(255, 255, 200), bg=(20, 20, 30))
-            ctx.present(console)
-            typed = ""
-            typing = True
-            while typing:
-                for evt in tcod.event.wait():
-                    if isinstance(evt, tcod.event.Quit):
-                        raise SystemExit()
-                    if isinstance(evt, tcod.event.KeyDown):
-                        if evt.sym == tcod.event.KeySym.ESCAPE:
-                            typed = ""
-                            typing = False
-                        elif evt.sym == tcod.event.KeySym.RETURN:
-                            typing = False
-                        elif evt.sym == tcod.event.KeySym.BACKSPACE:
-                            typed = typed[:-1]
-                        break
-                    if isinstance(evt, tcod.event.TextInput):
-                        typed += evt.text
-                        break
-                console.print(22, 34, typed[:55] + "_" + " " * 10,
-                              fg=(255, 255, 255), bg=(20, 20, 30))
-                ctx.present(console)
-
-            if typed.strip():
-                result = _llm_cheat_action(engine, typed.strip(), customers, house_bank)
-                add_msg(f"> {typed.strip()}")
-                add_msg(result["message"])
-                cheat_suspicion += result["suspicion_increase"]
-                if result["success"]:
-                    # Apply win modifier — reduce customer win chance for this round
-                    bonus = result["win_modifier"]
-                    extra_profit = round_pot * bonus * 0.5
-                    house_bank += extra_profit
-                    total_profit += extra_profit
-                    if extra_profit > 0:
-                        add_msg(f"  House advantage: +${extra_profit:.2f}")
-                if result["caught"]:
-                    add_msg("You've been CAUGHT!")
-                    lmap = engine.current_local
-                    region = lmap._region_name if lmap else ""
-                    engine.reputation.adjust(region, -20)
-                    engine._record_gossip(f"Caught cheating: {typed.strip()[:30]}", -0.6)
-                    for c in customers:
-                        c["suspicion"] += 2
+        # (custom action removed — only available in player-as-house mode)
 
         # Advance time (30 min per round)
         engine.time.advance_seconds(30 * 60)
@@ -909,7 +861,7 @@ def enter_house_mode(engine: "Engine", console, ctx) -> None:
         if has_cheat_tools:
             console.print(4, y + 2, "[3] Cheat — use marked cards (big profit, risky)",
                           fg=(255, 120, 120))
-        console.print(4, y + 3, "[5] Custom move — type what you do (LLM resolves)", fg=(200, 180, 120))
+        console.print(4, y + 3, "[5] Sleight of hand — subtly tilt the odds (Agility check)", fg=(200, 180, 120))
         console.print(4, y + 4, "[4] Close up  [ESC] Walk away", fg=(140, 140, 140))
 
         log_y = 38
@@ -955,6 +907,7 @@ def enter_house_mode(engine: "Engine", console, ctx) -> None:
             round_pot += bet
 
             # Customer win chance: normally ~45% (house edge)
+            win_chance = 0.45
             if action == "fair":
                 win_chance = 0.45
             elif action == "rig":
@@ -968,6 +921,16 @@ def enter_house_mode(engine: "Engine", console, ctx) -> None:
             elif action == "cheat_house":
                 win_chance = 0.20  # heavily rigged
                 cheat_suspicion += 1
+            elif action == "custom":
+                # Hardcoded custom move — skill-based cheating
+                agi = player.attributes.get("agility", 10)
+                roll = rng.randint(1, 20) + agi // 3 + intel // 3
+                if roll >= 14:
+                    win_chance = 0.25
+                    cheat_suspicion += 0.5
+                else:
+                    win_chance = 0.45
+                    cheat_suspicion += 1.5
 
             if rng.random() < win_chance:
                 # Customer wins — house must pay out
@@ -1047,73 +1010,39 @@ def enter_house_mode(engine: "Engine", console, ctx) -> None:
                 accuser = rng.choice(suspicious_customers)
                 add_msg(f"{accuser['name']} stands up: \"This game is rigged!\"")
                 add_msg(f"\"I've been watching you. Those cards are marked!\"")
-                add_msg("What do you say? Type your response:")
-
-                # Let player type a talk-down response
-                console.print(4, 36, "> " + " " * 70,
-                              fg=(255, 255, 200), bg=(20, 20, 30))
-                ctx.present(console)
-                typed = ""
-                typing = True
-                while typing:
-                    for evt in tcod.event.wait():
-                        if isinstance(evt, tcod.event.Quit):
-                            raise SystemExit()
-                        if isinstance(evt, tcod.event.KeyDown):
-                            if evt.sym == tcod.event.KeySym.RETURN:
-                                typing = False
-                            elif evt.sym == tcod.event.KeySym.BACKSPACE:
-                                typed = typed[:-1]
-                            elif evt.sym == tcod.event.KeySym.ESCAPE:
-                                typed = ""
-                                typing = False
-                            break
-                        if isinstance(evt, tcod.event.TextInput):
-                            typed += evt.text
-                            break
-                    console.print(6, 36, typed[:65] + "_" + " " * 5,
-                                  fg=(255, 255, 255), bg=(20, 20, 30))
-                    ctx.present(console)
-
-                # LLM resolves the talk-down
-                if typed.strip():
-                    result = _llm_talk_down(engine, typed.strip(),
-                                            accuser['name'], int(cheat_suspicion))
-                    add_msg(result["message"])
-                    if result["success"]:
-                        cheat_suspicion = max(0, cheat_suspicion - 2)
-                        accuser["mood"] = "neutral"
-                        accuser["suspicion"] = 0
-                    else:
-                        if result["mood"] == "violent":
-                            add_msg(f"{accuser['name']} goes for a weapon!")
-                            lmap = engine.current_local
-                            region = lmap._region_name if lmap else ""
-                            engine.reputation.adjust(region, -30)
-                            engine._record_gossip("Caught running a crooked game", -0.8)
-                            for n in engine._tile_npcs():
-                                if n.alive and n.combat_state == "neutral":
-                                    n.combat_state = "hostile"
-                                    break
-                            for c in customers:
-                                c["mood"] = "left"
-                            break
-                        else:
-                            add_msg(f"{accuser['name']} flips the table!")
-                            lmap = engine.current_local
-                            region = lmap._region_name if lmap else ""
-                            engine.reputation.adjust(region, -30)
-                            engine._record_gossip("Caught running a crooked game", -0.8)
-                            for c in customers:
-                                c["mood"] = "left"
-                            break
+                # Charisma check to talk your way out
+                talk_roll = rng.randint(1, 20) + cha // 3
+                if talk_roll >= 14:
+                    excuses = [
+                        f"\"Rigged? You're just having a bad night, {accuser['name']}.\"",
+                        f"\"I run an honest table. You can leave if you don't like it.\"",
+                        f"\"Check the cards yourself.\" You gesture confidently. He sits down.",
+                    ]
+                    add_msg(rng.choice(excuses))
+                    add_msg("He backs down. The table settles.")
+                    cheat_suspicion = max(0, cheat_suspicion - 2)
+                    accuser["mood"] = "neutral"
+                    accuser["suspicion"] = 0
+                elif talk_roll >= 10:
+                    add_msg(f"{accuser['name']} grumbles but sits back down. "
+                            f"He's watching you closely now.")
+                    cheat_suspicion = max(0, cheat_suspicion - 1)
+                    accuser["mood"] = "suspicious"
                 else:
-                    # Said nothing — default to table flip
-                    add_msg("You say nothing. The silence speaks volumes.")
-                    add_msg(f"{accuser['name']} flips the table!")
+                    add_msg(f"{accuser['name']} flips the table! "
+                            f"\"I KNEW it! This game is CROOKED!\"")
+                    lmap = engine.current_local
+                    region = lmap._region_name if lmap else ""
+                    engine.reputation.adjust(region, -30)
+                    engine._record_gossip("Caught running a crooked game", -0.8)
+                    if rng.random() < 0.4:
+                        add_msg(f"{accuser['name']} goes for a weapon!")
+                        for n in engine._tile_npcs():
+                            if n.alive and n.combat_state == "neutral":
+                                n.combat_state = "hostile"
+                                break
                     for c in customers:
                         c["mood"] = "left"
-                    break
                     break
 
         # Customers with no money leave

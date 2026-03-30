@@ -286,7 +286,10 @@ class LLMClient:
         if json_mode:
             kwargs["response_format"] = {"type": "json_object"}
         result = self._llm.create_chat_completion(**kwargs)
-        return result["choices"][0]["message"]["content"]
+        choices = result.get("choices", [])
+        if not choices:
+            return ""
+        return choices[0].get("message", {}).get("content", "")
 
     def _action_prompt(self, action_text: str,
                        ctx: Dict[str, Any]) -> str:

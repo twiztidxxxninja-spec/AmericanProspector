@@ -1080,6 +1080,8 @@ def insight_check(player, npc: NPCExpanded) -> str:
 def _pick_weighted(rng: random.Random,
                     weights: list) -> str:
     """Pick from a list of (key, cumulative_threshold) tuples."""
+    if not weights:
+        return ""
     roll = rng.random()
     for key, threshold in weights:
         if roll < threshold:
@@ -1089,8 +1091,12 @@ def _pick_weighted(rng: random.Random,
 
 def _pick_profession(rng: random.Random, weights: Dict[str, int]) -> str:
     """Weighted random profession selection."""
+    if not weights:
+        return "Prospector"
     items = list(weights.items())
     total = sum(w for _, w in items)
+    if total <= 0:
+        return items[0][0]
     roll = rng.random() * total
     cumul = 0
     for prof, w in items:

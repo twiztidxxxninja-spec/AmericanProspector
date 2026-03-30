@@ -21,6 +21,10 @@ class SurvivalStats:
     # Duration in hours remaining. 0 = healthy.
     gut_sick_hours: float = 0.0
 
+    # Mercury exposure — accumulates from gold amalgamation.
+    # 0-100 scale. Causes tremors, confusion, madness at high levels.
+    mercury_exposure: float = 0.0
+
     def tick(self, minutes: float, activity_mult: float = 1.0,
              temp_mod: float = 0.0, sheltered: bool = False,
              constitution: int = 10):
@@ -53,6 +57,16 @@ class SurvivalStats:
             self.hunger = max(0, self.hunger - 1.5 * hours)   # vomiting/diarrhea
             self.thirst = max(0, self.thirst - 2.0 * hours)   # dehydration
             self.fatigue = max(0, self.fatigue - 1.0 * hours)  # exhaustion
+
+        # Mercury poisoning damage (slow, chronic)
+        if self.mercury_exposure >= 80:
+            self.health = max(0, self.health - 0.5 * hours)
+        elif self.mercury_exposure >= 60:
+            self.fatigue = max(0, self.fatigue - 0.5 * hours)
+
+        # Mercury slowly dissipates (very slowly — 0.1/day)
+        if self.mercury_exposure > 0:
+            self.mercury_exposure = max(0, self.mercury_exposure - 0.004 * hours)
 
         # Damage from critical stats (CON reduces damage rate)
         deprivation_resist = max(0.5, 1.0 - (constitution - 10) * 0.05)
@@ -92,6 +106,10 @@ class SurvivalStats:
                 result.append(("gut sick", "critical"))
             else:
                 result.append(("gut sick", "advisory"))
+        if self.mercury_exposure >= 60:
+            result.append(("mercury poisoning", "critical"))
+        elif self.mercury_exposure >= 20:
+            result.append(("mercury tremors", "advisory"))
         for name, val in checks:
             if val <= STAT_CRITICAL:
                 result.append((name, "critical"))
@@ -102,6 +120,24 @@ class SurvivalStats:
     @property
     def alive(self) -> bool:
         return self.health > 0
+
+    def add_mercury_exposure(self, amount: float = 2.0):
+        """Add mercury exposure from handling quicksilver. Accumulates over time.
+        Effects at thresholds: 20=tremors, 40=confusion, 60=madness, 80=dying."""
+        self.mercury_exposure = min(100, self.mercury_exposure + amount)
+
+    @property
+    def mercury_symptoms(self) -> str:
+        """Current mercury poisoning symptoms."""
+        if self.mercury_exposure >= 80:
+            return "severe mercury poisoning — dying"
+        if self.mercury_exposure >= 60:
+            return "mercury madness — hallucinations, paranoia"
+        if self.mercury_exposure >= 40:
+            return "mercury confusion — memory loss, slurred speech"
+        if self.mercury_exposure >= 20:
+            return "mercury tremors — shaking hands"
+        return ""
 
     def contract_gut_sickness(self, severity: float = 1.0):
         """Contract gut sickness. Duration 72-120 hours (3-5 days).

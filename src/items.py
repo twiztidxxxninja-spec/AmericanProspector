@@ -171,6 +171,15 @@ ITEM_TEMPLATES: Dict[str, dict] = {
         "description": "Rendered fat mixed with dried meat and berries. Dense trail ration.",
         "base_value": 0.15, "stackable": True, "perishable": False,
     },
+    "quicksilver": {
+        "id": "quicksilver", "name": "Quicksilver (Mercury)", "weight": 3.0,
+        "category": "material",
+        "description": "Liquid mercury. Used in gold amalgamation — mix with crushed "
+                       "ore, mercury bonds with gold, then heat to separate. "
+                       "TOXIC: prolonged handling causes tremors, madness, death.",
+        "base_value": 3.00, "stackable": True,
+        "extra": {"mercury_exposure": 2.0},
+    },
     "canned_peaches": {
         "id": "canned_peaches", "name": "Canned Peaches", "weight": 1.0,
         "category": "food", "nutrition": 18.0,

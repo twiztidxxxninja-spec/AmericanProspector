@@ -1,9 +1,7 @@
 {
   "model_path": "models/qwen2.5-7b-instruct-q4_k_m.gguf",
   "llm_enabled": true,
-  "llm_mode": "api",
-  "llm_api_key": "YOUR_ANTHROPIC_API_KEY_HERE",
-  "llm_api_model": "claude-sonnet-4-20250514",
+  "llm_mode": "local",
   "n_gpu_layers": -1,
   "n_ctx": 4096,
   "display": {

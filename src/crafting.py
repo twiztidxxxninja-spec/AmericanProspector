@@ -500,8 +500,9 @@ RECIPES: List[Recipe] = [
     ),
     Recipe(
         id="make_bitters", name="Bitters",
-        description="Steep herbs and bark in whiskey. Medicinal tonic and cocktail ingredient.",
-        materials=[("whiskey", 1), ("wild_mint", 1), ("wild_berries", 1)],
+        description="Steep roots, bark, and herbs in whiskey for weeks. "
+                    "Medicinal tonic and cocktail ingredient.",
+        materials=[("whiskey", 1), ("wild_mint", 1), ("brush_bundle", 1)],
         skill="chemistry", difficulty=8, time_minutes=60,
         output_custom={"id": "bitters", "name": "Bitters", "weight": 0.3,
                        "category": "drink", "base_value": 2.50, "stackable": True,
@@ -512,8 +513,9 @@ RECIPES: List[Recipe] = [
     ),
     Recipe(
         id="make_rum", name="Rum",
-        description="Distill fermented honey and molasses. Sweet, strong spirit.",
-        materials=[("mead", 2), ("wild_honey", 1)],
+        description="Ferment molasses, then distill. Sweet, dark spirit. "
+                    "Requires mash barrel and still.",
+        materials=[("molasses", 3)],
         skill="chemistry", difficulty=11, time_minutes=480,
         output_custom={"id": "rum", "name": "Rum", "weight": 1.5,
                        "category": "drink", "base_value": 2.00, "hydration": 3.0,

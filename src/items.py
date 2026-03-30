@@ -201,6 +201,13 @@ ITEM_TEMPLATES: Dict[str, dict] = {
         "description": "Dried corn. Eat it, grind it, or ferment it into corn whiskey.",
         "base_value": 0.15, "stackable": True,
     },
+    "molasses": {
+        "id": "molasses", "name": "Molasses", "weight": 2.0,
+        "category": "food", "nutrition": 8.0,
+        "description": "Thick dark syrup from sugar processing. "
+                       "Baking, sweetening, or ferment into rum.",
+        "base_value": 0.30, "stackable": True,
+    },
     "wild_mint": {
         "id": "wild_mint", "name": "Wild Mint", "weight": 0.1,
         "category": "food", "nutrition": 1.0,

@@ -64,6 +64,12 @@ def roll_walking_event(engine: "Engine", lmap: "LocalMap",
         events.append((_forest_event, 8))
     if terrain == LocalTerrain.ROCK or terrain == LocalTerrain.BEDROCK:
         events.append((_rock_event, 6))
+        events.append((_discover_mineral_outcrop, 2))
+
+    # ── Chain events (gameplay consequences) ──────────────────────
+    events.append((_find_abandoned_camp, 2))
+    events.append((_find_prospector_note, 1))
+    events.append((_encounter_injured_traveler, 1))
 
     # ── Time-specific ─────────────────────────────────────────────
     if period == "night":
@@ -270,3 +276,115 @@ def _dawn_event(engine, lmap, px, py, terrain, period, season, rng):
         "Dew heavy on the grass. Your boots are soaked already.",
     ]
     return rng.choice(events), "normal"
+
+
+# ── CHAIN EVENTS — events with actual gameplay consequences ──────────────
+
+def _find_abandoned_camp(engine, lmap, px, py, terrain, period, season, rng):
+    """Find an abandoned campsite with possible loot."""
+    items_found = []
+    loot_roll = rng.random()
+    if loot_roll < 0.3:
+        items_found.append("hardtack")
+        msg = ("An abandoned campsite. The fire pit is cold. "
+               "You find a tin of hardtack someone left behind.")
+    elif loot_roll < 0.5:
+        items_found.append("rope_10ft")
+        msg = ("A collapsed lean-to. Nobody's been here in weeks. "
+               "A length of rope is still tied to the frame — useful.")
+    elif loot_roll < 0.65:
+        items_found.append("candle")
+        msg = ("An old camp hidden in the brush. Ashes, a broken crate, "
+               "and half a candle. Someone left in a hurry.")
+    elif loot_roll < 0.75:
+        # Gold dust left behind
+        dust = rng.uniform(0.01, 0.05)
+        engine.player.gold_oz += dust
+        msg = (f"A dead prospector's camp — bedroll rotting, tools rusted. "
+               f"In a leather pouch: {dust:.3f} oz of gold dust. "
+               f"His bad luck is your fortune.")
+    else:
+        msg = ("The remains of a campfire. Boot prints leading away. "
+               "Whoever was here took everything worth taking.")
+
+    # Drop loot items
+    for item_id in items_found:
+        try:
+            from src.items import make_item
+            item = make_item(item_id)
+            tile = lmap.tile_at(px, py)
+            tile.ground_items.append(item)
+        except Exception:
+            pass
+
+    return msg, "advisory"
+
+
+def _find_prospector_note(engine, lmap, px, py, terrain, period, season, rng):
+    """Find a dead prospector's journal with gold location hints."""
+    directions = ["north", "south", "east", "west",
+                  "upstream", "over the ridge", "past the big pine"]
+    features = ["a white quartz outcrop", "a waterfall", "a fork in the creek",
+                "an old lightning-struck tree", "a bedrock shelf",
+                "a gravel bar shaped like a horseshoe"]
+    direction = rng.choice(directions)
+    feature = rng.choice(features)
+
+    # Boost gold grade in a nearby tile cluster
+    for _ in range(3):
+        bx = px + rng.randint(-15, 15)
+        by = py + rng.randint(-15, 15)
+        if lmap.in_bounds(bx, by):
+            lmap.tile_at(bx, by).gold_grade = max(
+                lmap.tile_at(bx, by).gold_grade, rng.uniform(0.3, 0.7))
+
+    engine.player.gain_skill_xp("geology", 3.0)
+
+    msg = (f"A leather journal wedged under a rock, pages water-stained. "
+           f"The last entry reads: \"Good color {direction}, near "
+           f"{feature}. Going back tomorrow.\" There is no tomorrow entry.")
+    return msg, "advisory"
+
+
+def _encounter_injured_traveler(engine, lmap, px, py, terrain, period, season, rng):
+    """Find someone hurt on the trail. Help or ignore."""
+    injuries = ["a broken leg", "a rattlesnake bite", "a knife wound",
+                "heatstroke", "a badly infected hand"]
+    injury = rng.choice(injuries)
+
+    # Just the discovery — player can use first aid via action menu
+    engine.player.gain_skill_xp("survival", 1.0)
+
+    msg = (f"A man lying by the trail, barely conscious. {injury.capitalize()}. "
+           f"He croaks: \"Water... please.\" He's in bad shape. "
+           f"You could help, or keep walking.")
+    return msg, "advisory"
+
+
+def _discover_mineral_outcrop(engine, lmap, px, py, terrain, period, season, rng):
+    """Find a significant mineral deposit — boosts large area."""
+    from src.local_map import LocalTerrain
+    mineral = rng.choice(["quartz vein", "iron-stained rock",
+                          "exposed bedrock with heavy black sand",
+                          "a seam of rusty quartz"])
+    # Boost gold in a 20-tile radius
+    boost = rng.uniform(0.15, 0.45)
+    boosted = 0
+    for dy in range(-10, 11):
+        for dx in range(-10, 11):
+            bx, by = px + dx, py + dy
+            if lmap.in_bounds(bx, by) and dx*dx + dy*dy <= 100:
+                t = lmap.tile_at(bx, by)
+                if t.terrain in (LocalTerrain.GRAVEL_BAR, LocalTerrain.BEDROCK,
+                                  LocalTerrain.ROCK):
+                    old = t.gold_grade
+                    t.gold_grade = max(t.gold_grade, boost * rng.uniform(0.5, 1.0))
+                    if t.gold_grade > old:
+                        boosted += 1
+
+    engine.player.gain_skill_xp("geology", 5.0)
+
+    msg = (f"You spot {mineral} — significant mineralization. "
+           f"Your geology training tells you this area could be "
+           f"productive. The ground around here just got more interesting.")
+    return msg, "advisory"

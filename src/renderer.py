@@ -936,11 +936,27 @@ class Renderer:
         self.con.print(x, y + 1, f"R.Hand: {rh}", fg=WHITE, bg=BLACK)
         y += 3
 
-        # Gold & cash — directly below hand slots so it's always visible
+        # Gold & cash — with $ conversion
         gold_color = YELLOW if player.gold_oz > 0 else DGREY
+        gold_value = player.gold_oz * 20.67 * 0.9  # $20.67/oz, 90% fineness
         self.con.print(x, y,
-                       f"Gold {player.gold_oz:>8.3f} oz   ${player.cash:>7.2f}",
+                       f"Gold {player.gold_oz:.3f}oz (${gold_value:.2f})",
                        fg=gold_color, bg=BLACK)
+        self.con.print(x, y + 1,
+                       f"Cash ${player.cash:.2f}",
+                       fg=GREEN if player.cash > 10 else GREY, bg=BLACK)
+        y += 2
+
+        # Weight bar
+        cap = player.carry_capacity
+        wt = player.carried_weight
+        pct = min(1.0, wt / max(1, cap))
+        bar_w = 20
+        filled = int(pct * bar_w)
+        wt_color = RED if pct > 1.0 else YELLOW if pct > 0.75 else GREEN
+        bar = chr(0x2588) * filled + chr(0x2591) * (bar_w - filled)
+        self.con.print(x, y, f"[{bar}] {wt:.0f}/{cap:.0f}lb",
+                       fg=wt_color, bg=BLACK)
         y += 2
 
         # Compass — show direction to nearest town if player has one
@@ -1079,6 +1095,35 @@ class Renderer:
             self.con.print(bar_x, y, f"H{a.health:.0f} F{a.fatigue:.0f} L{load_pct}%",
                            fg=load_color, bg=BLACK)
             y += 1
+
+    def draw_claims_on_map(self, player: Player, local_map: LocalMap,
+                           claim_mgr=None):
+        """Render claim boundary markers on the local map."""
+        if not claim_mgr or not claim_mgr.claims:
+            return
+        cam_x = player.local_x - VIEWPORT_W // 2
+        cam_y = player.local_y - VIEWPORT_H // 2
+        wx, wy = player.world_x, player.world_y
+        ax, ay = player.area_x, player.area_y
+
+        for claim in claim_mgr.claims:
+            if not claim.is_at(wx, wy, ax, ay) or claim.abandoned:
+                continue
+            # Draw corner markers
+            r = claim.radius
+            corners = [
+                (claim.center_x - r, claim.center_y - r),
+                (claim.center_x + r, claim.center_y - r),
+                (claim.center_x - r, claim.center_y + r),
+                (claim.center_x + r, claim.center_y + r),
+            ]
+            is_player = claim.owner == player.name
+            fg = (255, 220, 50) if is_player else (180, 140, 80)
+            for cx, cy in corners:
+                sx = cx - cam_x
+                sy = cy - cam_y
+                if 0 <= sx < VIEWPORT_W and 0 <= sy < VIEWPORT_H:
+                    self.con.print(sx, sy + 1, "X", fg=fg, bg=(0, 0, 0))
 
     def draw_animals_on_map(self, player: Player, local_map: LocalMap,
                             animal_mgr=None):

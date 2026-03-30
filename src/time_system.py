@@ -129,3 +129,42 @@ class GameTime:
         if m in (6, 7, 8):   return "summer"
         if m in (9, 10, 11): return "fall"
         return "winter"
+
+    @property
+    def weather(self) -> str:
+        """Deterministic weather based on day + season. Changes every ~8 hours."""
+        import random
+        rng = random.Random(self.total_minutes // 480)  # changes every 8hrs
+        season = self.season
+        if season == "winter":
+            return rng.choices(
+                ["clear", "overcast", "rain", "snow", "blizzard"],
+                weights=[20, 30, 15, 25, 10], k=1)[0]
+        elif season == "spring":
+            return rng.choices(
+                ["clear", "overcast", "rain", "fog", "thunderstorm"],
+                weights=[30, 25, 25, 15, 5], k=1)[0]
+        elif season == "summer":
+            return rng.choices(
+                ["clear", "clear", "overcast", "hot", "thunderstorm"],
+                weights=[35, 20, 20, 20, 5], k=1)[0]
+        else:  # fall
+            return rng.choices(
+                ["clear", "overcast", "rain", "fog", "cold"],
+                weights=[25, 30, 25, 10, 10], k=1)[0]
+
+    @property
+    def weather_move_penalty(self) -> float:
+        """Movement speed penalty from weather (1.0 = normal)."""
+        return {"clear": 1.0, "overcast": 1.0, "rain": 1.2,
+                "snow": 1.4, "blizzard": 2.0, "fog": 1.1,
+                "thunderstorm": 1.3, "hot": 1.1, "cold": 1.1,
+                }.get(self.weather, 1.0)
+
+    @property
+    def weather_visibility_mult(self) -> float:
+        """FOV radius multiplier from weather."""
+        return {"clear": 1.0, "overcast": 0.9, "rain": 0.7,
+                "snow": 0.6, "blizzard": 0.3, "fog": 0.4,
+                "thunderstorm": 0.6, "hot": 1.0, "cold": 0.9,
+                }.get(self.weather, 1.0)

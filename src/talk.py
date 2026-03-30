@@ -48,11 +48,26 @@ BG     = ( 15,  15,  30)
 BG2    = ( 25,  25,  50)
 
 
-def _npc_greeting(npc: "NPC", player: "Player") -> str:
-    """Generate a contextual greeting based on relationship and traits."""
+def _npc_greeting(npc: "NPC", player: "Player",
+                   player_rep: float = 0.0) -> str:
+    """Generate a contextual greeting based on relationship, traits, and reputation."""
     rel = npc.relationship
     name_str = f", {player.name}" if npc.memory.knows_name else ""
-    trait    = npc.traits[0] if npc.traits else "neutral"
+
+    # Regional reputation affects strangers' first impression
+    if rel == 0 and player_rep != 0:
+        if player_rep > 50:
+            return (f"*{npc.name} straightens up when they see you.* "
+                    f"\"You're {player.name}, aren't you? Heard good things.\"")
+        if player_rep > 20:
+            return (f"\"Heard your name around town{name_str}. "
+                    f"Good reputation.\" *{npc.name} nods respectfully.*")
+        if player_rep < -30:
+            return (f"*{npc.name} tenses up.* \"I know who you are. "
+                    f"Don't want any trouble.\"")
+        if player_rep < -10:
+            return (f"*{npc.name} gives you a guarded look.* "
+                    f"\"...Yeah?\"")
 
     if rel < -20:
         return f"*{npc.name} eyes you coldly and says nothing.*"
@@ -451,10 +466,34 @@ def talk_menu(con: tcod.console.Console, ctx,
     waiting_llm = False          # True while blocking on LLM reply
     state_extra_cache = {}       # per-session cache for merchant stock etc.
 
-    # Opening greeting
-    greeting = _npc_greeting(npc, player)
+    # Opening greeting (with regional reputation)
+    _rep = 0.0
+    if kwargs.get("legal"):
+        # Get reputation from engine
+        _wm = world_map or kwargs.get("world_map")
+        if _wm and hasattr(kwargs.get("legal"), "__class__"):
+            # Reputation passed separately
+            pass
+    _rep_tracker = kwargs.get("reputation")
+    if _rep_tracker:
+        _wm = world_map or kwargs.get("world_map")
+        if _wm:
+            _region = _wm.get_region(player.world_x, player.world_y)
+            _rep = _rep_tracker.get(_region) if _region else 0.0
+    greeting = _npc_greeting(npc, player, player_rep=_rep)
     log.append(greeting)
     npc.adjust_relationship(0.5)
+
+    # Schedule check — NPCs not available outside their work hours
+    time_period = kwargs.get("time_period", "day")
+    schedule = getattr(npc, 'schedule', {})
+    if schedule and time_period in ("night", "dusk"):
+        activity = schedule.get(time_period, "home")
+        if activity in ("home", "sleep") and npc.occupation in (
+                "Merchant", "Banker", "Barber", "Assayer", "Baker",
+                "Butcher", "Tailor", "Cobbler", "Apothecary"):
+            log.append(f"*{npc.name}'s shop is closed for the night.*")
+            return log
 
     # Warrant check — law NPCs react to wanted player
     legal = kwargs.get("legal")

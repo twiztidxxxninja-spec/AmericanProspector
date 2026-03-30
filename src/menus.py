@@ -218,6 +218,19 @@ def _describe_tile(tile, player, W: int) -> List[str]:
         desc += " Fine black sand mixed in — the composition looks favorable."
     if tile.terrain == LocalTerrain.BEDROCK and geo >= 3:
         desc += " The cracks run perpendicular to the old streamflow — natural gold traps."
+
+    # Gold grade (skill-gated)
+    if tile.gold_grade > 0 and geo >= 4:
+        from src.prospecting import tile_grade_label
+        grade = tile_grade_label(tile.gold_grade)
+        desc += f" Gold: {grade}."
+    elif tile.mineral_hint and geo >= 2:
+        desc += f" Previously tested: {tile.mineral_hint}."
+
+    # Elevation
+    if hasattr(tile, 'z_level'):
+        desc += f" Elevation: {tile.z_level}."
+
     words = desc.split()
     line, lines = "", []
     for w in words:
@@ -311,7 +324,8 @@ def _look_direction(dx: int, dy: int, player, local_map, fov_radius: int = 14) -
 
 
 def examine_menu(con: tcod.console.Console, ctx, player: "Player",
-                 local_map: "LocalMap", npc_mgr=None, wildlife_mgr=None) -> None:
+                 local_map: "LocalMap", npc_mgr=None, wildlife_mgr=None,
+                 claim_mgr=None) -> None:
     """
     Examine mode. Two sub-modes:
       - Directional look: press a compass direction key for a broad description
@@ -409,6 +423,14 @@ def examine_menu(con: tcod.console.Console, ctx, player: "Player",
                     if animal_at and animal_at.alive:
                         lines.append(f"{animal_at.species.display_name} — "
                                      f"{animal_at.state}")
+                # Mining claim at cursor
+                if claim_mgr:
+                    claim_here = claim_mgr.claim_at(
+                        player.world_x, player.world_y,
+                        player.area_x, player.area_y, cx, cy)
+                    if claim_here:
+                        status = "REGISTERED" if claim_here.registered else "unregistered"
+                        lines.append(f"Claim: {claim_here.name} ({claim_here.owner}, {status})")
                 # Blood
                 blood = getattr(tile, "blood", 0)
                 if blood >= 2:

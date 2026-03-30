@@ -150,7 +150,7 @@ class Player:
     def move(self, dx: int, dy: int) -> int:
         """
         Move on the local map. Returns SECONDS consumed.
-        Encumbrance slows movement: 1.5x at 75% capacity, 2.5x when overloaded.
+        Encumbrance slows movement. Wounds slow movement.
         """
         from src.constants import WALK_TIME
         self.local_x += dx
@@ -162,6 +162,30 @@ class Player:
             time_cost = int(time_cost * 2.5)
         elif self.encumbered:
             time_cost = int(time_cost * 1.5)
+        # Weather penalty (set by engine each tick)
+        weather_mult = getattr(self, '_weather_move_penalty', 1.0)
+        if weather_mult > 1.0:
+            time_cost = int(time_cost * weather_mult)
+        # Wound/pain penalty
+        if hasattr(self, 'wounds') and self.wounds:
+            pain = self.wounds.total_pain
+            if pain > 50:
+                time_cost = int(time_cost * 2.0)  # severe pain = half speed
+            elif pain > 25:
+                time_cost = int(time_cost * 1.5)  # moderate pain
+            elif pain > 10:
+                time_cost = int(time_cost * 1.2)  # mild pain
+            # Leg wounds specifically
+            from src.health_system import BP
+            leg_parts = (BP.L_THIGH, BP.R_THIGH, BP.L_LOWER_LEG,
+                         BP.R_LOWER_LEG, BP.GROIN)
+            for part in leg_parts:
+                state = self.wounds.part_state.get(part, "intact")
+                if state == "disabled":
+                    time_cost = int(time_cost * 3.0)
+                    break
+                elif state == "impaired":
+                    time_cost = int(time_cost * 1.5)
         return time_cost
 
     def move_world(self, dx: int, dy: int, world_map) -> int:

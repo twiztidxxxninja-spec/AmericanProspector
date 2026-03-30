@@ -633,6 +633,17 @@ class Engine:
             if not self.messages or self.messages[-1][0] != text:
                 self.add_message(text, severity)
 
+        # Exhaustion collapse — forced rest if fatigue hits 0
+        if self.player.survival.fatigue <= 0:
+            self.add_message(
+                "You collapse from exhaustion. Your body refuses to go further.",
+                "critical")
+            self.player.survival.rest(120)  # forced 2-hour nap
+            self.time.advance(120)
+            self.add_message(
+                "You wake up on the ground, groggy. You slept where you fell.",
+                "advisory")
+
         # Wound bleeding tick
         for msg, sev in self.player.wounds.tick(float(minutes)):
             self.add_message(msg, sev)
@@ -1455,7 +1466,8 @@ class Engine:
             from src.menus import examine_menu
             lmap = self.current_local
             examine_menu(self._console, self._ctx, self.player, lmap,
-                         npc_mgr=self.npc_mgr, wildlife_mgr=self.wildlife_mgr)
+                         npc_mgr=self.npc_mgr, wildlife_mgr=self.wildlife_mgr,
+                         claim_mgr=self.claim_mgr)
         else:
             self._examine_world_tile()
 
@@ -2104,6 +2116,8 @@ class Engine:
             settlement_layout=s_layout,
             legal=self.legal,
             animal_mgr=self.animal_mgr,
+            time_period=self.time.period,
+            reputation=self.reputation,
         )
         for line in log[-4:]:   # last 4 exchanges into message log
             self.add_message(line, "normal")
@@ -5298,6 +5312,9 @@ class Engine:
             # (just show message — player can zoom out to see it)
 
     def _do_move(self, dx: int, dy: int):
+        # Update weather penalty on player
+        self.player._weather_move_penalty = self.time.weather_move_penalty
+
         if self.state == GameState.LOCAL_MAP:
             lmap = self.current_local
             nx = self.player.local_x + dx
@@ -5646,6 +5663,8 @@ class Engine:
                 # Fire rendering
                 if hasattr(lmap, '_fire') and lmap._fire and lmap._fire.active:
                     self.renderer.draw_fire(lmap._fire, lmap, self.player)
+                self.renderer.draw_claims_on_map(self.player, lmap,
+                                                    self.claim_mgr)
                 self.renderer.draw_animals_on_map(self.player, lmap,
                                                      self.animal_mgr)
                 self.renderer.draw_pack_animals(self.player, self.animal_mgr)

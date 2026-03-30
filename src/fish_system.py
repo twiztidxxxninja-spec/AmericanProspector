@@ -216,6 +216,112 @@ FISH_DB = {
         core_regions=["Eastern US"],
         seasonal_availability=["spring", "fall"], notes="Migratory eel"
     ),
+
+    # ── Additional California & Western Species ──────────────────
+    "sacramento_pikeminnow": FishSpecies(
+        id="sacramento_pikeminnow", display_name="Sacramento Pikeminnow",
+        avg_weight_lb=3.0, nutrition=15, catch_difficulty=2,
+        preferred_water=["river", "stream"],
+        core_regions=["California", "Sierra Nevada"],
+        seasonal_availability=["spring", "summer", "fall"],
+        notes="Common in Central Valley rivers. Easy to catch, bony."
+    ),
+    "sacramento_sucker": FishSpecies(
+        id="sacramento_sucker", display_name="Sacramento Sucker",
+        avg_weight_lb=2.0, nutrition=12, catch_difficulty=1,
+        preferred_water=["river", "stream", "pond"],
+        core_regions=["California", "Sierra Nevada"],
+        seasonal_availability=["spring", "summer", "fall", "winter"],
+        notes="Bottom feeder. Year-round, easy catch, low quality."
+    ),
+    "tule_perch": FishSpecies(
+        id="tule_perch", display_name="Tule Perch",
+        avg_weight_lb=0.5, nutrition=8, catch_difficulty=1,
+        preferred_water=["pond", "river"],
+        core_regions=["California"],
+        seasonal_availability=["spring", "summer"],
+        notes="Small but plentiful. Good bait fish."
+    ),
+    "hardhead_minnow": FishSpecies(
+        id="hardhead_minnow", display_name="Hardhead",
+        avg_weight_lb=1.5, nutrition=10, catch_difficulty=1,
+        preferred_water=["stream", "river"],
+        core_regions=["California", "Sierra Nevada"],
+        seasonal_availability=["spring", "summer", "fall"],
+        notes="Native minnow. Common, easy to catch."
+    ),
+    "sacramento_blackfish": FishSpecies(
+        id="sacramento_blackfish", display_name="Sacramento Blackfish",
+        avg_weight_lb=3.0, nutrition=14, catch_difficulty=2,
+        preferred_water=["pond", "river"],
+        core_regions=["California"],
+        seasonal_availability=["spring", "summer"],
+        notes="Thrives in warm, slow water."
+    ),
+    "hitch": FishSpecies(
+        id="hitch", display_name="Hitch",
+        avg_weight_lb=1.0, nutrition=8, catch_difficulty=1,
+        preferred_water=["pond", "stream"],
+        core_regions=["California"],
+        seasonal_availability=["spring", "summer"],
+        notes="Native to Clear Lake. Small but abundant."
+    ),
+    "mountain_whitefish": FishSpecies(
+        id="mountain_whitefish", display_name="Mountain Whitefish",
+        avg_weight_lb=2.0, nutrition=14, catch_difficulty=2,
+        preferred_water=["stream", "river"],
+        core_regions=["Sierra Nevada", "Rocky Mountains", "Pacific Northwest"],
+        seasonal_availability=["fall", "winter"],
+        notes="Cold-water fish. Good eating in winter when trout are sluggish."
+    ),
+    "bull_trout": FishSpecies(
+        id="bull_trout", display_name="Bull Trout",
+        avg_weight_lb=6.0, nutrition=28, catch_difficulty=4,
+        preferred_water=["stream", "river"],
+        core_regions=["Pacific Northwest", "Rocky Mountains"],
+        seasonal_availability=["fall", "winter"],
+        notes="Cold-water predator. Aggressive, fights hard."
+    ),
+    "dolly_varden": FishSpecies(
+        id="dolly_varden", display_name="Dolly Varden",
+        avg_weight_lb=4.0, nutrition=22, catch_difficulty=3,
+        preferred_water=["stream", "river"],
+        core_regions=["Alaska", "Pacific Northwest"],
+        seasonal_availability=["summer", "fall"],
+        notes="Arctic char relative. Beautiful spotted fish."
+    ),
+    "green_sunfish": FishSpecies(
+        id="green_sunfish", display_name="Green Sunfish",
+        avg_weight_lb=0.5, nutrition=6, catch_difficulty=1,
+        preferred_water=["pond", "stream"],
+        core_regions=["California", "Great Plains", "Eastern US"],
+        seasonal_availability=["spring", "summer"],
+        notes="Tiny but everywhere. Good for beginners."
+    ),
+    "white_catfish": FishSpecies(
+        id="white_catfish", display_name="White Catfish",
+        avg_weight_lb=4.0, nutrition=20, catch_difficulty=2,
+        preferred_water=["river", "pond"],
+        core_regions=["California", "Eastern US"],
+        seasonal_availability=["spring", "summer", "fall"],
+        notes="Night feeder. Best caught after dark."
+    ),
+    "striped_bass": FishSpecies(
+        id="striped_bass", display_name="Striped Bass",
+        avg_weight_lb=12.0, nutrition=40, catch_difficulty=4,
+        preferred_water=["river", "estuary"],
+        core_regions=["California", "Eastern US"],
+        seasonal_availability=["spring", "fall"],
+        notes="Large, powerful. Fights hard. Excellent eating."
+    ),
+    "pacific_lamprey": FishSpecies(
+        id="pacific_lamprey", display_name="Pacific Lamprey",
+        avg_weight_lb=1.5, nutrition=15, catch_difficulty=2,
+        preferred_water=["river", "stream"],
+        core_regions=["California", "Pacific Northwest"],
+        seasonal_availability=["spring"],
+        notes="Eel-like. Valued food for Native peoples."
+    ),
 }
 
 

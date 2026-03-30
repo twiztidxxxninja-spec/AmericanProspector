@@ -4321,20 +4321,8 @@ class Engine:
                 self.add_message("No water nearby to fish in.", "advisory")
                 self.advance_time(2)
                 return
-            import random as _fish_rng
-            skill = self.player.skills.get("survival", 0)
-            roll = _fish_rng.randint(1, 20) + skill
-            self.advance_time(30)
-            self.player.gain_skill_xp("survival", 2.0)
-            if roll >= 10:
-                from src.items import make_item
-                fish = make_item("fresh_fish")
-                self.player.inventory.append(fish)
-                self.add_message(
-                    "You catch a fish! Fresh fish added to inventory.", "normal")
-            else:
-                self.add_message(
-                    "You wait patiently but nothing bites.", "normal")
+            from src.fishing_mode import enter_fishing_mode
+            enter_fishing_mode(self, self._console, self._ctx)
             return
 
         # ── Forage ───────────────────────────────────────────────────────

@@ -157,20 +157,30 @@ def enter_fishing_mode(engine: "Engine", console, ctx) -> None:
     has_dip_net = any("net" in getattr(i, "tool_tags", []) for i in player.inventory)
     has_gill_net = any("gill_net" in getattr(i, "tool_tags", []) for i in player.inventory)
 
+    # Check for sharp tool (spear needs it)
+    has_sharp = any(any(t in getattr(i, "tool_tags", [])
+                        for t in ("cut", "butcher", "chop"))
+                    for i in player.inventory)
+
     # Build available methods based on gear
     available = []
     if has_pole:
         available.append("pole")
-    available.append("spear")
+    if has_sharp:
+        available.append("spear")
     available.append("hand")
     if has_dip_net:
         available.append("dip_net")
     if has_gill_net:
         available.append("gill_net")
-    # Weir always available if you have logs
-    has_logs = any(i.id == "log" for i in player.inventory)
-    if has_logs:
+    # Weir needs 3+ logs
+    log_count = sum(getattr(i, 'quantity', 1) for i in player.inventory if i.id == "log")
+    if log_count >= 3:
         available.append("weir")
+
+    # Gill net state — set and return later
+    gill_net_set = False
+    gill_net_set_time = 0
 
     # What fish are available this season in this region?
     possible_fish = [f for f in FISH_DB.values()
@@ -244,6 +254,17 @@ def enter_fishing_mode(engine: "Engine", console, ctx) -> None:
                           fg=WHITE, bg=BG)
             y += 1
 
+        if not has_sharp and "spear" not in available:
+            y += 1
+            console.print(X + 4, y, "(Spear needs a knife or sharp tool)",
+                          fg=GREY, bg=BG)
+        if gill_net_set:
+            y += 1
+            elapsed = engine.time.total_minutes - gill_net_set_time
+            console.print(X + 4, y, f"Gill net set: {elapsed} min ago "
+                          f"({'ready!' if elapsed >= 90 else 'waiting...'})",
+                          fg=GREEN if elapsed >= 90 else YELLOW, bg=BG)
+
         y += 1
         console.print(X + 2, y, "[ESC] Stop fishing", fg=GREY, bg=BG)
 
@@ -277,6 +298,48 @@ def enter_fishing_mode(engine: "Engine", console, ctx) -> None:
                 if method_idx is not None and method_idx < len(available):
                     method_key = available[method_idx]
                     method = METHODS[method_key]
+
+                    # Weir consumes 3 logs on first build
+                    if method_key == "weir" and not hasattr(tile, '_weir_built'):
+                        logs_used = 0
+                        for item in list(player.inventory):
+                            if item.id == "log" and logs_used < 3:
+                                qty = getattr(item, 'quantity', 1)
+                                take = min(qty, 3 - logs_used)
+                                if item.stackable and qty > take:
+                                    item.quantity -= take
+                                else:
+                                    player.inventory.remove(item)
+                                logs_used += take
+                        tile._weir_built = True
+                        session_messages.append(
+                            "You stack rocks and logs across the stream. "
+                            "The weir is set. Fish will pile up.")
+
+                    # Gill net — set it and wait, don't catch instantly
+                    if method_key == "gill_net" and not gill_net_set:
+                        gill_net_set = True
+                        gill_net_set_time = engine.time.total_minutes
+                        session_messages.append(
+                            "You stretch the gill net across the stream "
+                            "and tie it off. Come back in 2 hours to check it.")
+                        engine.advance_time(10)  # 10 min to set
+                        break
+                    if method_key == "gill_net" and gill_net_set:
+                        elapsed = engine.time.total_minutes - gill_net_set_time
+                        if elapsed < 90:
+                            session_messages.append(
+                                f"Net has only been set {elapsed} minutes. "
+                                f"Give it at least 90 minutes.")
+                            break
+
+                    # Ice fishing check — winter + frozen water
+                    if season == "winter" and method_key in ("pole", "hand"):
+                        session_messages.append(
+                            "You chop a hole in the ice and drop your line. "
+                            "Cold work. Patience required.")
+                        # Fewer species in winter, but some are available
+                        # (already handled by seasonal filter)
 
                     # Check bait — what species does it attract?
                     bait_bonus = 0.0
@@ -360,18 +423,44 @@ def enter_fishing_mode(engine: "Engine", console, ctx) -> None:
                         total_caught += 1
                         total_weight += weight
 
-                        # Create item
+                        # Create species-specific item with real trade value
                         caught = make_item("fresh_fish")
                         caught.name = f"Fresh {fish.display_name}"
                         caught.nutrition = fish.nutrition
                         caught.weight = max(0.3, weight)
+                        # Trade value scales with size and difficulty
+                        caught.base_value = round(weight * 0.05 + fish.catch_difficulty * 0.03, 2)
+                        # Tag with species for smoking/drying recipes
+                        if not caught.extra:
+                            caught.extra = {}
+                        caught.extra["fish_species"] = fish.id
+                        caught.extra["fish_weight"] = round(weight, 1)
                         player.inventory.append(caught)
 
                         msg = FishingMechanics.get_catch_message(fish, method_key)
-                        msg += f" ({weight:.1f} lb)"
+                        msg += f" ({weight:.1f} lb, ${caught.base_value:.2f})"
                         session_messages.append(msg)
 
                         player.gain_skill_xp("survival", 1.5 + fish.catch_difficulty * 0.5)
+
+                        # Gill net catches multiple fish per check
+                        if method_key == "gill_net" and rng.random() < 0.6:
+                            bonus = rng.choices(catchable,
+                                                weights=[max(1, 6 - f.catch_difficulty) for f in catchable],
+                                                k=1)[0]
+                            bw = bonus.avg_weight_lb * rng.uniform(0.5, 1.2)
+                            bc = make_item("fresh_fish")
+                            bc.name = f"Fresh {bonus.display_name}"
+                            bc.nutrition = bonus.nutrition
+                            bc.weight = max(0.3, bw)
+                            bc.base_value = round(bw * 0.05 + bonus.catch_difficulty * 0.03, 2)
+                            if not bc.extra: bc.extra = {}
+                            bc.extra["fish_species"] = bonus.id
+                            player.inventory.append(bc)
+                            total_caught += 1
+                            total_weight += bw
+                            session_messages.append(
+                                f"  Also in the net: {bonus.display_name} ({bw:.1f} lb)")
 
                     # Degrade spot
                     tile._fish_pressure += 0.1

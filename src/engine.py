@@ -2622,6 +2622,11 @@ class Engine:
         fire = self._nearby_structure("cook", radius=2)
         if fire:
             actions.append("Cook food")
+            # Dry soaked items near fire
+            soaked = [i for i in self.player.inventory
+                      if getattr(i, 'extra', None) and i.extra.get("soaked")]
+            if soaked:
+                actions.append(f"Dry soaked gear ({len(soaked)} items)")
 
         sluice = self._nearby_structure("pan_gold", radius=3)
         if sluice:
@@ -3090,8 +3095,8 @@ class Engine:
             self.advance_time(5)
             return
 
-        # ── Dry soaked food (requires nearby campfire) ─────────────────
-        if "dry" in a and ("food" in a or "meat" in a or "soaked" in a):
+        # ── Dry soaked food/gear (requires nearby campfire) ─────────────
+        if "dry" in a and ("food" in a or "meat" in a or "soaked" in a or "gear" in a):
             fire = self._nearby_structure("cook", radius=2)
             if not fire:
                 self.add_message("You need a campfire nearby to dry food.", "advisory")

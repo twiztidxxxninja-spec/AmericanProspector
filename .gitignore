@@ -15,3 +15,8 @@ models/
 *.gguf.tmp
 .venv/
 venv/
+dist/
+dist2/
+build/
+*.spec
+.deps_installed

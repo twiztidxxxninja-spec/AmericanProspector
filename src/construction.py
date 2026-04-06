@@ -902,7 +902,8 @@ class ConstructionManager:
         nl = name.lower()
         total = 0
         for item in inventory:
-            if item.name.lower() == nl:
+            il = item.name.lower()
+            if il == nl or il.endswith(nl):
                 total += getattr(item, "quantity", 1)
         if total < qty:
             return False
@@ -911,7 +912,8 @@ class ConstructionManager:
         for item in list(inventory):
             if remaining <= 0:
                 break
-            if item.name.lower() != nl:
+            il = item.name.lower()
+            if il != nl and not il.endswith(nl):
                 continue
             avail = getattr(item, "quantity", 1)
             if getattr(item, "stackable", False) and avail > remaining:
@@ -1009,7 +1011,10 @@ class ConstructionManager:
         nl = name.lower()
         total = 0
         for item in inventory:
-            if item.name.lower() == nl:
+            # Exact match OR item name ends with the material name
+            # (handles animal-prefixed items like "Mule Deer Rope (10 ft)")
+            il = item.name.lower()
+            if il == nl or il.endswith(nl):
                 total += getattr(item, "quantity", 1)
         return total >= qty
 

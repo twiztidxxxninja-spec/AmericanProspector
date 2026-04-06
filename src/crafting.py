@@ -1831,6 +1831,21 @@ for r in RECIPES:
     RECIPE_CATEGORIES.setdefault(r.category, []).append(r)
 
 
+# Items that count as equivalent for recipe matching
+_MATERIAL_GROUPS = {
+    "fresh_venison": {"fresh_venison", "hindquarter_meat", "shoulder_meat",
+                      "rib_meat", "neck_meat", "breast_meat", "snake_meat",
+                      "human_meat"},
+}
+
+def _item_matches_material(item_id: str, mat_id: str) -> bool:
+    """Check if an item satisfies a recipe material requirement."""
+    if item_id == mat_id:
+        return True
+    group = _MATERIAL_GROUPS.get(mat_id)
+    return group is not None and item_id in group
+
+
 def can_craft(recipe: Recipe, inventory: list) -> Tuple[bool, str]:
     """Check if player has materials and tools."""
     if recipe.tool_required:
@@ -1842,11 +1857,7 @@ def can_craft(recipe: Recipe, inventory: list) -> Tuple[bool, str]:
     for mat_id, qty_needed in recipe.materials:
         total = 0
         for item in inventory:
-            if item.id == mat_id:
-                # Reject raw perishable pelts/hides — must be processed first
-                if item.perishable and (item.id.endswith("_pelt") or
-                        item.id in ("raw_hide", "buffalo_robe")):
-                    continue  # skip unprocessed hides
+            if _item_matches_material(item.id, mat_id):
                 total += getattr(item, "quantity", 1)
         if total < qty_needed:
             from src.items import ITEM_TEMPLATES
@@ -1870,7 +1881,7 @@ def execute_craft(recipe: Recipe, player) -> Tuple[bool, str]:
         for item in list(player.inventory):
             if remaining <= 0:
                 break
-            if item.id != mat_id:
+            if not _item_matches_material(item.id, mat_id):
                 continue
             # Remember the name (e.g. "Mule Deer Large Hide" for raw_hide)
             if mat_id not in source_names:

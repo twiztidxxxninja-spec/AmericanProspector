@@ -176,7 +176,15 @@ def _handle_recipe_tab(sym, state: MenuState, ctx: dict) -> bool:
         ok, msg = execute_craft(r, player)
         state.result = ("crafted" if ok else "failed", msg,
                         r.time_minutes if ok else 5)
-        state.should_close = True
+        # Stay in menu — accumulate results so player can craft multiples
+        if not hasattr(state, '_craft_results'):
+            state._craft_results = []
+        state._craft_results.append(state.result)
+        state._last_craft_msg = msg
+        state._last_craft_ok = ok
+        # Record recipe name for action menu repeat
+        if ok:
+            state._last_recipe_name = r.name
         return True
 
     return False
@@ -185,6 +193,15 @@ def _handle_recipe_tab(sym, state: MenuState, ctx: dict) -> bool:
 # ============================================================================
 #  PUBLIC
 # ============================================================================
+
+_last_recipe_name = ""
+
+def _get_last_recipe_name() -> str:
+    return _last_recipe_name
+
+def _save_recipe_name(state):
+    global _last_recipe_name
+    _last_recipe_name = getattr(state, '_last_recipe_name', "")
 
 def open_crafting(con, ctx, player) -> Any:
     """Open the tabbed crafting menu. Returns (status, message, time) or None."""
@@ -236,23 +253,33 @@ def open_crafting(con, ctx, player) -> Any:
         tab = tabs[active_tab]
         tab.draw_fn(con, X + 1, Y + 3, W - 2, H - 6, state, craft_ctx)
 
-        draw_separator(con, X, Y + H - 3, W)
-        con.print(X + 2, Y + H - 2,
-                  "< > Tabs   Up/Down Select   Enter Craft   Esc Close",
+        # Show last craft result if any
+        last_msg = getattr(state, '_last_craft_msg', None)
+        if last_msg:
+            msg_fg = GREEN if getattr(state, '_last_craft_ok', False) else RED
+            draw_separator(con, X, Y + H - 4, W)
+            con.print(X + 2, Y + H - 3, last_msg[:W - 4], fg=msg_fg, bg=BG)
+            draw_separator(con, X, Y + H - 2, W)
+        else:
+            draw_separator(con, X, Y + H - 3, W)
+
+        con.print(X + 2, Y + H - 1,
+                  "< > Tabs   Up/Dn Select   Enter Craft   Esc Close",
                   fg=DGREY, bg=BG)
         ctx.present(con)
 
-        if state.should_close:
-            return state.result
-
         for event in _evt.wait():
             if isinstance(event, _evt.Quit):
-                return None
+                results = getattr(state, '_craft_results', None)
+                _save_recipe_name(state)
+                return results if results else None
             if isinstance(event, _evt.KeyDown):
                 sym = event.sym
                 K = _evt.KeySym
                 if sym == K.ESCAPE:
-                    return None
+                    results = getattr(state, '_craft_results', None)
+                    _save_recipe_name(state)
+                    return results if results else None
                 if sym in (K.RIGHT, K.PERIOD, K.TAB):
                     active_tab = (active_tab + 1) % len(tabs)
                     state.selected = 0

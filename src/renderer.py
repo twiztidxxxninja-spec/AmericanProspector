@@ -557,8 +557,10 @@ class Renderer:
         for npc in npcs:
             if not npc.present:
                 continue
-            # Only show NPCs at the player's z-level
-            if getattr(npc, "local_z", 0) != player.local_z:
+            # Show NPCs within 1 z-level of the player
+            npc_z = getattr(npc, "local_z", 0)
+            z_diff = abs(npc_z - player.local_z)
+            if z_diff > 1:
                 continue
             sx = npc.local_x - cam_x
             sy = npc.local_y - cam_y
@@ -590,6 +592,10 @@ class Renderer:
                 else:
                     fg_color = (220, 110, 60)  # orange-red — unfriendly
 
+            # Dim if on different z-level
+            if z_diff == 1:
+                fg_color = tuple(c // 2 for c in fg_color)
+
             # Dead NPCs show as % (corpse)
             if not npc.alive or npc.combat_state == "dead":
                 self.con.print(sx, sy + 1, "%", fg=(120, 60, 60), bg=bg)
@@ -615,8 +621,10 @@ class Renderer:
         for animal in animals:
             if not (animal.alive or animal.recoverable):
                 continue
-            # Only show animals at the player's z-level
-            if getattr(animal, "local_z", 0) != player.local_z:
+            # Show animals within 1 z-level of the player
+            animal_z = getattr(animal, "local_z", 0)
+            z_diff = abs(animal_z - player.local_z)
+            if z_diff > 1:
                 continue
             sx = animal.local_x - cam_x
             sy = animal.local_y - cam_y
@@ -640,6 +648,10 @@ class Renderer:
             elif animal.state == "dead":
                 glyph = "%"                 # dead
                 fg = (100, 60, 60)          # darker red
+
+            # Dim if on different z-level
+            if z_diff == 1:
+                fg = tuple(c // 2 for c in fg)
 
             self.con.print(sx, sy + 1, glyph, fg=fg, bg=bg)
 

@@ -81,18 +81,21 @@ def test_pan(player: "Player", local_map: "LocalMap") -> PanResult:
             message="You need a gold pan to test this ground.",
         )
 
-    # Assign gold grade if not yet set
+    # Assign gold grade if not yet set (tiles missed by feature placer)
     if tile.gold_grade == 0.0:
         rng = random.Random(local_map.seed + player.local_x * 100 + player.local_y)
         if tile.terrain == LocalTerrain.GRAVEL_BAR:
-            tile.gold_grade = rng.betavariate(1.5, 4.0)
+            # Gravel bars should always have at least trace gold
+            tile.gold_grade = 0.08 + rng.betavariate(2.0, 3.0) * 0.50
         elif tile.terrain == LocalTerrain.BEDROCK:
-            tile.gold_grade = rng.betavariate(2.0, 3.0)
+            # Bedrock traps gold — consistently richer
+            tile.gold_grade = 0.20 + rng.betavariate(2.5, 2.5) * 0.60
         elif tile.terrain in (LocalTerrain.WATER, LocalTerrain.MUD,
                                LocalTerrain.SAND):
-            tile.gold_grade = rng.betavariate(0.8, 5.0)
+            tile.gold_grade = rng.betavariate(1.0, 4.0) * 0.30
         else:
-            tile.gold_grade = rng.betavariate(0.3, 8.0)
+            # Dirt, grass — very unlikely but not impossible
+            tile.gold_grade = rng.betavariate(0.5, 6.0) * 0.15
 
     grade_label = tile_grade_label(tile.gold_grade)
     placer_skill = player.skills.get("placer", 0)
@@ -262,17 +265,18 @@ def pan_for_gold(player: "Player", local_map: "LocalMap",
             message="You need a gold pan.",
         )
 
-    # Assign gold grade to tile if not yet set
+    # Assign gold grade to tile if not yet set (missed by feature placer)
     if tile.gold_grade == 0.0:
-        # Generate grade based on local map seed and position
         rng = random.Random(local_map.seed + player.local_x * 100 + player.local_y)
-        # Gravel bars more likely to have gold
         if tile.terrain == LocalTerrain.GRAVEL_BAR:
-            tile.gold_grade = rng.betavariate(1.5, 4.0)   # skewed toward low-moderate
+            tile.gold_grade = 0.08 + rng.betavariate(2.0, 3.0) * 0.50
         elif tile.terrain == LocalTerrain.BEDROCK:
-            tile.gold_grade = rng.betavariate(2.0, 3.0)   # slightly richer
+            tile.gold_grade = 0.20 + rng.betavariate(2.5, 2.5) * 0.60
+        elif tile.terrain in (LocalTerrain.WATER, LocalTerrain.MUD,
+                               LocalTerrain.SAND):
+            tile.gold_grade = rng.betavariate(1.0, 4.0) * 0.30
         else:
-            tile.gold_grade = rng.betavariate(0.5, 5.0)   # mostly barren
+            tile.gold_grade = rng.betavariate(0.5, 6.0) * 0.15
         tile.mineral_hint = tile_grade_label(tile.gold_grade)
 
     grade_label = tile_grade_label(tile.gold_grade)

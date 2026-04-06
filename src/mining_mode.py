@@ -761,12 +761,42 @@ def _auto_sluice(engine: "Engine", console, ctx,
         sluice_gold += load_gold
         batch_tiles.append((tx, ty))
 
-        # Terrain change
+        # Terrain change — mark surface worked
         if tile.terrain == LocalTerrain.GRAVEL_BAR:
             tile.terrain = LocalTerrain.WORKED_GRAVEL
         elif tile.terrain in (LocalTerrain.GROUND, LocalTerrain.GRASS):
             tile.terrain = LocalTerrain.WORKED_DIRT
         tile.sluiced = True
+
+        # Dig down — lower surface z by 1 to expose the layer below.
+        # Real sluicing: shovel away the surface gravel, work your way
+        # down toward bedrock where the richest gold settles.
+        cur_surface = int(lmap.surface_z[ty][tx])
+        if cur_surface > 0:
+            lmap.surface_z[ty][tx] = cur_surface - 1
+            # Reset the surface tile for the newly exposed layer:
+            # terrain reverts to unworked, gold grade increases with depth
+            depth_dug = 1  # how many z-levels down from original
+            # Check how far we've dug total by looking at original height
+            orig_surface = getattr(tile, '_orig_surface_z', cur_surface)
+            if not hasattr(tile, '_orig_surface_z'):
+                tile._orig_surface_z = cur_surface
+            depth_dug = orig_surface - (cur_surface - 1)
+
+            # Deeper layers are richer (closer to bedrock)
+            depth_bonus = min(0.35, depth_dug * 0.08)
+            tile.terrain = LocalTerrain.GRAVEL_BAR  # fresh layer exposed
+            tile.gold_grade = min(1.0, tile.gold_grade * 1.15 + depth_bonus)
+            tile.sluiced = False
+            tile.panned = False
+            # At depth 4+ we hit bedrock — richest layer, then it's done
+            if depth_dug >= 4:
+                tile.terrain = LocalTerrain.BEDROCK
+                tile.gold_grade = min(1.0, tile.gold_grade + 0.20)
+                engine.add_message(
+                    "You've hit bedrock! This is where the heavy gold sits.",
+                    "advisory")
+
         lmap.invalidate_terrain_cache()
 
         # Tile shoveled — remove from remaining

@@ -253,7 +253,7 @@ def open_action_menu(con: tcod.console.Console,
     - Keep typing past suggestions → Enter submits as custom LLM action
     - Enter with nothing selected repeats last action
     """
-    W, H = 56, 32
+    W, H = 56, 38
     SW, SH = con.width, con.height
     X = (SW - W) // 2
     Y = (SH - H) // 2
@@ -297,13 +297,52 @@ def open_action_menu(con: tcod.console.Console,
         title = " ACTIONS "
         con.print(X + (W - len(title)) // 2, Y, title, fg=YELLOW, bg=BG)
 
+        # ── Ensure selected entry is visible (auto-scroll) ─────────
+        # Count display rows needed for entries up to 'selected'
+        # so scroll accounts for section headers too.
+        def _rows_for_range(start, end):
+            """Count display rows consumed by entries[start:end]."""
+            rows = 0
+            sec = "" if start == 0 else entries[start - 1].section if start > 0 else ""
+            for idx in range(start, end):
+                e = entries[idx]
+                if not typing and e.section != sec:
+                    sec = e.section
+                    header = {"context": "NEARBY", "recent": "RECENT",
+                              "common": "ACTIONS", "suggestion": "SUGGESTIONS"
+                              }.get(e.section)
+                    if header:
+                        if rows > 0:
+                            rows += 1  # blank line
+                        rows += 1      # header
+                rows += 1  # the entry itself
+            return rows
+
+        # Scroll down if selected is past visible area
+        while True:
+            rows_used = _rows_for_range(scroll, min(selected + 1, len(entries)))
+            if rows_used <= VISIBLE:
+                break
+            scroll += 1
+            if scroll >= len(entries):
+                break
+
+        # Scroll up if selected is above scroll
+        if selected < scroll:
+            scroll = selected
+
         # Entry list with section headers
-        cur_section = ""
+        cur_section = "" if scroll == 0 else (
+            entries[scroll - 1].section if scroll > 0 else "")
         row = Y + 2
         drawn = 0
 
+        has_more_above = scroll > 0
+        has_more_below = False
+
         for i in range(scroll, len(entries)):
             if drawn >= VISIBLE:
+                has_more_below = (i < len(entries))
                 break
             e = entries[i]
 
@@ -323,11 +362,13 @@ def open_action_menu(con: tcod.console.Console,
                         row += 1
                         drawn += 1
                         if drawn >= VISIBLE:
+                            has_more_below = True
                             break
                     con.print(X + 2, row, header, fg=GREY, bg=BG)
                     row += 1
                     drawn += 1
                     if drawn >= VISIBLE:
+                        has_more_below = True
                         break
 
             # Search mode header (once)
@@ -366,6 +407,12 @@ def open_action_menu(con: tcod.console.Console,
             con.print(X + 2, row, label_str[:W - 4], fg=fg, bg=bg_c)
             row += 1
             drawn += 1
+
+        # Scroll indicators
+        if has_more_above:
+            con.print(X + W - 4, Y + 2, " ▲ ", fg=GREY, bg=BG)
+        if has_more_below:
+            con.print(X + W - 4, Y + H - 6, " ▼ ", fg=GREY, bg=BG)
 
         # No matches message
         if typing and text_input and not entries:
@@ -461,13 +508,9 @@ def open_action_menu(con: tcod.console.Console,
                 elif sym in (K.DOWN, K.KP_2):
                     if entries:
                         selected = min(selected + 1, len(entries) - 1)
-                        if selected >= scroll + VISIBLE:
-                            scroll += 1
 
                 elif sym in (K.UP, K.KP_8):
                     selected = max(selected - 1, 0)
-                    if selected < scroll:
-                        scroll = selected
 
                 elif sym == K.TAB:
                     # Tab = accept current suggestion into text field
@@ -483,13 +526,9 @@ def open_action_menu(con: tcod.console.Console,
 
                 elif sym in (K.DOWN, K.KP_2):
                     selected = min(selected + 1, len(entries) - 1)
-                    if selected >= scroll + VISIBLE:
-                        scroll += 1
 
                 elif sym in (K.UP, K.KP_8):
                     selected = max(selected - 1, 0)
-                    if selected < scroll:
-                        scroll = selected
 
                 elif sym in (K.RETURN, K.KP_ENTER):
                     if entries and selected < len(entries):

@@ -1402,6 +1402,12 @@ def _do_player_attack(engine, target, kind, weapon, aimed_part, dist,
         engine.player.gain_skill_xp(
             "firearms" if weapon and weapon.weapon_type == "firearm" else "survival", 2.0)
 
+    # Gunshot spooks all nearby wildlife
+    if is_firearm and not is_bow:
+        if hasattr(engine, 'wildlife_mgr'):
+            engine.wildlife_mgr.spook_from_gunshot(
+                lmap, engine.player.local_x, engine.player.local_y)
+
 
 def _play_sound(sound_type: str):
     """Play a short combat sound effect via pygame mixer."""

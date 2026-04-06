@@ -305,10 +305,11 @@ def _hunting_loop(engine: "Engine", console, ctx) -> None:
                                 a.alert = True
                         player.gain_skill_xp("firearms", 1.0)
 
-                    # Gunshot alerts all animals in extended range
+                    # Gunshot spooks all animals — they flee
                     for a in all_animals:
                         if a.state == "idle":
                             a.alert = True
+                            a.state = "fleeing"
                     break
 
                 # Cycle target

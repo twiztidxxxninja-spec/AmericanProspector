@@ -636,6 +636,22 @@ class WildlifeManager:
                     return a
         return None
 
+    def spook_from_gunshot(self, lmap: LocalMap, source_x: int,
+                           source_y: int, radius: int = 60):
+        """Gunfire spooks all idle animals within radius.
+        Call this whenever a firearm is discharged on the local map."""
+        key = (lmap.world_x, lmap.world_y, lmap.area_x, lmap.area_y)
+        animals = self.active.get(key, [])
+        for a in animals:
+            if not a.alive or a.state in ("downed", "dead", "butchered"):
+                continue
+            dist = max(abs(a.local_x - source_x),
+                       abs(a.local_y - source_y))
+            if dist <= radius:
+                a.alert = True
+                if a.state == "idle":
+                    a.state = "fleeing"
+
     # ── Per-tick update ──────────────────────────────────────────────────
 
     def update_all(self, minutes: int, player: "Player",
@@ -672,6 +688,9 @@ class WildlifeManager:
             alert_d = _ALERT_DIST.get(dl, 10)
             if dist <= alert_d and not animal.alert:
                 animal.alert = True
+                # Prey goes from alert → flee immediately
+                if dl in (0, 1) and dist <= alert_d:
+                    animal.state = "fleeing"
 
             # ── State transitions ────────────────────────────────────────
             if animal.state == "idle":
@@ -680,7 +699,7 @@ class WildlifeManager:
                 if dl == 0 or dl == 1:
                     if dist <= flee_d:
                         animal.state = "fleeing"
-                        if dist <= 4:
+                        if dist <= 6:
                             messages.append(
                                 f"A {sp.display_name} bolts away from you!")
                 elif dl == 2:
@@ -688,12 +707,23 @@ class WildlifeManager:
                         animal.state = "hostile"
                         messages.append(f"A {sp.display_name} charges at you!")
 
+            # Alerted prey that hasn't started fleeing yet — flee now
+            if animal.alert and animal.state == "idle" and dl in (0, 1):
+                animal.state = "fleeing"
+
             # Skip movement for downed/dead/butchered
             if animal.state in ("downed", "dead", "butchered"):
                 continue
 
             # ── Movement ────────────────────────────────────────────────
-            steps = max(1, minutes // 5)
+            base_steps = max(1, minutes // 5)
+            # Fleeing animals move fast — 3-5 tiles per tick
+            if animal.state in ("fleeing", "wounded_fleeing"):
+                steps = base_steps * 4
+            elif animal.state == "hostile":
+                steps = base_steps * 2
+            else:
+                steps = base_steps
             for _ in range(steps):
                 if animal.state == "fleeing":
                     self._move_away(animal, player, lmap)
@@ -765,10 +795,12 @@ class WildlifeManager:
         if _can_move_to(lmap, nx, ny):
             animal.local_x = nx
             animal.local_y = ny
-        # Despawn once far enough away
-        if max(abs(animal.local_x - player.local_x),
-               abs(animal.local_y - player.local_y)) > 30:
-            animal.state = "butchered"   # off-map, treat as gone
+        # Despawn once far enough away (wounded animals don't despawn —
+        # player should be able to track them by blood trail)
+        if animal.state == "fleeing":
+            if max(abs(animal.local_x - player.local_x),
+                   abs(animal.local_y - player.local_y)) > 50:
+                animal.state = "butchered"   # off-map, treat as gone
 
     def _move_toward(self, animal: WildlifeInstance, player: "Player",
                      lmap: LocalMap):

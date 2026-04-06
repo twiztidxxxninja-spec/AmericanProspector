@@ -3042,33 +3042,66 @@ class Engine:
                 "You need a knife or axe to butcher.", "advisory")
             return
 
-        method_labels = ["Quick (15 min)", "Normal (45 min)", "Extensive (90 min)"]
-        idx = pick_from_list(self._console, self._ctx,
-            f"Butcher {npc.display_name()}?", method_labels)
-        if idx is None:
+        rng = _rnd.Random()
+
+        # Human yields — treated as medium-sized creature
+        # Generate all possible parts, let player choose via butcher UI
+        all_parts = [
+            Item(id="human_meat", name=f"{npc.name} Hindquarter",
+                 weight=rng.uniform(6, 10), category="food",
+                 nutrition=40, perishable=True, days_until_spoil=2,
+                 base_value=0.0,
+                 description="Human flesh. Most people would find this abhorrent."),
+            Item(id="human_meat", name=f"{npc.name} Shoulder",
+                 weight=rng.uniform(4, 7), category="food",
+                 nutrition=35, perishable=True, days_until_spoil=2,
+                 base_value=0.0,
+                 description="Human flesh. Deeply disturbing."),
+            Item(id="human_meat", name=f"{npc.name} Ribs",
+                 weight=rng.uniform(3, 5), category="food",
+                 nutrition=30, perishable=True, days_until_spoil=2,
+                 base_value=0.0,
+                 description="Human ribs. Abhorrent to possess."),
+            Item(id="raw_hide", name=f"{npc.name} Skin",
+                 weight=5.0, category="material", base_value=0.0,
+                 description="Human skin. Deeply disturbing to possess."),
+            Item(id="animal_bones", name="Human Bones",
+                 weight=4.0, category="material", base_value=0.0,
+                 description="Human skeletal remains."),
+            Item(id="tallow", name="Human Fat",
+                 weight=rng.uniform(1.5, 3.0), category="material",
+                 base_value=0.0,
+                 description="Rendered human fat."),
+            Item(id="sinew", name="Human Sinew",
+                 weight=0.3, category="material", base_value=0.0,
+                 description="Sinew from a human body."),
+        ]
+
+        # Let player pick which parts to take
+        part_names = [f"{p.name} ({p.weight:.1f} lb)" for p in all_parts]
+        selected = []
+        while True:
+            display = []
+            for i, name in enumerate(part_names):
+                prefix = "[X] " if i in selected else "[ ] "
+                display.append(f"{prefix}{name}")
+            display.append("── Done ──")
+            idx = pick_from_list(self._console, self._ctx,
+                f"Butcher {npc.display_name()} — select parts", display)
+            if idx is None:
+                return  # cancelled
+            if idx == len(part_names):
+                break  # done selecting
+            if idx in selected:
+                selected.remove(idx)
+            else:
+                selected.append(idx)
+
+        if not selected:
             return
 
-        rng = _rnd.Random()
-        time_costs = [15, 45, 90]
-
-        # Human yields — medium-sized creature
-        yields = []
-        if idx >= 0:
-            yields.append(Item(id="human_meat", name=f"{npc.name}'s Meat",
-                weight=rng.uniform(3, 8), category="food",
-                nutrition=30, perishable=True, days_until_spoil=2,
-                base_value=0.0,
-                description="Human flesh. Most people would find this abhorrent."))
-        if idx >= 1:
-            yields.append(Item(id="raw_hide", name=f"{npc.name} Skin",
-                weight=5.0, category="material", base_value=0.0,
-                description="Tanned human skin. Deeply disturbing to possess."))
-            yields.append(Item(id="animal_bones", name=f"Human Bones",
-                weight=4.0, category="material", base_value=0.0,
-                description="Human skeletal remains."))
-        if idx >= 2:
-            yields.append(Item(id="tallow", name="Human Fat",
-                weight=2.0, category="material", base_value=0.0))
+        yields = [all_parts[i] for i in selected]
+        time_min = 15 + len(selected) * 10  # more parts = more time
 
         # Place on ground
         lmap = self.current_local
@@ -3081,10 +3114,11 @@ class Engine:
         npc.alive = False
 
         self.add_message(
-            f"You butcher {npc.name}. {len(yields)} items on the ground.",
+            f"You butcher {npc.name}. {len(yields)} parts on the ground.",
             "critical")
-        self.advance_time(time_costs[idx])
+        self.advance_time(time_min)
         self.player.gain_skill_xp("survival", 2.0)
+        self.player.gain_skill_xp("butchering", 3.0)
 
         # Massive reputation hit — anyone who finds out
         region = self.current_local._region_name if self.current_local else ""
@@ -3124,14 +3158,51 @@ class Engine:
                 f"You're overloaded! ({self.player.carried_weight:.0f}/{self.player.carry_capacity:.0f} lb)",
                 "advisory")
 
-    def _open_crafting(self):
-        """Crafting menu — tabbed interface by category."""
-        from src.ui_crafting import open_crafting
-        result = open_crafting(self._console, self._ctx, self.player)
-        if result:
-            status, msg, minutes = result
-            self.add_message(msg, "normal" if status == "crafted" else "advisory")
-            self.advance_time(minutes)
+    def _open_crafting(self, quick_recipe_name: str = ""):
+        """Crafting menu — tabbed interface by category.
+        If quick_recipe_name is set, skip the menu and craft that recipe directly."""
+        if quick_recipe_name:
+            from src.crafting import ALL_RECIPES, can_craft, execute_craft
+            recipe = None
+            for r in ALL_RECIPES:
+                if r.name.lower() == quick_recipe_name.lower():
+                    recipe = r
+                    break
+            if recipe:
+                ok, reason = can_craft(recipe, self.player.inventory)
+                if ok:
+                    ok2, msg = execute_craft(recipe, self.player)
+                    self.add_message(msg,
+                                     "normal" if ok2 else "advisory")
+                    if ok2:
+                        self.advance_time(recipe.time_minutes)
+                        self.action_history.record(f"Craft {recipe.name}")
+                else:
+                    self.add_message(f"Can't craft {recipe.name}: need {reason}.",
+                                     "advisory")
+                return
+        from src.ui_crafting import open_crafting, _get_last_recipe_name
+        results = open_crafting(self._console, self._ctx, self.player)
+        if results:
+            if isinstance(results, list):
+                total_min = 0
+                last_name = ""
+                for status, msg, minutes in results:
+                    self.add_message(msg,
+                                     "normal" if status == "crafted" else "advisory")
+                    if status == "crafted":
+                        total_min += minutes
+                if total_min > 0:
+                    self.advance_time(total_min)
+            else:
+                status, msg, minutes = results
+                self.add_message(msg,
+                                 "normal" if status == "crafted" else "advisory")
+                self.advance_time(minutes)
+            # Record last crafted recipe as recent action
+            recipe_name = _get_last_recipe_name()
+            if recipe_name:
+                self.action_history.record(f"Craft {recipe_name}")
 
     def _open_throw(self):
         """[V] — select an item to throw, then select a target."""
@@ -5678,6 +5749,11 @@ class Engine:
             return
 
         # ── Crafting ──────────────────────────────────────────────────────
+        # Quick-craft from recent action (e.g. "Craft Plank")
+        if a.startswith("craft ") and len(a) > 6:
+            recipe_name = action[6:]  # preserve original case
+            self._open_crafting(quick_recipe_name=recipe_name)
+            return
         _CRAFT_VERBS = ("craft", "make", "brew", "smoke", "tan", "stretch",
                         "leach", "roast", "boil", "dry", "cure", "preserve",
                         "build", "sew", "knit", "weave", "carve")

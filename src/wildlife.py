@@ -48,11 +48,22 @@ class WildlifeType(Enum):
     OPOSSUM = "opossum"
     LYNX = "lynx"
 
-    # === REPTILES & BIRDS ===
+    # === EASTERN / ADDITIONAL GAME ===
+    WHITETAIL_DEER = "whitetail_deer"
+    COTTONTAIL_RABBIT = "cottontail_rabbit"
+    WILD_HORSE = "wild_horse"
+    PRAIRIE_DOG = "prairie_dog"
+    MOUNTAIN_GOAT = "mountain_goat"
+    WILD_BOAR = "wild_boar"
+
+    # === BIRDS ===
     RATTLESNAKE = "rattlesnake"
+    TIMBER_RATTLESNAKE = "timber_rattlesnake"
     BALD_EAGLE = "bald_eagle"
     CALIFORNIA_CONDOR = "california_condor"   # very rare
     WILD_TURKEY = "wild_turkey"
+    PASSENGER_PIGEON = "passenger_pigeon"     # extinct by 1914
+    SANDHILL_CRANE = "sandhill_crane"
 
 
 @dataclass
@@ -101,28 +112,28 @@ WILDLIFE_DB = {
         id="buffalo", display_name="Plains Bison",
         danger_level=2, size="very_large",
         primary_habitats=["prairie", "plains", "open grassland", "river valleys"],
-        core_regions=["Great Plains", "Central Plains", "Northern Plains", "Eastern Colorado", "Montana plains"],
+        core_regions=["Great Plains", "Central Plains", "Northern Plains", "Eastern Colorado", "Montana plains", "Appalachians", "Ohio Valley"],
         base_spawn_chance=0.25,
         meat_yield_lb=500.0, hide_value=18.0,
-        notes="Iconic Great Plains animal. Huge food source but dangerous when provoked."
+        notes="Bison roamed east of the Mississippi until ~1800. Iconic Great Plains animal."
     ),
     WildlifeType.ELK: WildlifeSpecies(
         id="elk", display_name="Elk",
         danger_level=1, size="large",
         primary_habitats=["mountains", "foothills", "open woodland"],
-        core_regions=["Sierra Nevada", "Rockies", "Pacific Northwest"],
+        core_regions=["Sierra Nevada", "Rockies", "Pacific Northwest", "Appalachians"],
         base_spawn_chance=0.15,
         meat_yield_lb=300.0, hide_value=12.0,
-        notes="Major game animal in mountainous regions."
+        notes="Major game animal. Eastern elk abundant pre-1800, extinct in east by 1850."
     ),
     WildlifeType.MULE_DEER: WildlifeSpecies(
         id="mule_deer", display_name="Mule Deer",
         danger_level=0, size="medium",
         primary_habitats=["foothills", "mountains", "brush"],
-        core_regions=["Sierra Nevada", "California", "Western mountains"],
+        core_regions=["Sierra Nevada", "California", "Western mountains", "Appalachians", "Ohio Valley"],
         base_spawn_chance=0.35,
         meat_yield_lb=90.0, hide_value=4.0,
-        notes="Very common in California mining country."
+        notes="Common across North America. Eastern whitetail deer is the Long Hunter's livelihood."
     ),
     WildlifeType.BLACK_TAILED_DEER: WildlifeSpecies(
         id="black_tailed_deer", display_name="Black-tailed Deer",
@@ -385,6 +396,93 @@ WILDLIFE_DB = {
         base_spawn_chance=0.05,
         meat_yield_lb=18.0, hide_value=6.00,
         notes="Elusive cat. Valuable spotted fur. Hunts snowshoe hare."
+    ),
+
+    # === EASTERN / ADDITIONAL GAME ===
+    WildlifeType.WHITETAIL_DEER: WildlifeSpecies(
+        id="whitetail_deer", display_name="White-tailed Deer",
+        danger_level=0, size="medium",
+        primary_habitats=["forest", "brush", "open woodland", "river valleys"],
+        core_regions=["Appalachians", "Ohio Valley", "Gulf Coast",
+                      "Great Plains", "Central Plains"],
+        base_spawn_chance=0.40,
+        meat_yield_lb=80.0, hide_value=1.00,
+        notes="THE Long Hunter animal. One hide = one 'buck' = one dollar."
+    ),
+    WildlifeType.COTTONTAIL_RABBIT: WildlifeSpecies(
+        id="cottontail_rabbit", display_name="Cottontail Rabbit",
+        danger_level=0, size="small",
+        primary_habitats=["brush", "forest", "open woodland"],
+        core_regions=["Appalachians", "Ohio Valley", "Great Plains",
+                      "Gulf Coast", "Most of North America"],
+        base_spawn_chance=0.45,
+        meat_yield_lb=2.5, hide_value=0.10,
+        notes="Abundant small game. Easy to snare."
+    ),
+    WildlifeType.WILD_HORSE: WildlifeSpecies(
+        id="wild_horse", display_name="Wild Mustang",
+        danger_level=0, size="large",
+        primary_habitats=["prairie", "plains", "open terrain", "scrub"],
+        core_regions=["Great Plains", "Nevada Great Basin", "Desert Southwest",
+                      "Central Plains"],
+        base_spawn_chance=0.08,
+        meat_yield_lb=400.0, hide_value=5.00,
+        notes="Feral Spanish horses. Can be caught and broken for riding."
+    ),
+    WildlifeType.PRAIRIE_DOG: WildlifeSpecies(
+        id="prairie_dog", display_name="Prairie Dog",
+        danger_level=0, size="small",
+        primary_habitats=["prairie", "plains", "open terrain"],
+        core_regions=["Great Plains", "Central Plains", "Nevada Great Basin"],
+        base_spawn_chance=0.50,
+        meat_yield_lb=1.5, hide_value=0.05,
+        notes="Lives in vast underground towns. Barely worth eating."
+    ),
+    WildlifeType.MOUNTAIN_GOAT: WildlifeSpecies(
+        id="mountain_goat", display_name="Mountain Goat",
+        danger_level=0, size="medium",
+        primary_habitats=["rocky mountains", "steep cliffs", "tundra"],
+        core_regions=["Rocky Mountains", "Pacific Northwest", "Alaska Interior"],
+        base_spawn_chance=0.06,
+        meat_yield_lb=60.0, hide_value=4.00,
+        notes="Lives on sheer cliff faces. Hard to reach."
+    ),
+    WildlifeType.WILD_BOAR: WildlifeSpecies(
+        id="wild_boar", display_name="Wild Boar",
+        danger_level=1, size="medium",
+        primary_habitats=["forest", "brush", "swamp"],
+        core_regions=["Gulf Coast", "Appalachians", "Central Plains"],
+        base_spawn_chance=0.12,
+        meat_yield_lb=100.0, hide_value=2.00,
+        notes="Feral hogs from Spanish settlements. Aggressive. Good eating."
+    ),
+    WildlifeType.TIMBER_RATTLESNAKE: WildlifeSpecies(
+        id="timber_rattlesnake", display_name="Timber Rattlesnake",
+        danger_level=1, size="small",
+        primary_habitats=["forest", "rocky slopes", "brush"],
+        core_regions=["Appalachians", "Ohio Valley", "Gulf Coast"],
+        base_spawn_chance=0.14,
+        meat_yield_lb=1.5, hide_value=0.30,
+        notes="Eastern rattlesnake. Venomous. Common in rocky woodland."
+    ),
+    WildlifeType.PASSENGER_PIGEON: WildlifeSpecies(
+        id="passenger_pigeon", display_name="Passenger Pigeon",
+        danger_level=0, size="small",
+        primary_habitats=["forest", "open woodland"],
+        core_regions=["Appalachians", "Ohio Valley", "Great Plains",
+                      "Gulf Coast", "Central Plains"],
+        base_spawn_chance=0.35,
+        meat_yield_lb=0.5, hide_value=0.02,
+        notes="Flocks darken the sky. Billions of birds. Extinct by 1914."
+    ),
+    WildlifeType.SANDHILL_CRANE: WildlifeSpecies(
+        id="sandhill_crane", display_name="Sandhill Crane",
+        danger_level=0, size="medium",
+        primary_habitats=["prairie", "rivers", "open terrain"],
+        core_regions=["Great Plains", "Gulf Coast", "Central Plains"],
+        base_spawn_chance=0.08,
+        meat_yield_lb=8.0, hide_value=0.25,
+        notes="Tall wading bird. Prized for its meat. Migratory."
     ),
 }
 

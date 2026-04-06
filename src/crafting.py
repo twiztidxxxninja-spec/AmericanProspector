@@ -23,6 +23,7 @@ class Recipe:
     output_qty: int = 1
     output_custom: Optional[dict] = None
     category: str = "general"
+    requires_fire: bool = False
 
 
 RECIPES: List[Recipe] = [
@@ -282,7 +283,7 @@ RECIPES: List[Recipe] = [
         description="Hang fish over a smoky fire. Preserves for weeks.",
         materials=[("fresh_fish", 2)],
         skill="cooking", difficulty=5, time_minutes=120,
-        output_id="smoked_meat", output_qty=2,
+        output_id="dried_fish", output_qty=2,
         category="food",
     ),
     Recipe(
@@ -461,6 +462,7 @@ RECIPES: List[Recipe] = [
         id="distill_grain_whiskey", name="Grain Whiskey",
         description="Distill grain beer through a copper still. Standard frontier whiskey.",
         materials=[("beer", 3)],
+        tool_required="distill",
         skill="chemistry", difficulty=10, time_minutes=480,
         output_id="whiskey", output_qty=2,
         category="food",
@@ -469,6 +471,7 @@ RECIPES: List[Recipe] = [
         id="distill_bourbon", name="Bourbon",
         description="Distill corn beer into smooth bourbon. Premium American spirit.",
         materials=[("corn_beer", 3)],
+        tool_required="distill",
         skill="chemistry", difficulty=10, time_minutes=480,
         output_custom={"id": "bourbon", "name": "Bourbon", "weight": 1.5,
                        "category": "drink", "base_value": 1.50, "hydration": 3.0,
@@ -482,6 +485,7 @@ RECIPES: List[Recipe] = [
         id="distill_brandy", name="Brandy",
         description="Distill berry beer into brandy. Smooth and valuable.",
         materials=[("berry_beer", 3)],
+        tool_required="distill",
         skill="chemistry", difficulty=11, time_minutes=480,
         output_custom={"id": "brandy", "name": "Brandy", "weight": 1.5,
                        "category": "drink", "base_value": 3.00, "hydration": 3.0,
@@ -495,6 +499,7 @@ RECIPES: List[Recipe] = [
         id="distill_wine_brandy", name="Brandy (from wine)",
         description="Distill wine into brandy. The classic method.",
         materials=[("wine", 3)],
+        tool_required="distill",
         skill="chemistry", difficulty=10, time_minutes=480,
         output_custom={"id": "brandy", "name": "Brandy", "weight": 1.5,
                        "category": "drink", "base_value": 3.00, "hydration": 3.0,
@@ -508,6 +513,7 @@ RECIPES: List[Recipe] = [
         id="distill_honey_mead_spirit", name="Honey Spirit",
         description="Distill mead into a powerful honey spirit.",
         materials=[("mead", 3)],
+        tool_required="distill",
         skill="chemistry", difficulty=12, time_minutes=480,
         output_custom={"id": "honey_spirit", "name": "Honey Spirit", "weight": 1.5,
                        "category": "drink", "base_value": 5.00, "hydration": 3.0,
@@ -523,6 +529,7 @@ RECIPES: List[Recipe] = [
         id="make_gin", name="Gin",
         description="Redistill whiskey with juniper berries. Classic spirit.",
         materials=[("whiskey", 1), ("juniper_berries", 2)],
+        tool_required="distill",
         skill="chemistry", difficulty=9, time_minutes=120,
         output_custom={"id": "gin", "name": "Gin", "weight": 1.5,
                        "category": "drink", "base_value": 2.00, "hydration": 3.0,
@@ -561,9 +568,9 @@ RECIPES: List[Recipe] = [
     ),
     Recipe(
         id="make_rum", name="Rum",
-        description="Ferment molasses, then distill. Sweet, dark spirit. "
-                    "Requires mash barrel and still.",
+        description="Ferment molasses, then distill. Sweet, dark spirit.",
         materials=[("molasses", 3)],
+        tool_required="distill",
         skill="chemistry", difficulty=11, time_minutes=480,
         output_custom={"id": "rum", "name": "Rum", "weight": 1.5,
                        "category": "drink", "base_value": 2.00, "hydration": 3.0,
@@ -1189,6 +1196,72 @@ RECIPES: List[Recipe] = [
         category="trapping",
     ),
 
+    # ── Pelt stretching (preserves raw pelts) ─────────────────────
+    # Raw pelts spoil in 3 days. Stretching on a frame preserves them.
+    Recipe(
+        id="stretch_beaver", name="Stretch Beaver Pelt",
+        description="Lace the raw beaver pelt onto a stretching frame, "
+                    "flesh side out. Scrape the fat. Let it dry for a day.",
+        materials=[("beaver_pelt", 1)],
+        tool_required="stretch", skill="furriery", difficulty=4, time_minutes=20,
+        output_custom={"id": "stretched_beaver", "name": "Stretched Beaver Pelt",
+                       "weight": 1.5, "category": "material", "base_value": 5.00,
+                       "description": "Beaver pelt stretched and dried on a frame. "
+                                      "Preserved for trade. Prime quality if winter-caught."},
+        category="trapping",
+    ),
+    Recipe(
+        id="stretch_pelt_generic", name="Stretch Pelt",
+        description="Lace a raw pelt onto the stretching frame and scrape it clean. "
+                    "Takes a day to dry but stops the pelt from spoiling.",
+        materials=[("fox_pelt", 1)],
+        tool_required="stretch", skill="furriery", difficulty=3, time_minutes=15,
+        output_custom={"id": "stretched_pelt", "name": "Stretched Pelt",
+                       "weight": 1.0, "category": "material", "base_value": 2.50,
+                       "description": "A pelt stretched and dried. Preserved for trade."},
+        category="trapping",
+    ),
+    Recipe(
+        id="stretch_large_pelt", name="Stretch Large Pelt",
+        description="A large hide — bear, elk, buffalo — takes more frame and more time.",
+        materials=[("bear_pelt", 1)],
+        tool_required="stretch", skill="furriery", difficulty=5, time_minutes=30,
+        output_custom={"id": "stretched_large_pelt", "name": "Stretched Large Pelt",
+                       "weight": 3.0, "category": "material", "base_value": 8.00,
+                       "description": "A large pelt stretched and dried. Heavy but valuable."},
+        category="trapping",
+    ),
+
+    # ── Missing cooking recipes ────────────────────────────────────
+    Recipe(
+        id="roast_camas", name="Pit-Roast Camas Root",
+        description="Slow-roast camas bulbs in a pit for a full day. "
+                    "Turns the starch to sugar — tastes like sweet potato.",
+        materials=[("camas_root", 2)],
+        skill="cooking", difficulty=5, time_minutes=1440,  # 24 hours
+        output_custom={"id": "roasted_camas", "name": "Roasted Camas",
+                       "weight": 0.2, "category": "food", "nutrition": 20.0,
+                       "base_value": 0.15, "stackable": True,
+                       "description": "Slow-roasted camas root. Sweet and filling."},
+        output_qty=3,
+        category="food",
+        requires_fire=True,
+    ),
+    Recipe(
+        id="boil_bitterroot", name="Boil Bitterroot",
+        description="Boil bitterroot to remove the bitter compounds. "
+                    "Needs a pot and water.",
+        materials=[("bitterroot", 2)],
+        skill="cooking", difficulty=3, time_minutes=30,
+        output_custom={"id": "boiled_bitterroot", "name": "Boiled Bitterroot",
+                       "weight": 0.2, "category": "food", "nutrition": 12.0,
+                       "base_value": 0.08, "stackable": True,
+                       "description": "Boiled bitterroot. Bland but nutritious."},
+        output_qty=2,
+        category="food",
+        requires_fire=True,
+    ),
+
     # ── Fur clothing (requires stretched or raw pelts) ────────────
     Recipe(
         id="fur_cap", name="Fur Cap",
@@ -1433,9 +1506,326 @@ RECIPES: List[Recipe] = [
                        "description": "A warm fur blanket sewn from pelts."},
         category="furwork",
     ),
+
+    # ── AMMUNITION ────────────────────────────────────────────────────────
+    Recipe(
+        id="cast_rifle_balls", name="Cast Rifle Balls",
+        description="Melt lead and cast balls for a rifle. Requires a bullet mold.",
+        materials=[("lead_bar", 1), ("gunpowder", 1), ("primer_caps", 1)],
+        tool_required="mold", skill="firearms", difficulty=8, time_minutes=30,
+        output_id="rifle_ball", output_qty=10,
+        category="ammunition",
+    ),
+    Recipe(
+        id="cast_revolver_balls", name="Cast Revolver Balls",
+        description="Cast small-caliber balls for a percussion revolver.",
+        materials=[("lead_bar", 1), ("gunpowder", 1), ("primer_caps", 1)],
+        tool_required="mold", skill="firearms", difficulty=7, time_minutes=25,
+        output_id="revolver_ball", output_qty=15,
+        category="ammunition",
+    ),
+    Recipe(
+        id="make_shot_charges", name="Make Shot Charges",
+        description="Cut lead into shot and measure powder charges for a shotgun.",
+        materials=[("lead_bar", 1), ("gunpowder", 1)],
+        skill="firearms", difficulty=6, time_minutes=20,
+        output_id="shotgun_shell", output_qty=8,
+        category="ammunition",
+    ),
+    Recipe(
+        id="craft_arrows", name="Craft Arrows",
+        description="Assemble arrows from shafts, iron points, and feather fletching.",
+        materials=[("arrow_shaft", 1), ("arrowhead_iron", 1), ("fletching", 1)],
+        skill="survival", difficulty=5, time_minutes=15,
+        output_id="arrow", output_qty=5,
+        category="ammunition",
+    ),
+    Recipe(
+        id="whittle_arrow_shafts", name="Whittle Arrow Shafts",
+        description="Strip and straighten wooden sticks into arrow shafts.",
+        materials=[("log", 1)],
+        tool_required="cut", skill="survival", difficulty=4, time_minutes=20,
+        output_custom={"id": "arrow_shaft", "name": "Arrow Shafts", "weight": 0.1,
+                       "category": "material", "base_value": 0.05, "stackable": True,
+                       "description": "Straight wooden shafts for arrow-making."},
+        output_qty=8,
+        category="ammunition",
+    ),
+    Recipe(
+        id="knap_arrowheads", name="Knap Stone Arrowheads",
+        description="Chip flint or obsidian into crude arrowheads. No forge needed.",
+        materials=[("stone", 2)],
+        skill="survival", difficulty=7, time_minutes=30,
+        output_custom={"id": "arrowhead_iron", "name": "Stone Arrowheads", "weight": 0.1,
+                       "category": "material", "base_value": 0.05, "stackable": True,
+                       "description": "Knapped stone points. Crude but functional."},
+        output_qty=4,
+        category="ammunition",
+    ),
+
+    # ── FORAGE / HERBAL ───────────────────────────────────────────────────
+    Recipe(
+        id="brew_pine_tea", name="Pine Needle Tea",
+        description="Steep fresh pine needles in hot water. Prevents scurvy.",
+        materials=[("pine_needles", 1)],
+        skill="survival", difficulty=2, time_minutes=10,
+        output_id="pine_needle_tea", output_qty=2,
+        category="food",
+        requires_fire=True,
+    ),
+    Recipe(
+        id="brew_mint_tea", name="Mint Tea",
+        description="Steep wild mint in hot water. Settles the stomach.",
+        materials=[("wild_mint", 1)],
+        skill="survival", difficulty=2, time_minutes=10,
+        output_custom={"id": "mint_tea", "name": "Mint Tea", "weight": 0.3,
+                       "category": "drink", "hydration": 15.0, "nutrition": 1.0,
+                       "base_value": 0.05,
+                       "description": "Warm mint tea. Settles the gut."},
+        output_qty=2,
+        category="food",
+        requires_fire=True,
+    ),
+    Recipe(
+        id="brew_rosehip_tea", name="Rose Hip Tea",
+        description="Steep rose hips in hot water. Tart and full of vitamins.",
+        materials=[("rose_hips", 1)],
+        skill="survival", difficulty=2, time_minutes=10,
+        output_custom={"id": "rosehip_tea", "name": "Rose Hip Tea", "weight": 0.3,
+                       "category": "drink", "hydration": 15.0, "nutrition": 2.0,
+                       "base_value": 0.05,
+                       "description": "Tart vitamin-rich tea from wild rose hips."},
+        output_qty=2,
+        category="food",
+        requires_fire=True,
+    ),
+    Recipe(
+        id="roast_cattail", name="Roasted Cattail Root",
+        description="Roast cattail root over coals. Starchy and filling.",
+        materials=[("cattail_root", 1)],
+        skill="cooking", difficulty=3, time_minutes=15,
+        output_custom={"id": "roasted_cattail", "name": "Roasted Cattail Root",
+                       "weight": 0.2, "category": "food", "nutrition": 12.0,
+                       "base_value": 0.05,
+                       "description": "Roasted cattail root. Tastes like potato."},
+        category="food",
+        requires_fire=True,
+    ),
+    Recipe(
+        id="leach_acorns", name="Leached Acorn Meal",
+        description="Soak acorns to remove tannins, then grind into flour.",
+        materials=[("acorns", 2)],
+        skill="survival", difficulty=4, time_minutes=30,
+        output_custom={"id": "acorn_meal", "name": "Acorn Meal", "weight": 0.3,
+                       "category": "food", "nutrition": 10.0,
+                       "base_value": 0.05, "stackable": True,
+                       "description": "Ground acorn flour. Nutty. Mix into stew or bake."},
+        output_qty=2,
+        category="food",
+    ),
+    Recipe(
+        id="yarrow_poultice", name="Yarrow Poultice",
+        description="Crush yarrow into a wound dressing. Stops bleeding.",
+        materials=[("yarrow", 1)],
+        skill="firstAid", difficulty=3, time_minutes=5,
+        output_custom={"id": "yarrow_poultice", "name": "Yarrow Poultice",
+                       "weight": 0.1, "category": "medical",
+                       "base_value": 0.10,
+                       "description": "Crushed yarrow. Pack into wounds to stop bleeding."},
+        category="medical",
+    ),
+
+    # ── OFFAL / ORGAN COOKING ─────────────────────────────────────────────
+    Recipe(
+        id="fry_liver", name="Fried Liver",
+        description="Slice and fry in tallow. Rich, iron-heavy, deeply satisfying. "
+                    "Best eaten fresh from the kill.",
+        materials=[("liver", 1)],
+        skill="cooking", difficulty=2, time_minutes=10,
+        output_custom={"id": "cooked_liver", "name": "Fried Liver",
+                       "weight": 0.4, "category": "food", "nutrition": 25.0,
+                       "base_value": 0.12, "perishable": True, "days_until_spoil": 3,
+                       "description": "Pan-fried liver. Rich and tender."},
+        category="food",
+        requires_fire=True,
+    ),
+    Recipe(
+        id="roast_heart", name="Roasted Heart",
+        description="Skewer and roast over coals. Dense, lean, good flavor.",
+        materials=[("heart", 1)],
+        skill="cooking", difficulty=2, time_minutes=15,
+        output_custom={"id": "cooked_heart", "name": "Roasted Heart",
+                       "weight": 0.3, "category": "food", "nutrition": 22.0,
+                       "base_value": 0.10, "perishable": True, "days_until_spoil": 3,
+                       "description": "Roasted heart. Firm, lean meat."},
+        category="food",
+        requires_fire=True,
+    ),
+    Recipe(
+        id="fry_kidneys", name="Fried Kidneys",
+        description="Split and fry in fat. Strong flavor — an acquired taste.",
+        materials=[("kidneys", 1)],
+        skill="cooking", difficulty=3, time_minutes=10,
+        output_custom={"id": "cooked_kidneys", "name": "Fried Kidneys",
+                       "weight": 0.2, "category": "food", "nutrition": 15.0,
+                       "base_value": 0.08, "perishable": True, "days_until_spoil": 3,
+                       "description": "Fried kidneys. Not for everyone."},
+        category="food",
+        requires_fire=True,
+    ),
+    Recipe(
+        id="make_sausage", name="Frontier Sausage",
+        description="Stuff chopped meat into cleaned intestines. Smoke or fry. "
+                    "Uses the whole animal — nothing wasted.",
+        materials=[("intestines", 1), ("fresh_venison", 1)],
+        skill="cooking", difficulty=5, time_minutes=45,
+        output_custom={"id": "sausage", "name": "Frontier Sausage",
+                       "weight": 0.4, "category": "food", "nutrition": 30.0,
+                       "base_value": 0.20, "stackable": True,
+                       "perishable": True, "days_until_spoil": 7,
+                       "description": "Meat stuffed in intestine casing. Smoked. Keeps well."},
+        output_qty=3,
+        category="food",
+        requires_fire=True,
+    ),
+    Recipe(
+        id="make_haggis", name="Trapper's Haggis",
+        description="Chop organs and oats, stuff into a stomach, boil for hours. "
+                    "Scottish trappers brought this recipe west.",
+        materials=[("stomach_lining", 1), ("liver", 1), ("lungs", 1)],
+        skill="cooking", difficulty=6, time_minutes=120,
+        output_custom={"id": "haggis", "name": "Trapper's Haggis",
+                       "weight": 0.5, "category": "food", "nutrition": 40.0,
+                       "base_value": 0.25, "perishable": True, "days_until_spoil": 5,
+                       "description": "Offal pudding boiled in a stomach. "
+                                      "Sounds terrible. Tastes surprisingly good."},
+        category="food",
+        requires_fire=True,
+    ),
+    Recipe(
+        id="render_tallow_from_offal", name="Render Fat from Scraps",
+        description="Boil down scraps and organ trimmings to extract tallow. "
+                    "Good for candles, waterproofing, and cooking.",
+        materials=[("lungs", 1), ("kidneys", 1)],
+        skill="cooking", difficulty=3, time_minutes=30,
+        output_id="tallow", output_qty=1,
+        category="food",
+        requires_fire=True,
+    ),
+    Recipe(
+        id="blood_sausage", name="Blood Sausage",
+        description="Mix blood with fat and grain, stuff into intestine. "
+                    "Boil until firm. Common frontier food — wastes nothing.",
+        materials=[("intestines", 1), ("tallow", 1)],
+        skill="cooking", difficulty=5, time_minutes=40,
+        output_custom={"id": "blood_sausage", "name": "Blood Sausage",
+                       "weight": 0.3, "category": "food", "nutrition": 25.0,
+                       "base_value": 0.15, "stackable": True,
+                       "perishable": True, "days_until_spoil": 7,
+                       "description": "Dense, dark sausage. Filling and cheap to make."},
+        output_qty=2,
+        category="food",
+        requires_fire=True,
+    ),
+    Recipe(
+        id="stomach_water_bag", name="Stomach Water Bag",
+        description="Clean and dry a stomach to make a watertight bag. "
+                    "Natives and trappers used these before canteens.",
+        materials=[("stomach_lining", 1)],
+        skill="survival", difficulty=4, time_minutes=20,
+        output_custom={"id": "stomach_bag", "name": "Stomach Water Bag",
+                       "weight": 0.3, "category": "misc",
+                       "base_value": 0.30,
+                       "description": "A cleaned animal stomach. Holds water. "
+                                      "Not pretty but it works.",
+                       "extra": {"hydration_capacity": 20}},
+        category="trapping",
+    ),
+
+    # ── USES FOR ORPHANED MATERIALS ──────────────────────────────────────
+    Recipe(
+        id="claw_necklace", name="Claw & Teeth Necklace",
+        description="String bear claws or wolf teeth on sinew. "
+                    "Worn as trophy and trade good.",
+        materials=[("teeth_claws", 1), ("sinew", 1)],
+        skill="furriery", difficulty=3, time_minutes=20,
+        output_custom={"id": "claw_necklace", "name": "Claw Necklace",
+                       "weight": 0.1, "category": "misc",
+                       "base_value": 3.00,
+                       "description": "A necklace of claws and teeth. "
+                                      "Impressive to trappers and natives alike."},
+        category="bonework",
+    ),
+    Recipe(
+        id="sage_smudge", name="Sage Smudge Bundle",
+        description="Bind dried sage into a smudge stick. "
+                    "Burn to repel insects and purify a camp.",
+        materials=[("wild_sage", 2)],
+        skill="survival", difficulty=2, time_minutes=10,
+        output_custom={"id": "sage_smudge", "name": "Sage Smudge Bundle",
+                       "weight": 0.1, "category": "misc",
+                       "base_value": 0.15, "stackable": True,
+                       "description": "Dried sage bundle. Burn to keep bugs away "
+                                      "and mask your scent from game."},
+        category="materials",
+    ),
+    Recipe(
+        id="fish_bait", name="Fish Bait from Guts",
+        description="Cut fish guts into bait chunks. "
+                    "Better than worms for big fish.",
+        materials=[("fish_guts", 1)],
+        skill="fishing", difficulty=1, time_minutes=5,
+        output_custom={"id": "fish_bait", "name": "Fish Bait",
+                       "weight": 0.1, "category": "material",
+                       "base_value": 0.02, "stackable": True,
+                       "perishable": True, "days_until_spoil": 2,
+                       "description": "Chunks of fish gut. Irresistible to trout."},
+        output_qty=3,
+        category="trapping",
+    ),
+
+    # ── Water vehicles ────────────────────────────────────────────────
+    Recipe(
+        id="build_dugout_canoe", name="Dugout Canoe",
+        description="Carve a canoe from a single large log. Days of work "
+                    "with an axe. Heavy but durable.",
+        materials=[("Log", 3)],
+        tool_required="chop",
+        skill="survival", difficulty=10, time_minutes=480,  # full day
+        output_id="dugout_canoe",
+        category="vehicle",
+    ),
+    Recipe(
+        id="build_birchbark_canoe", name="Birchbark Canoe",
+        description="Build a light canoe from birch bark over a cedar frame. "
+                    "Requires bark, poles, and cordage. Light enough to portage.",
+        materials=[("Log", 2), ("Rope (10 ft)", 2)],
+        tool_required="cut",
+        skill="survival", difficulty=12, time_minutes=600,  # 10 hours
+        output_id="birchbark_canoe",
+        category="vehicle",
+    ),
 ]
 
 # Index by category
+# ── Append furniture recipes from furniture module ────────────────────────
+try:
+    from src.furniture import FURNITURE_RECIPES as _FR
+    for fid, fname, fmats, fskill, fdiff, ftime, fterrain in _FR:
+        RECIPES.append(Recipe(
+            id=fid, name=fname,
+            description=f"Build {fname.lower()} from raw materials.",
+            materials=fmats,
+            skill=fskill, difficulty=fdiff, time_minutes=ftime,
+            output_custom={"id": fid, "name": fname, "weight": 5.0,
+                           "category": "misc", "base_value": 2.0,
+                           "description": f"A handmade {fname.lower()}."},
+            category="furniture",
+            # The terrain placement is handled by a post-craft hook
+        ))
+except ImportError:
+    pass
+
 RECIPE_CATEGORIES = {}
 for r in RECIPES:
     RECIPE_CATEGORIES.setdefault(r.category, []).append(r)
@@ -1453,6 +1843,10 @@ def can_craft(recipe: Recipe, inventory: list) -> Tuple[bool, str]:
         total = 0
         for item in inventory:
             if item.id == mat_id:
+                # Reject raw perishable pelts/hides — must be processed first
+                if item.perishable and (item.id.endswith("_pelt") or
+                        item.id in ("raw_hide", "buffalo_robe")):
+                    continue  # skip unprocessed hides
                 total += getattr(item, "quantity", 1)
         if total < qty_needed:
             from src.items import ITEM_TEMPLATES
@@ -1506,6 +1900,8 @@ def execute_craft(recipe: Recipe, player) -> Tuple[bool, str]:
     elif recipe.output_custom:
         d = dict(recipe.output_custom)
         item = Item(**{k: v for k, v in d.items() if k in Item.__dataclass_fields__})
+        if recipe.output_qty > 1:
+            item.quantity = recipe.output_qty
     else:
         return False, "Recipe error."
 

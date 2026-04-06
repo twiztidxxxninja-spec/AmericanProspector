@@ -32,6 +32,90 @@ class HistoricalLocation:
 
 HISTORICAL_LOCATIONS: List[HistoricalLocation] = [
 
+    # ── EASTERN SETTLEMENTS (pre-1800, Long Hunter era) ───────────────────
+    HistoricalLocation("Philadelphia", 375, 175, "town", 40000, 1682,
+        "Largest city in America. Supply point for the frontier."),
+    HistoricalLocation("Williamsburg", 370, 195, "town", 2000, 1699,
+        "Capital of Virginia. Gateway to the southern frontier."),
+    HistoricalLocation("Charleston", 365, 215, "town", 12000, 1670,
+        "Port city. Hub of the deerskin trade with the Cherokee and Creek."),
+    HistoricalLocation("New Orleans", 300, 240, "town", 5000, 1718,
+        "French port at the mouth of the Mississippi. Trade in furs and hides."),
+    HistoricalLocation("Natchez", 310, 225, "town", 1500, 1716,
+        "Mississippi River town. Southern end of the Natchez Trace."),
+    HistoricalLocation("Fort Pitt", 355, 175, "fort", 1000, 1764,
+        "Former French fort at the Forks of the Ohio. Future Pittsburgh."),
+    HistoricalLocation("Wheeling", 358, 178, "town", 300, 1769,
+        "Ohio River settlement. Jumping-off point for the west."),
+    HistoricalLocation("Watauga", 348, 200, "town", 200, 1772,
+        "First permanent white settlement in Tennessee."),
+    HistoricalLocation("Fort Harrod", 340, 192, "fort", 100, 1774,
+        "First permanent settlement in Kentucky. Fortified against Shawnee."),
+    HistoricalLocation("Boonesborough", 345, 190, "fort", 80, 1775,
+        "Daniel Boone's fort on the Kentucky River. Besieged repeatedly."),
+    HistoricalLocation("Logan's Station", 342, 193, "fort", 60, 1775,
+        "Frontier fort south of Lexington."),
+    HistoricalLocation("Louisville", 338, 190, "town", 200, 1778,
+        "Settlement at the Falls of the Ohio."),
+    HistoricalLocation("Bryan Station", 343, 189, "fort", 50, 1779,
+        "Fortified settlement. Site of the 1782 battle."),
+    HistoricalLocation("Nashborough", 335, 205, "town", 150, 1779,
+        "Settlement on the Cumberland River. Future Nashville."),
+    HistoricalLocation("Lexington", 342, 191, "town", 500, 1782,
+        "Growing Kentucky town. Center of the Bluegrass country."),
+    HistoricalLocation("Marietta", 352, 182, "town", 300, 1788,
+        "First organized settlement in Ohio Territory."),
+    HistoricalLocation("Cincinnati", 348, 185, "town", 500, 1788,
+        "Queen City of the West. Ohio River trading hub."),
+    HistoricalLocation("Cumberland Gap", 350, 198, "trading_post", 20, 1750,
+        "The great pass through the Appalachians. Boone's Wilderness Road."),
+    HistoricalLocation("Chickasaw Bluffs", 320, 215, "trading_post", 30, 1795,
+        "Bluffs above the Mississippi. Future Memphis."),
+
+    # ── EASTERN GOLD DISTRICTS ────────────────────────────────────────────
+    # The first American gold rush was in the Appalachians, not California
+    HistoricalLocation("Reed Gold Mine", 365, 200, "mining_camp", 50, 1799,
+        "First documented gold find in the United States. Conrad Reed found "
+        "a 17-pound nugget in Little Meadow Creek.",
+        mining=True, gold_bias_override=0.65),
+    HistoricalLocation("Dahlonega", 355, 210, "town", 1000, 1828,
+        "Cherokee gold rush. Site of a US Mint branch. 'Thar's gold in "
+        "them thar hills.' The rush that displaced the Cherokee Nation.",
+        mining=True, gold_bias_override=0.70),
+    HistoricalLocation("Gold Hill NC", 363, 202, "mining_camp", 200, 1824,
+        "Richest gold-producing county east of the Mississippi.",
+        mining=True, gold_bias_override=0.55),
+    HistoricalLocation("Spruce Pine NC", 358, 198, "mining_camp", 100, 1830,
+        "Blue Ridge mining district. Mica, feldspar, and placer gold.",
+        mining=True, gold_bias_override=0.45),
+    HistoricalLocation("Goldville AL", 345, 215, "mining_camp", 50, 1830,
+        "Alabama gold belt. Small but productive placer deposits.",
+        mining=True, gold_bias_override=0.40),
+
+    # ── FUR TRADE ERA (1800s-1840s) ────────────────────────────────────────
+    HistoricalLocation("St. Louis", 295, 170, "town", 5000, 1764,
+        "Gateway to the West. Fur trade capital on the Mississippi."),
+    HistoricalLocation("Taos", 215, 185, "town", 500, 1615,
+        "Old Spanish town. Winter quarters for mountain men. Trade hub."),
+    HistoricalLocation("Fort Manuel", 260, 100, "fort", 50, 1807,
+        "Manuel Lisa's post on the Yellowstone. Missouri Fur Company."),
+    HistoricalLocation("Fort Henry", 173, 118, "fort", 30, 1810,
+        "Andrew Henry's post near Three Forks. Dangerous Blackfeet country."),
+    HistoricalLocation("Fort Atkinson", 265, 145, "fort", 200, 1819,
+        "Army post on the Missouri above Council Bluffs."),
+    HistoricalLocation("Fort Kiowa", 260, 120, "fort", 40, 1822,
+        "Upper Missouri fur post. American Fur Company."),
+    HistoricalLocation("Green River Rendezvous", 195, 138, "trading_post", 20, 1825,
+        "Annual gathering site for mountain men. Trade, resupply, carouse."),
+    HistoricalLocation("Cache Valley", 185, 140, "trading_post", 10, 1826,
+        "Sheltered valley. Cache site and rendezvous ground."),
+    HistoricalLocation("Independence", 285, 160, "town", 2000, 1827,
+        "Outfitting point for western expeditions. Last town before wilderness."),
+    HistoricalLocation("Fort Union", 240, 90, "fort", 100, 1828,
+        "Premier Upper Missouri trading post. American Fur Company headquarters."),
+    HistoricalLocation("Pierres Hole", 170, 125, "trading_post", 10, 1829,
+        "Mountain valley rendezvous site. Site of the 1832 battle."),
+
     # ── CALIFORNIA ──────────────────────────────────────────────────────────
     HistoricalLocation("Sacramento",     95, 165, "city",  25000, 1849,
         "Capital of California and gateway to the mines.", mining=True),
@@ -327,8 +411,7 @@ HISTORICAL_LOCATIONS: List[HistoricalLocation] = [
         "Iowa capital — coal country in the south."),
 
     # ── MISSOURI ────────────────────────────────────────────────────────────
-    HistoricalLocation("St. Louis",     318, 140, "city", 160000, 1849,
-        "Gateway to the West — Missouri River departure point."),
+    # St. Louis — defined in eastern section with 1764 founding date
     HistoricalLocation("Kansas City",   298, 143, "city",  15000, 1838,
         "Westport Landing — outfitting point for overland trails."),
 
@@ -347,8 +430,7 @@ HISTORICAL_LOCATIONS: List[HistoricalLocation] = [
     # ── OHIO ────────────────────────────────────────────────────────────────
     HistoricalLocation("Cleveland",     362, 115, "city",  17000, 1849,
         "Lake Erie industrial city — iron and oil refining."),
-    HistoricalLocation("Cincinnati",    358, 135, "city",  80000, 1849,
-        "Porkopolis — hog processing capital of America."),
+    # Cincinnati — defined in eastern section with 1788 founding date
 
     # ── PENNSYLVANIA ────────────────────────────────────────────────────────
     HistoricalLocation("Philadelphia",  408, 125, "city", 120000, 1849,
@@ -383,14 +465,12 @@ HISTORICAL_LOCATIONS: List[HistoricalLocation] = [
         "Virginia capital — tobacco and iron."),
     HistoricalLocation("Nashville",     348, 153, "city",  17000, 1849,
         "Athens of the South — Cumberland River hub."),
-    HistoricalLocation("Louisville",    350, 143, "city",  43000, 1849,
-        "Falls of the Ohio — bourbon and shipping."),
+    # Louisville — defined in eastern section with 1778 founding date
     HistoricalLocation("Memphis",       330, 160, "city",  23000, 1849,
         "Bluff City on the Mississippi — cotton king."),
     HistoricalLocation("Atlanta",       375, 162, "town",  10000, 1847,
         "Railroad junction — rebuilt after Sherman, boomed fast."),
-    HistoricalLocation("New Orleans",   325, 218, "city", 116000, 1849,
-        "The Crescent City — greatest port in the South."),
+    # New Orleans — defined in eastern section with 1718 founding date
     HistoricalLocation("Charleston SC", 400, 165, "city",  20000, 1849,
         "South Carolina rice port — first shots of the Civil War."),
 

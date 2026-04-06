@@ -292,10 +292,10 @@ class WallGrid:
 
 class FloorType:
     NONE       = 0
-    WOOD_PLANK = 31    # matches town_gen WOOD_FLOOR
-    STONE_FLAG = 33    # matches town_gen STONE_WALL (reused as stone floor)
-    DIRT_PACK  = 0     # packed dirt (natural ground)
-    HAY        = 1     # hay/straw floor (stable, animal pen)
+    DIRT_PACK  = 1     # packed dirt (natural ground)
+    HAY        = 2     # hay/straw floor (stable, animal pen)
+    WOOD_PLANK = 101   # matches town_gen WOOD_FLOOR
+    STONE_FLAG = 103   # matches town_gen STONE_WALL (reused as stone floor)
 
 
 class FloorOverlay:
@@ -533,7 +533,6 @@ class BuildQueue:
         # Door (replace one wall segment)
         mid = w // 2 if door_dir in (DIR_N, DIR_S) else h // 2
         if door_dir == DIR_S:
-            self.orders[-1]  # remove last south wall at midpoint
             for o in self.orders:
                 if o.x == x + mid and o.y == y + h - 1 and o.direction == DIR_S:
                     o.target_type = Edge.DOOR
@@ -627,17 +626,21 @@ class EquipmentBlueprint:
     glyph: str = "*"
     fg_color: Tuple[int, int, int] = (160, 130, 80)
     source: str = "builtin"
+    portable: bool = False  # can player pick this up and carry it?
+    year_available: int = 0  # 0 = always available; otherwise earliest year
+    shelter_quality: float = 0.0  # 0-1: lean-to 0.3, tent 0.5, cabin 0.8
 
 
 EQUIPMENT_BLUEPRINTS: Dict[str, EquipmentBlueprint] = {}
 
 def _eq(key, name, w, h, mats, mins, skill, diff, desc="", tags=None,
-        glyph="*", fg=(160, 130, 80)):
+        glyph="*", fg=(160, 130, 80), portable=False, year_available=0):
     EQUIPMENT_BLUEPRINTS[key] = EquipmentBlueprint(
         key=key, name=name, width=w, height=h,
         materials=mats, build_minutes=mins, skill=skill, difficulty=diff,
         description=desc, functional_tags=tags or [],
-        glyph=glyph, fg_color=fg,
+        glyph=glyph, fg_color=fg, portable=portable,
+        year_available=year_available,
     )
 
 _eq("campfire", "Campfire", 1, 1,
@@ -649,19 +652,35 @@ _eq("lean_to", "Lean-To", 2, 1,
     "Crude shelter from rain.", ["shelter"])
 _eq("drying_rack", "Drying Rack", 2, 1,
     [("Log", 2), ("Rope (10 ft)", 1)], 30, "survival", 4,
-    "Frame for drying meat/fish.", ["preserve_food"])
+    "Frame for drying meat/fish.", ["preserve_food"],
+    portable=True)
+_eq("fleshing_beam", "Fleshing Beam", 2, 1,
+    [("Log", 2)], 20, "survival", 3,
+    "A smooth log propped at an angle for scraping hides and pelts.",
+    ["flesh_hide"],
+    glyph="/", fg=(140, 100, 55), portable=True)
+_eq("stretching_board", "Hide & Pelt Frame", 2, 1,
+    [("Log", 2), ("Rope (10 ft)", 1)], 25, "survival", 4,
+    "A frame for stretching pelts and hides to dry. Works for both fur "
+    "trade pelts and leather tanning. Takes a day per hide.",
+    ["stretch_hide"],
+    glyph="H", fg=(130, 95, 50), portable=True)
 _eq("rocker_box", "Rocker Box", 2, 1,
     [("Plank", 4), ("Nails", 1), ("Rope (10 ft)", 1)], 120, "engineering", 8,
-    "A cradle rocker for washing gold.", ["pan_gold", "process_ore"])
+    "A cradle rocker for washing gold.", ["pan_gold", "process_ore"],
+    year_available=1810)
 _eq("sluice_box", "Sluice Box", 3, 1,
     [("Plank", 6), ("Nails", 1)], 180, "engineering", 10,
-    "Long trough with riffles for catching gold.", ["pan_gold", "process_ore"])
+    "Long trough with riffles for catching gold.", ["pan_gold", "process_ore"],
+    year_available=1800)
 _eq("long_tom", "Long Tom", 4, 1,
     [("Plank", 10), ("Nails", 1), ("Iron Bar", 1)], 300, "engineering", 12,
-    "Extended sluice with hopper.", ["pan_gold", "process_ore"])
+    "Extended sluice with hopper.", ["pan_gold", "process_ore"],
+    year_available=1840)
 _eq("arrastra", "Arrastra", 3, 3,
     [("Stone", 8), ("Log", 4), ("Rope (10 ft)", 1)], 480, "engineering", 14,
-    "Stone-drag ore mill.", ["crush_ore"])
+    "Stone-drag ore mill.", ["crush_ore"],
+    year_available=1820)
 _eq("ore_bin", "Ore Bin", 2, 2,
     [("Plank", 6), ("Nails", 1)], 90, "engineering", 6,
     "Timber bin for ore.", ["store"])
@@ -674,7 +693,8 @@ _eq("well", "Dug Well", 1, 1,
     glyph="O", fg=(100, 100, 110))
 _eq("hitching_rail", "Hitching Rail", 2, 1,
     [("Log", 2)], 20, "survival", 3,
-    "Rail for tying animals.", ["animal_hold"])
+    "Rail for tying animals.", ["animal_hold"],
+    portable=True)
 _eq("water_channel", "Water Channel", 5, 1,
     [("Plank", 8)], 180, "engineering", 9,
     "Wooden flume to divert water.", ["water_divert"])
@@ -682,6 +702,10 @@ _eq("stone_fireplace", "Stone Fireplace", 1, 1,
     [("Stone", 12)], 360, "engineering", 11,
     "Proper fireplace and chimney.", ["warmth", "cook"],
     glyph="0", fg=(140, 100, 60))
+# Shelter quality assignments
+EQUIPMENT_BLUEPRINTS["lean_to"].shelter_quality = 0.3      # crude, blocks rain
+EQUIPMENT_BLUEPRINTS["stone_fireplace"].shelter_quality = 0.1  # warmth only
+
 # Vertical movement structures
 _eq("stairs_down", "Stairs Down", 1, 1,
     [("Plank", 4), ("Nails", 1)], 60, "engineering", 7,
@@ -821,7 +845,8 @@ class ConstructionManager:
                        skill_level: int,
                        wall_grid: WallGrid,
                        floor_overlay: FloorOverlay,
-                       inventory: list) -> Tuple[bool, str]:
+                       inventory: list,
+                       local_map=None) -> Tuple[bool, str]:
         """
         Work on a build order for `minutes`.
         Consumes materials when order starts (progress goes from 0).
@@ -853,6 +878,23 @@ class ConstructionManager:
             elif order.order_type == "floor":
                 floor_overlay.set_floor(order.x, order.y, order.target_type)
                 return True, f"Floor placed at ({order.x},{order.y})."
+            elif order.order_type == "stairs":
+                from src.local_map import LocalTerrain
+                STAIR_MAP = {
+                    -1: LocalTerrain.STAIRS_UP,
+                    -2: LocalTerrain.STAIRS_DOWN,
+                    -3: LocalTerrain.LADDER_UP,
+                    -4: LocalTerrain.LADDER_DOWN,
+                }
+                terrain_id = STAIR_MAP.get(order.target_type,
+                                           LocalTerrain.STAIRS_UP)
+                if local_map and local_map.in_bounds(order.x, order.y):
+                    local_map.tiles[order.y][order.x].terrain = terrain_id
+                    local_map.invalidate_terrain_cache()
+                label = {-1: "Stairs up", -2: "Stairs down",
+                         -3: "Ladder up", -4: "Ladder down"
+                         }.get(order.target_type, "Stairs")
+                return True, f"{label} built at ({order.x},{order.y})."
 
         return False, f"Building... {order.progress:.0f}%"
 
@@ -892,13 +934,22 @@ class ConstructionManager:
             return None, "Unknown equipment type."
 
         # Check space
+        from src.local_map import LocalTerrain as _BLT
         for dy in range(bp.height):
             for dx in range(bp.width):
                 if not local_map.in_bounds(x + dx, y + dy):
                     return None, "Not enough room."
                 t = local_map.tiles[y + dy][x + dx].terrain
-                if t in (4, 3):  # WATER, ROCK
-                    return None, "Can't build here."
+                if t == _BLT.ROCK:
+                    return None, "Can't build on solid rock."
+                # Sluices and water structures CAN be placed on water
+                water_ok = any(tag in bp.functional_tags
+                               for tag in ("pan_gold", "process_ore",
+                                           "water_divert"))
+                if t == _BLT.WATER and not water_ok:
+                    return None, "Can't build on water. Try adjacent ground."
+                if t == _BLT.DEEP_WATER:
+                    return None, "Water too deep to build here."
 
         # Check materials
         for mat_name, mat_qty in bp.materials:
@@ -1029,8 +1080,13 @@ class ConstructionManager:
             )
             bp = _parse_equip_blueprint(raw, description)
             if bp:
-                self._custom_equipment[bp.key] = bp
-                EQUIPMENT_BLUEPRINTS[bp.key] = bp
+                # Don't overwrite builtin blueprints with LLM-generated ones
+                if bp.key not in EQUIPMENT_BLUEPRINTS:
+                    self._custom_equipment[bp.key] = bp
+                    EQUIPMENT_BLUEPRINTS[bp.key] = bp
+                else:
+                    # Return the existing builtin instead
+                    return EQUIPMENT_BLUEPRINTS[bp.key]
             return bp
         except Exception:
             return None
@@ -1060,6 +1116,9 @@ class ConstructionManager:
     def from_dict(cls, d: Dict, llm=None) -> "ConstructionManager":
         mgr = cls(llm)
         for k, bd in d.get("custom_equipment", {}).items():
+            # Don't let saved custom blueprints overwrite builtins
+            if k in EQUIPMENT_BLUEPRINTS:
+                continue
             bd["fg_color"] = tuple(bd.get("fg_color", (160, 130, 80)))
             bd["materials"] = [tuple(m) for m in bd.get("materials", [])]
             mgr._custom_equipment[k] = EquipmentBlueprint(**bd)
@@ -1108,7 +1167,24 @@ def _parse_equip_blueprint(raw: str, fallback: str) -> Optional[EquipmentBluepri
     except json.JSONDecodeError:
         return None
     key = f"custom_{str(d.get('key', fallback))[:24]}"
-    mats = [tuple(m) for m in d.get("materials", [["Log", 1]])]
+    # Normalize LLM material names to actual game item names
+    _MAT_NORMALIZE = {
+        "wood": "Log", "lumber": "Plank", "plank": "Plank",
+        "planks": "Plank", "logs": "Log", "timber": "Log",
+        "board": "Plank", "boards": "Plank",
+        "nail": "Nails", "iron": "Iron Bar", "iron bar": "Iron Bar",
+        "rope": "Rope (10 ft)", "stone": "Stone", "stones": "Stone",
+        "rock": "Stone", "rocks": "Stone",
+        "hide": "Deer Pelt", "leather": "Tanned Leather",
+        "cloth": "Trade Blanket", "canvas": "Trade Blanket",
+    }
+    raw_mats = d.get("materials", [["Log", 1]])
+    mats = []
+    for m in raw_mats:
+        name = str(m[0])
+        qty = int(m[1]) if len(m) > 1 else 1
+        normalized = _MAT_NORMALIZE.get(name.lower(), name)
+        mats.append((normalized, qty))
     fg = tuple(d.get("fg_color", [160, 130, 80]))[:3]
     return EquipmentBlueprint(
         key=key, name=str(d.get("name", fallback)),

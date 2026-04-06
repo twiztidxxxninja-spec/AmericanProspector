@@ -104,36 +104,70 @@ def _get_all_hostiles(engine):
     return targets
 
 
-def _best_weapon(player, auto_equip=True):
-    """Find best weapon, preferring what's in hand. Auto-equips if needed."""
-    # First check what's already in hand
-    for i in player.inventory:
-        if i.name == player.right_hand or i.name == player.left_hand:
-            if i.weapon_type == "firearm" and i.extra.get("loaded", 0) > 0:
-                return i
-            if i.weapon_type == "melee":
-                return i
+def _in_hand(player, item) -> bool:
+    """Check if an item is held in either hand (case-insensitive)."""
+    name = item.name.lower()
+    rh = (player.right_hand or "").lower()
+    lh = (player.left_hand or "").lower()
+    return name == rh or name == lh
 
-    # Nothing useful in hand — find best from inventory
+
+def _get_held_weapon(player):
+    """Return the weapon currently in the player's hand, if any.
+    Respects what the player has equipped — does NOT auto-swap."""
+    rh = (player.right_hand or "").lower()
+    lh = (player.left_hand or "").lower()
+    # Check right hand first (primary)
+    for i in player.inventory:
+        if i.name.lower() == rh and i.weapon_type in ("firearm", "melee"):
+            return i
+    # Then left hand
+    for i in player.inventory:
+        if i.name.lower() == lh and i.weapon_type in ("firearm", "melee"):
+            return i
+    return None
+
+
+def _best_weapon(player, auto_equip=True, prefer_ranged=True):
+    """Find best weapon for initial combat entry.
+    Only call this once at the start — after that use _get_held_weapon
+    so the player's swap choice is respected."""
+    # Loaded firearms in hand first
+    for i in player.inventory:
+        if _in_hand(player, i) and i.weapon_type == "firearm" \
+                and i.extra.get("loaded", 0) > 0:
+            return i
+
+    # Loaded firearms in inventory
     firearms = [i for i in player.inventory
                 if i.weapon_type == "firearm" and i.extra.get("loaded", 0) > 0]
-    melee = [i for i in player.inventory if i.weapon_type == "melee"]
-    weapon = None
     if firearms:
         weapon = firearms[0]
-    elif melee:
-        weapon = melee[0]
+        if auto_equip:
+            player.right_hand = weapon.name
+        return weapon
 
-    # Auto-equip to hand
-    if weapon and auto_equip:
-        if not player.right_hand:
+    # Any firearm in hand (even unloaded — player may want to reload)
+    for i in player.inventory:
+        if _in_hand(player, i) and i.weapon_type == "firearm":
+            return i
+
+    # Melee in hand
+    for i in player.inventory:
+        if _in_hand(player, i) and i.weapon_type == "melee":
+            return i
+
+    # Melee in inventory
+    melee = [i for i in player.inventory if i.weapon_type == "melee"]
+    if melee:
+        # Prefer actual weapons over tools (knife > pickaxe)
+        real_weapons = [m for m in melee if m.category == "weapon"]
+        weapon = real_weapons[0] if real_weapons else melee[0]
+        if auto_equip:
             player.right_hand = weapon.name
-        elif not player.left_hand:
-            player.left_hand = weapon.name
-        else:
-            # Both hands full — swap right hand
-            player.right_hand = weapon.name
-    return weapon
+        return weapon
+
+    return None
 
 
 def _calc_hit_chance(player, target, weapon, dist, aimed_part, accuracy_bonus=0):
@@ -168,46 +202,85 @@ def _calc_hit_chance(player, target, weapon, dist, aimed_part, accuracy_bonus=0)
 
 # ── NPC AI decisions ──────────────────────────────────────────────────────
 
+def _npc_has_ranged(npc) -> bool:
+    """Check if NPC actually has a ranged weapon."""
+    from src.combat import _npc_weapon_profile, _is_ranged
+    weapon_name, _, _, _ = _npc_weapon_profile(npc)
+    return _is_ranged(weapon_name)
+
+
 def _npc_decide(npc, player, lmap, rng) -> Tuple[str, int]:
     """NPC chooses an action and returns (action_name, time_cost).
-    Called when NPC's action timer expires."""
+    Called when NPC's action timer expires.
+
+    Escalation rules:
+    - If combat started as melee (fists/brawl), NPCs stay melee unless:
+      1. Player pulls a firearm
+      2. Someone gets badly hurt (< 30% HP)
+      3. NPC has 'cruel' or 'psychopathic' trait
+    - This prevents barfights from becoming shootouts.
+    """
     dist = max(abs(npc.local_x - player.local_x),
                abs(npc.local_y - player.local_y))
     hp_pct = npc.health / max(getattr(npc.wounds, 'max_blood', 100), 1)
 
-    # Check if NPC has a ranged weapon (simplified)
-    has_gun = rng.random() < 0.4  # 40% of hostile NPCs are armed
+    has_gun = _npc_has_ranged(npc)
+
+    # ── Escalation check ──────────────────────────────────────────
+    # Track whether firearms have been introduced to this fight
+    combat_escalated = getattr(npc, '_combat_escalated', False)
+    if not combat_escalated and has_gun:
+        # Check if player is using a firearm
+        player_rh = (player.right_hand or "").lower()
+        player_using_gun = any(
+            i.weapon_type == "firearm" and i.name.lower() == player_rh
+            for i in player.inventory)
+        # Check if someone is badly hurt (fight got serious)
+        badly_hurt = hp_pct < 0.30
+        player_hp_pct = player.survival.health / max(100, 1)
+        player_badly_hurt = player_hp_pct < 0.30
+        # Cruel/psychopathic NPCs escalate immediately
+        traits_lower = [t.lower() for t in getattr(npc, 'traits', [])]
+        is_vicious = any(t in traits_lower for t in
+                         ("cruel", "psychopathic", "hot-tempered"))
+        if player_using_gun or badly_hurt or player_badly_hurt or is_vicious:
+            npc._combat_escalated = True
+            combat_escalated = True
+
+    # If not escalated, suppress gun use — stay melee
+    use_gun = has_gun and combat_escalated
 
     # Badly hurt — try to flee or surrender
     if hp_pct < 0.2:
         _check_npc_morale(npc)
         if npc.combat_state in ("fleeing", "surrendered"):
             return "flee", NPC_ACTION_TIME["move_away"]
-        return "shoot", NPC_ACTION_TIME["shoot"]
+        if use_gun:
+            return "shoot", NPC_ACTION_TIME["shoot"]
+        if dist <= 1:
+            return "melee", 2
+        return "flee", NPC_ACTION_TIME["move_away"]
 
-    # Wounded and exposed — seek cover
+    # Wounded and exposed — seek cover (only if guns drawn)
     current_cover = lmap.best_adjacent_cover(npc.local_x, npc.local_y)
-    if hp_pct < 0.5 and current_cover == 0 and rng.random() < 0.6:
+    if use_gun and hp_pct < 0.5 and current_cover == 0 and rng.random() < 0.6:
         return "take_cover", NPC_ACTION_TIME["take_cover"]
 
     # At range with gun — shoot or careful aim
-    if has_gun and dist > 3:
+    if use_gun and dist > 3:
         if hp_pct > 0.7 and rng.random() < 0.3 and current_cover > 0:
-            # Only careful aim if in cover (safe to take time)
             return "careful_aim", NPC_ACTION_TIME["careful_aim"]
         return "shoot", NPC_ACTION_TIME["shoot"]
 
-    # Close range — melee or close shot
+    # Close range — melee
     if dist <= 1:
         return "melee", 2
 
-    # Mid range without gun — close distance
-    if not has_gun and dist > 1:
-        return "move_toward", NPC_ACTION_TIME["move_toward"]
-
-    # Default — shoot or move
-    if has_gun:
+    # Has gun at mid range and escalated — shoot
+    if use_gun:
         return "shoot", NPC_ACTION_TIME["shoot"]
+
+    # No gun or not escalated — close distance for melee
     return "move_toward", NPC_ACTION_TIME["move_toward"]
 
 
@@ -256,10 +329,9 @@ def _npc_execute(engine, npc, action, player, lmap, add_msg, rng):
         return
 
     if action in ("shoot", "careful_aim", "melee"):
-        # Animate NPC shot toward player
-        if action in ("shoot", "careful_aim"):
-            # NPCs with bows don't make bang sounds
-            _play_sound("bang")  # TODO: check NPC weapon for bow
+        # Only animate projectile for ranged attacks
+        if action in ("shoot", "careful_aim") and _npc_has_ranged(npc):
+            _play_sound("bang")
             half_w, half_h = 40, 19
             cam_x = player.local_x - half_w
             cam_y = player.local_y - half_h
@@ -268,9 +340,13 @@ def _npc_execute(engine, npc, action, player, lmap, add_msg, rng):
                             player.local_x, player.local_y,
                             cam_x, cam_y)
         # Calculate player's cover from NPC's perspective
+        # Crouching behind partial cover = full cover
         p_cover = lmap.cover_between(
             npc.local_x, npc.local_y,
             player.local_x, player.local_y)
+        from src.player import Stance
+        if player.stance == Stance.CROUCHED and p_cover >= 1:
+            p_cover = 2
         event = npc_attack_player(npc, player, player_cover=p_cover)
         sev = "critical" if event.hit else "normal"
         add_msg(event.message, sev)
@@ -287,6 +363,15 @@ def _npc_execute(engine, npc, action, player, lmap, add_msg, rng):
                         console=engine._console, ctx=engine._ctx)
         if event.hit:
             engine._splatter_blood(lmap, player.local_x, player.local_y, 1)
+        if getattr(event, 'player_captured', False):
+            # Captured by tribal warriors — not dead
+            engine.journal.end_combat()
+            tribe = getattr(npc, 'tribe', '')
+            if tribe and hasattr(engine, 'tribal'):
+                day = engine.time.total_minutes // 1440
+                cap_msg = engine.tribal.capture_player(tribe, day)
+                engine.add_message(cap_msg, "critical")
+            return  # exit combat — player is now captive
         if event.killed:
             engine.journal.end_combat()
             engine._trigger_death(f"Killed by {npc.name}.")
@@ -367,6 +452,9 @@ def enter_combat_mode(engine: "Engine", console, ctx) -> None:
     engine.music.set_category("combat", immediate=True)
     add_msg("COMBAT!", "critical")
 
+    # Auto-equip best weapon ONCE at combat start
+    _best_weapon(engine.player, auto_equip=True)
+
     while True:
         lmap = engine.current_local
         px, py = engine.player.local_x, engine.player.local_y
@@ -381,7 +469,11 @@ def enter_combat_mode(engine: "Engine", console, ctx) -> None:
             target_idx = 0
         dist, kind, target = hostiles[target_idx]
 
-        weapon = _best_weapon(engine.player)
+        # Use whatever the player has equipped — respect their swap choice
+        weapon = _get_held_weapon(engine.player)
+        if weapon is None:
+            # Nothing in hand at all — try to auto-equip
+            weapon = _best_weapon(engine.player, auto_equip=True)
         hit_chance = _calc_hit_chance(engine.player, target, weapon, dist, aimed_part) if weapon else 0
         careful_chance = _calc_hit_chance(engine.player, target, weapon, dist, aimed_part, accuracy_bonus=5) if weapon else 0
 
@@ -457,12 +549,21 @@ def enter_combat_mode(engine: "Engine", console, ctx) -> None:
             console.print(x, y, "   Unarmed", fg=(180, 100, 100))
         y += 2
 
-        # Player cover status
+        # Player stance & cover
+        stance = getattr(engine.player, 'stance', 'Standing')
+        stance_fg = (180, 220, 140) if stance == "Crouched" else \
+                    (100, 200, 255) if stance == "Prone" else (200, 200, 200)
+        console.print(x, y, f"   Stance: {stance}", fg=stance_fg)
+        y += 1
         p_cover = lmap.best_adjacent_cover(px, py)
-        if p_cover >= 2:
-            console.print(x, y, "   Cover: FULL (behind rock)", fg=(100, 200, 255))
-        elif p_cover == 1:
-            console.print(x, y, "   Cover: Partial (tree/brush)", fg=(180, 220, 140))
+        # Crouching behind partial cover = full cover
+        effective_cover = p_cover
+        if stance == "Crouched" and p_cover >= 1:
+            effective_cover = 2
+        if effective_cover >= 2:
+            console.print(x, y, "   Cover: FULL", fg=(100, 200, 255))
+        elif effective_cover == 1:
+            console.print(x, y, "   Cover: Partial", fg=(180, 220, 140))
         else:
             console.print(x, y, "   Cover: EXPOSED", fg=(255, 120, 80))
         y += 2
@@ -483,11 +584,17 @@ def enter_combat_mode(engine: "Engine", console, ctx) -> None:
 
         y += 1
         console.print(x, y,     "[F] Snap shot  [G] Careful aim", fg=(120, 120, 120))
-        console.print(x, y + 1, "[X] Melee attack (adjacent)", fg=(120, 120, 120))
+        console.print(x, y + 1, "[X] Melee  [Z] Grapple (adjacent)", fg=(120, 120, 120))
         console.print(x, y + 2, "[R]eload  [TAB] target", fg=(120, 120, 120))
         console.print(x, y + 3, "[1-5] Aim part  [SPACE] Wait", fg=(120, 120, 120))
-        console.print(x, y + 4, "[T]hrow item  [W] Swap weapon", fg=(120, 120, 120))
-        console.print(x, y + 5, "[V]iew  [arrows] Move  [ESC] Exit", fg=(120, 120, 120))
+        console.print(x, y + 4, "[T]hrow  [W] Swap  [C] Crouch/Stand", fg=(120, 120, 120))
+        console.print(x, y + 5, "[X] Take cover  [I] Intimidate", fg=(120, 120, 120))
+        # Show surrender option if target has surrendered
+        if kind == "npc" and getattr(target, 'combat_state', '') == "surrendered":
+            console.print(x, y + 6, "[S] Accept surrender", fg=(100, 255, 100))
+            console.print(x, y + 7, "[V]iew  [arrows] Move  [Q] Flee", fg=(120, 120, 120))
+        else:
+            console.print(x, y + 6, "[V]iew  [arrows] Move  [Q] Flee", fg=(120, 120, 120))
 
         # Combat log
         log_y = 44
@@ -520,12 +627,12 @@ def enter_combat_mode(engine: "Engine", console, ctx) -> None:
                     return
 
                 # Retreat — run away, hostiles get one free shot
-                if sym == K.r and sym != K.r:  # R is reload, use Shift+R
-                    pass  # reserved
                 if sym == K.q:
                     # Flee combat — enemies get a parting shot
                     add_msg("You turn and run!", "critical")
-                    for npc in hostiles:
+                    for _d, _k, npc in hostiles:
+                        if _k != "npc":
+                            continue
                         if npc.alive and npc.combat_state == "hostile":
                             from src.combat import npc_attack_player
                             cover = 0  # running = no cover
@@ -587,6 +694,61 @@ def enter_combat_mode(engine: "Engine", console, ctx) -> None:
                         tick_time(ACTION_TIME["melee"] + steps * ACTION_TIME["move"])
                     else:
                         add_msg("Too far for melee. Get closer or use [F] to shoot.", "advisory")
+                    break
+
+                # Grapple (Z) — initiate wrestling at melee range
+                if sym == K.z:
+                    if kind != "npc":
+                        add_msg("Can't grapple an animal.", "advisory")
+                        break
+                    if dist > 1:
+                        add_msg("Too far to grapple. Get adjacent first.", "advisory")
+                        break
+                    try:
+                        from src.grapple import (initiate_grapple, grapple_action,
+                                                  npc_escape_attempt, grapple_tick,
+                                                  GRAPPLE_ACTIONS, GRAPPLE_LABELS)
+                        ok, msg, g_state = initiate_grapple(
+                            engine.player, target, rng)
+                        add_msg(msg)
+                        if ok and g_state:
+                            # Enter grapple sub-loop
+                            while g_state:
+                                # Draw grapple HUD
+                                add_msg(f"  GRAPPLE [{g_state.hold_type}] "
+                                        f"Control: {g_state.control}/100")
+                                # Show options
+                                from src.menus import pick_from_list
+                                labels = [GRAPPLE_LABELS.get(a, a) for a in GRAPPLE_ACTIONS]
+                                idx = pick_from_list(console, ctx,
+                                    f"Grappling {target.name}", labels)
+                                if idx is None:
+                                    break
+                                action_id = GRAPPLE_ACTIONS[idx]
+                                g_msg, still_active = grapple_action(
+                                    g_state, action_id, engine.player, target, rng)
+                                add_msg(g_msg)
+                                if not still_active:
+                                    g_state = None
+                                    break
+                                # NPC escape attempt
+                                esc_msg, escaped = npc_escape_attempt(
+                                    g_state, engine.player, target, rng)
+                                add_msg(esc_msg)
+                                if escaped:
+                                    g_state = None
+                                    break
+                                # Per-tick effects
+                                tick_msg = grapple_tick(g_state, engine.player, target)
+                                if tick_msg:
+                                    add_msg(tick_msg)
+                                if not target.alive:
+                                    add_msg(f"{target.name} goes limp.")
+                                    g_state = None
+                                    break
+                                tick_time(ACTION_TIME["melee"])
+                    except ImportError:
+                        add_msg("Grapple system not available.", "advisory")
                     break
 
                 # Snap shot (F) — fast, normal accuracy
@@ -809,6 +971,156 @@ def enter_combat_mode(engine: "Engine", console, ctx) -> None:
                             add_msg(f"You ready the {chosen.name}.", "normal")
                     break
 
+                # Crouch / Stand — toggle stance
+                if sym == K.c:
+                    from src.player import Stance
+                    if engine.player.stance == Stance.STANDING:
+                        engine.player.stance = Stance.CROUCHED
+                        add_msg("You crouch low.", "normal")
+                    elif engine.player.stance == Stance.CROUCHED:
+                        engine.player.stance = Stance.STANDING
+                        add_msg("You stand up.", "normal")
+                    tick_time(1)
+                    break
+
+                # Take cover — auto-move to nearest cover tile
+                if sym == K.x:
+                    best_cx, best_cy, best_d = px, py, 999
+                    for _dy in range(-5, 6):
+                        for _dx in range(-5, 6):
+                            _nx, _ny = px + _dx, py + _dy
+                            if not lmap.in_bounds(_nx, _ny) or \
+                                    not lmap.is_passable(_nx, _ny):
+                                continue
+                            cv = lmap.cover_at(_nx, _ny) + \
+                                 lmap.best_adjacent_cover(_nx, _ny)
+                            if cv > 0:
+                                _d = abs(_dx) + abs(_dy)
+                                if _d < best_d and _d > 0:
+                                    best_d = _d
+                                    best_cx, best_cy = _nx, _ny
+                    if best_d < 999:
+                        # Rush to cover — move up to 3 tiles toward it
+                        steps = min(3, best_d)
+                        for _ in range(steps):
+                            _sdx = (1 if best_cx > engine.player.local_x else
+                                    -1 if best_cx < engine.player.local_x else 0)
+                            _sdy = (1 if best_cy > engine.player.local_y else
+                                    -1 if best_cy < engine.player.local_y else 0)
+                            _snx = engine.player.local_x + _sdx
+                            _sny = engine.player.local_y + _sdy
+                            if lmap.in_bounds(_snx, _sny) and \
+                                    lmap.is_passable(_snx, _sny):
+                                engine.player.local_x = _snx
+                                engine.player.local_y = _sny
+                        from src.player import Stance
+                        engine.player.stance = Stance.CROUCHED
+                        add_msg("You dive for cover!", "normal")
+                        tick_time(ACTION_TIME["move"] + 1)
+                        engine.recompute_fov()
+                    else:
+                        add_msg("No cover nearby!", "advisory")
+                    break
+
+                # Accept surrender — disarm and release
+                if sym == K.s and kind == "npc" and \
+                        getattr(target, 'combat_state', '') == "surrendered":
+                    from src.menus import pick_from_list
+                    choices = ["Disarm and release", "Take their gear",
+                               "Let them go"]
+                    sidx = pick_from_list(console, ctx,
+                        f"{target.name} has surrendered.", choices)
+                    if sidx == 0:
+                        # Disarm — take weapon, release
+                        if hasattr(target, 'inventory') and target.inventory:
+                            weapons = [i for i in target.inventory
+                                       if getattr(i, 'weapon_type', '')]
+                            for w in weapons:
+                                target.inventory.remove(w)
+                                engine.player.inventory.append(w)
+                                add_msg(f"You take {target.name}'s {w.name}.")
+                        target.combat_state = "neutral"
+                        target.present = True
+                        add_msg(f"{target.name} backs away, hands up. "
+                                f"The fight is over.")
+                        if hasattr(target, 'rel'):
+                            target.rel.fear = min(100, target.rel.fear + 30)
+                        engine.journal.end_combat()
+                        return
+                    elif sidx == 1:
+                        # Loot all gear
+                        if hasattr(target, 'inventory'):
+                            for item in list(target.inventory):
+                                engine.player.inventory.append(item)
+                            target.inventory.clear()
+                        add_msg(f"You strip {target.name} of everything.")
+                        target.combat_state = "neutral"
+                        if hasattr(target, 'rel'):
+                            target.rel.affinity -= 40
+                            target.rel.fear = min(100, target.rel.fear + 40)
+                        engine.journal.end_combat()
+                        return
+                    elif sidx == 2:
+                        target.combat_state = "neutral"
+                        add_msg(f"You let {target.name} go.")
+                        if hasattr(target, 'rel'):
+                            target.rel.affinity += 10
+                        engine.journal.end_combat()
+                        return
+                    break
+
+                # Intimidate — force morale check on target
+                if sym == K.i:
+                    if kind != "npc":
+                        add_msg("You can't intimidate an animal.", "advisory")
+                        break
+                    cha = engine.player.attributes.get("charisma", 10)
+                    fear = getattr(target.rel, 'fear', 0) if hasattr(target, 'rel') else 0
+                    # Roll: d20 + charisma/3 + fear/10 vs NPC willpower
+                    import random as _irng
+                    i_roll = _irng.randint(1, 20) + cha // 3 + fear // 10
+                    npc_will = 10 + target.attributes.get("wisdom", 10) // 3
+                    # Weapon in hand helps — pointing a gun is scarier
+                    if weapon and weapon.weapon_type == "firearm":
+                        loaded = weapon.extra.get("loaded", 0)
+                        if loaded > 0:
+                            i_roll += 4  # loaded gun pointed at them
+                    # Being wounded helps (their fear)
+                    t_hp_pct = target.health / max(
+                        getattr(target.wounds, 'max_blood', 100), 1)
+                    if t_hp_pct < 0.5:
+                        i_roll += 3
+                    # Brave NPCs resist, cowardly ones fold
+                    if "brave" in target.traits:
+                        npc_will += 4
+                    if "coward" in target.traits or "nervous" in target.traits:
+                        npc_will -= 4
+                    if i_roll >= npc_will:
+                        target.combat_state = "surrendered"
+                        surrender_msgs = [
+                            f'*{target.name} throws up his hands.* "Alright! Alright! Don\'t shoot!"',
+                            f'*{target.name} drops his weapon.* "I give! I give!"',
+                            f'*{target.name} goes pale.* "Please... I got a family."',
+                            f'*{target.name} backs away, hands up.* "Take what you want. Just let me go."',
+                        ]
+                        add_msg(_irng.choice(surrender_msgs), "normal")
+                        if hasattr(target, 'rel'):
+                            target.rel.fear = min(100, fear + 20)
+                    elif i_roll >= npc_will - 3:
+                        add_msg(f"*{target.name} hesitates.* "
+                                f"He's scared but not ready to give up yet.", "normal")
+                        if hasattr(target, 'rel'):
+                            target.rel.fear = min(100, fear + 10)
+                    else:
+                        taunt_backs = [
+                            f'*{target.name} spits.* "Go to hell."',
+                            f'"You don\'t scare me." *{target.name} raises his weapon.*',
+                            f'*{target.name} laughs.* "That the best you got?"',
+                        ]
+                        add_msg(_irng.choice(taunt_backs), "normal")
+                    tick_time(2)
+                    break
+
                 # Free look
                 if sym == K.v:
                     _free_look(engine, console, ctx, target, lmap, _on_map, _animals)
@@ -825,6 +1137,9 @@ def enter_combat_mode(engine: "Engine", console, ctx) -> None:
                     dx, dy = moves[sym]
                     nx = engine.player.local_x + dx
                     ny = engine.player.local_y + dy
+                    if engine.check_edge_transition(nx, ny):
+                        add_msg("You leave the fight behind.", "normal")
+                        return  # exited combat via map edge
                     if lmap.in_bounds(nx, ny) and lmap.is_passable(nx, ny):
                         cur_z = engine.player.local_z
                         target_z = int(lmap.surface_z[ny][nx])
@@ -835,7 +1150,11 @@ def enter_combat_mode(engine: "Engine", console, ctx) -> None:
                         if target_z != cur_z:
                             engine.player.local_z = target_z
                         engine.recompute_fov()
-                        tick_time(ACTION_TIME["move"])
+                        # Crouched movement costs double
+                        move_cost = ACTION_TIME["move"]
+                        if engine.player.stance == "Crouched":
+                            move_cost = int(move_cost * 1.5)
+                        tick_time(move_cost)
                     break
 
 
@@ -914,7 +1233,8 @@ def _do_player_attack(engine, target, kind, weapon, aimed_part, dist,
         evt = player_attack_npc(engine.player, target, weapon,
                                 distance=dist, aimed_part=aimed_part,
                                 accuracy_bonus=accuracy_bonus,
-                                target_cover=t_cover)
+                                target_cover=t_cover,
+                                weather=engine.time.weather)
         add_msg(evt.message, "critical" if evt.killed else "normal")
         # Sound effect
         if is_firearm:
@@ -927,7 +1247,7 @@ def _do_player_attack(engine, target, kind, weapon, aimed_part, dist,
                 target.local_x, target.local_y, dmg, add_msg,
                 console=engine._console, ctx=engine._ctx)
         if evt.hit:
-            skill = "firearms" if weapon.weapon_type == "firearm" else "survival"
+            skill = "firearms" if weapon and weapon.weapon_type == "firearm" else "survival"
             engine.player.gain_skill_xp(skill, 3.0 if evt.killed else 1.5)
             engine._splatter_blood(lmap, target.local_x, target.local_y,
                                    2 if evt.killed else 1)
@@ -938,37 +1258,149 @@ def _do_player_attack(engine, target, kind, weapon, aimed_part, dist,
             if evt.defender_fled:
                 engine.journal.log_enemy_fled(target.name)
     else:
+        # ── Animal attack — uses wound system like NPCs ──────────────
         sp = target.species
         roll = rng.randint(1, 20)
-        roll += engine.player.skills.get("firearms" if weapon.weapon_type == "firearm" else "survival", 0) // 2
-        roll += engine.player.attributes.get("agility" if weapon.weapon_type == "firearm" else "strength", 10) // 3
+        w_type = weapon.weapon_type if weapon else "melee"
+        w_name = weapon.name if weapon else "fists"
+        roll += engine.player.skills.get("firearms" if w_type == "firearm" else "survival", 0) // 2
+        roll += engine.player.attributes.get("agility" if w_type == "firearm" else "strength", 10) // 3
         roll += accuracy_bonus
         aim = AIMED_SHOTS[aimed_part]
         roll += aim[1]
         defense = {"small": 12, "medium": 9, "large": 6, "very_large": 5}.get(sp.size, 8)
-        if weapon.weapon_type == "firearm":
+        if weapon and weapon.weapon_type == "firearm":
             if dist > 40:
                 roll -= (dist - 40) // 5
-            weapon.extra["loaded"] = weapon.extra.get("loaded", 1) - 1
+            weapon.extra["loaded"] = weapon.extra.get("loaded", 0) - 1
+
         if roll >= defense:
-            dmg = max(1, int(rng.randint(weapon.damage_min, weapon.damage_max) * aim[2]))
+            if weapon:
+                raw = rng.randint(weapon.damage_min, weapon.damage_max)
+            else:
+                raw = rng.randint(1, 4)
+            dmg = max(1, int(raw * aim[2]))
+
+            # Headshot instant kill
             if aim[3] == "head" and dmg >= 5 and rng.random() < 0.6:
                 dmg = max(dmg, int(target.health) + 10)
-            target.take_damage(float(dmg))
+
+            # Map aimed part to animal body part
+            from src.combat import _weapon_damage_type, _weapon_key
+            _AIM_TO_ANIMAL = {
+                "head": "head", "torso": "chest",
+                "legs": "r_hindleg", "arms": "r_foreleg", "groin": "abdomen",
+            }
+            aim_special = aim[3]
+            wound_part = _AIM_TO_ANIMAL.get(aim_special)
+            # For small quadrupeds, map chest→body
+            if wound_part == "chest" and target.wounds.body_plan_name == "small_quadruped":
+                wound_part = "body"
+
+            # Apply wound through wound system (generates DetailedWound)
+            dmg_type = _weapon_damage_type(w_name)
+            wound = target.wounds.apply_hit(
+                dmg, dmg_type,
+                target_part=wound_part,
+                weapon_key=_weapon_key(w_name))
+            target.health = max(0.0, target.health - dmg)
+
+            # Update state from health
+            if target.health <= 0:
+                target.state = "dead"
+            elif target.health < target.species.meat_yield_lb * 0.2:
+                target.state = "downed"
+            elif target.health < target.species.meat_yield_lb * 0.55:
+                target.state = "wounded_fleeing"
+                target.wound_flee_steps = rng.randint(10, 30)
+
+            # Get wound description for the message
+            part_hit = wound.part if hasattr(wound, 'part') else ""
+            wound_desc = wound.description if hasattr(wound, 'description') else ""
+            from src.health_system import PART_DATA, BODY_PLANS
+            plan = BODY_PLANS.get(target.wounds.body_plan_name, BODY_PLANS.get("quadruped", {}))
+            plan_data = plan.get("part_data", PART_DATA)
+            part_label = plan_data.get(part_hit, {}).get("label", part_hit)
+
             engine._splatter_blood(lmap, target.local_x, target.local_y,
                                    2 if target.state == "dead" else 1)
+
+            # Build visceral message
+            name = sp.display_name
+            is_firearm = weapon and weapon.weapon_type == "firearm"
+            is_shotgun = is_firearm and "shotgun" in w_name.lower()
+
             if target.state == "dead":
-                add_msg(f"The {sp.display_name} drops.", "normal")
+                if aim_special == "head" and dmg >= 8:
+                    kill_msgs = [
+                        f"The shot takes the {name}'s head apart. It drops instantly.",
+                        f"The {name}'s skull explodes. Dead before it hits the ground.",
+                        f"A clean head shot. The {name} crumples without a sound.",
+                    ]
+                elif is_shotgun:
+                    kill_msgs = [
+                        f"The shotgun blast tears the {name} open. It's done.",
+                        f"The {name} is blown sideways by the blast. It doesn't get up.",
+                    ]
+                elif is_firearm:
+                    kill_msgs = [
+                        f"The ball punches through the {name}'s {part_label.lower()}. "
+                        f"It staggers, then drops.",
+                        f"The {name} takes the shot in the {part_label.lower()} and goes down hard.",
+                        f"A killing shot to the {part_label.lower()}. The {name} folds.",
+                    ]
+                else:
+                    kill_msgs = [
+                        f"The {w_name} catches the {name} in the {part_label.lower()}. "
+                        f"It drops.",
+                        f"A killing blow to the {part_label.lower()}. The {name} is dead.",
+                    ]
+                add_msg(rng.choice(kill_msgs), "normal")
                 engine._blood_pool(lmap, target.local_x, target.local_y, 2, True)
-                engine.journal.log_enemy_killed(sp.display_name)
+                engine.journal.log_enemy_killed(name)
+
             elif target.state == "downed":
-                add_msg(f"The {sp.display_name} collapses.", "normal")
+                down_msgs = [
+                    f"The shot shatters the {name}'s {part_label.lower()}. "
+                    f"It collapses, breathing hard.",
+                    f"The {name}'s {part_label.lower()} gives out. "
+                    f"It goes down, thrashing.",
+                    f"A solid hit to the {part_label.lower()}. The {name} drops, "
+                    f"legs kicking.",
+                ]
+                add_msg(rng.choice(down_msgs), "normal")
+
+            elif target.state == "wounded_fleeing":
+                flee_msgs = [
+                    f"The shot hits the {name} in the {part_label.lower()}. "
+                    f"{wound_desc}. It bolts, bleeding.",
+                    f"You catch the {name} in the {part_label.lower()}. "
+                    f"Blood sprays. It runs, stumbling.",
+                    f"The {name} takes the hit in the {part_label.lower()} and "
+                    f"breaks into a panicked run, leaving a blood trail.",
+                ]
+                add_msg(rng.choice(flee_msgs), "normal")
+
             else:
-                add_msg(f"You hit the {sp.display_name}.", "normal")
+                # Hit but not critical
+                hit_msgs = [
+                    f"The shot catches the {name} in the {part_label.lower()}. "
+                    f"{wound_desc}.",
+                    f"You hit the {name}'s {part_label.lower()}. {wound_desc}. "
+                    f"It snarls.",
+                    f"A hit to the {part_label.lower()}. {wound_desc}. "
+                    f"The {name} flinches but stays up.",
+                ]
+                add_msg(rng.choice(hit_msgs), "normal")
         else:
-            add_msg(f"The shot misses the {sp.display_name}.", "normal")
+            miss_msgs = [
+                f"The shot misses the {sp.display_name}.",
+                f"The {sp.display_name} dodges. The shot kicks up dirt behind it.",
+                f"You fire — the {sp.display_name} flinches but you missed.",
+            ]
+            add_msg(rng.choice(miss_msgs), "normal")
         engine.player.gain_skill_xp(
-            "firearms" if weapon.weapon_type == "firearm" else "survival", 2.0)
+            "firearms" if weapon and weapon.weapon_type == "firearm" else "survival", 2.0)
 
 
 def _play_sound(sound_type: str):

@@ -254,7 +254,7 @@ def pan_for_gold(player: "Player", local_map: "LocalMap",
         )
 
     # Check for pan in inventory
-    has_pan = any("pan" in item.tool_tags for item in player.inventory)
+    has_pan = any("pan" in getattr(item, 'tool_tags', []) for item in player.inventory)
     if not has_pan:
         return PanResult(
             success=False, gold_oz=0, grade_seen="barren",

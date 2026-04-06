@@ -1,0 +1,34 @@
+{
+  "nail": {
+    "id": "nail",
+    "name": "nail",
+    "weight": 0.05,
+    "category": "material",
+    "description": "A small metal nail, used for fastening and construction.",
+    "base_value": 0.5,
+    "quality": "standard",
+    "tool_tags": [],
+    "weapon_type": "",
+    "damage_min": 0,
+    "damage_max": 0,
+    "damage_type": "",
+    "nutrition": 0,
+    "hydration": 0,
+    "perishable": false,
+    "days_until_spoil": null,
+    "clothing_slot": "",
+    "warmth": 0,
+    "protection": 0,
+    "capacity_lb": 0,
+    "stackable": true,
+    "durability": 50.0,
+    "tags": [
+      "fragile"
+    ],
+    "special": {},
+    "materials_hint": "",
+    "creation_skill": "engineering",
+    "creation_difficulty": 5,
+    "source": "llm"
+  }
+}

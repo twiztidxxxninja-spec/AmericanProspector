@@ -41,14 +41,23 @@ def _get_remote_version() -> Optional[str]:
 
 
 def _parse_version(v: str) -> tuple:
-    """Parse '0.1.0-alpha' into comparable tuple (0, 1, 0, 'alpha')."""
+    """Parse '0.1.0-alpha' into comparable tuple of ints (pre-release = -1)."""
     parts = v.replace("-", ".").split(".")
     result = []
     for p in parts:
         try:
             result.append(int(p))
         except ValueError:
-            result.append(p)
+            # Pre-release tags sort before release: alpha=-3, beta=-2, rc=-1
+            tag = p.lower()
+            if "alpha" in tag:
+                result.append(-3)
+            elif "beta" in tag:
+                result.append(-2)
+            elif "rc" in tag:
+                result.append(-1)
+            else:
+                result.append(0)
     return tuple(result)
 
 

@@ -48,6 +48,11 @@ def save_game(engine: "Engine", slot: str = "autosave") -> str:
                 "thirst":  p.survival.thirst,
                 "warmth":  p.survival.warmth,
                 "fatigue": p.survival.fatigue,
+                "drunk_level": p.survival.drunk_level,
+                "gut_sick_hours": p.survival.gut_sick_hours,
+                "mercury_exposure": p.survival.mercury_exposure,
+                "days_meat_only": p.survival.days_meat_only,
+                "diseases": p.survival.diseases,
             },
             "stance":     p.stance,
             "speed":      p.speed,
@@ -55,6 +60,15 @@ def save_game(engine: "Engine", slot: str = "autosave") -> str:
             "gold_oz":    p.gold_oz,
             "left_hand":  p.left_hand,
             "right_hand": p.right_hand,
+            "pan_loaded":    p.pan_loaded,
+            "pan_source_x":  p.pan_source_x,
+            "pan_source_y":  p.pan_source_y,
+            "mounted":       p.mounted,
+            "mount_animal_id": p.mount_animal_id,
+            "languages":     getattr(p, 'languages', {"english": "fluent"}),
+            "lang_exposure":  getattr(p, '_lang_exposure', {}),
+            "in_canoe":      getattr(p, '_in_canoe', False),
+            "canoe_type":    getattr(p, '_canoe_type', ""),
             "inventory":  [_serialize_item(i) for i in p.inventory],
         },
         "world": {
@@ -68,6 +82,7 @@ def save_game(engine: "Engine", slot: str = "autosave") -> str:
         "local_maps": {
             f"{wx},{wy},{ax},{ay}": _serialize_local(lmap)
             for (wx, wy, ax, ay), lmap in engine.locals.items()
+            if getattr(lmap, '_dirty', True)  # skip pristine maps
         },
         "messages": engine.messages[-50:],  # last 50
     }
@@ -75,23 +90,32 @@ def save_game(engine: "Engine", slot: str = "autosave") -> str:
     # ── NPC state ─────────────────────────────────────────────────────
     npc_data = {}
     for npc_id, npc in engine.npc_mgr.npcs.items():
-        npc_data[npc_id] = {
-            "npc_id": npc.npc_id, "name": npc.name, "age": npc.age,
-            "gender": npc.gender, "occupation": npc.occupation,
-            "attributes": npc.attributes, "skills": npc.skills,
-            "knowledge": npc.knowledge, "traits": npc.traits,
-            "local_x": npc.local_x, "local_y": npc.local_y,
-            "local_z": getattr(npc, 'local_z', 0),
-            "alive": npc.alive, "present": npc.present,
-            "health": npc.health, "combat_state": npc.combat_state,
-            "relationship": npc.relationship,
-            "knows_name": npc.memory.knows_name,
-            "last_seen_day": npc.memory.last_seen_day,
-            "facts": npc.memory.facts,
-            "backstory_revealed": npc.backstory_revealed,
-            "backstory_hidden": npc.backstory_hidden,
-            "schedule": npc.schedule,
-        }
+        if hasattr(npc, 'to_dict'):
+            npc_data[npc_id] = npc.to_dict()
+        else:
+            # Legacy NPC fallback
+            npc_data[npc_id] = {
+                "npc_id": npc.npc_id, "name": npc.name, "age": npc.age,
+                "gender": npc.gender, "occupation": npc.occupation,
+                "attributes": npc.attributes, "skills": npc.skills,
+                "knowledge": npc.knowledge, "traits": npc.traits,
+                "local_x": npc.local_x, "local_y": npc.local_y,
+                "local_z": getattr(npc, 'local_z', 0),
+                "alive": npc.alive, "present": npc.present,
+                "health": npc.health, "combat_state": npc.combat_state,
+                "relationship": npc.relationship,
+                "knows_name": npc.memory.knows_name,
+                "last_seen_day": npc.memory.last_seen_day,
+                "facts": npc.memory.facts,
+                "backstory_revealed": getattr(npc, 'backstory_revealed', []),
+                "backstory_hidden": getattr(npc, 'backstory_hidden', []),
+                "schedule": getattr(npc, 'schedule', {}),
+            }
+    # Also save NPCs from the generator (persistent NPCs not on current map)
+    if hasattr(engine, '_npc_gen') and engine._npc_gen:
+        for npc_id, npc in engine._npc_gen.npcs.items():
+            if npc_id not in npc_data and hasattr(npc, 'to_dict'):
+                npc_data[npc_id] = npc.to_dict()
     data["npcs"] = npc_data
 
     # ── New systems ───────────────────────────────────────────────────
@@ -150,6 +174,13 @@ def save_game(engine: "Engine", slot: str = "autosave") -> str:
         except Exception:
             pass
 
+    # Journal
+    if hasattr(engine, "journal") and engine.journal:
+        try:
+            data["journal"] = engine.journal.to_dict()
+        except Exception:
+            pass
+
     # Writing / mail system
     if hasattr(engine, "writing") and engine.writing:
         data["writing"] = engine.writing.to_dict()
@@ -174,6 +205,75 @@ def save_game(engine: "Engine", slot: str = "autosave") -> str:
             data["claims"] = engine.claim_mgr.to_dict()
         except Exception:
             pass
+
+    # Vehicles
+    if hasattr(engine, "vehicle_mgr") and engine.vehicle_mgr:
+        try:
+            data["vehicles"] = engine.vehicle_mgr.to_dict()
+        except Exception:
+            pass
+
+    # Bounty board
+    if hasattr(engine, "bounty_board") and engine.bounty_board:
+        try:
+            data["bounty_board"] = engine.bounty_board.to_dict()
+        except Exception:
+            pass
+
+    # Newspaper
+    if hasattr(engine, "newspaper") and engine.newspaper:
+        try:
+            data["newspaper"] = engine.newspaper.to_dict()
+        except Exception:
+            pass
+
+    # Property
+    if hasattr(engine, "property_mgr") and engine.property_mgr:
+        try:
+            data["property"] = engine.property_mgr.to_dict()
+        except Exception:
+            pass
+
+    # Rival prospectors
+    if hasattr(engine, "rival_system") and engine.rival_system:
+        try:
+            data["rivals"] = engine.rival_system.to_dict()
+        except Exception:
+            pass
+
+    # Town services
+    if hasattr(engine, "town_services") and engine.town_services:
+        try:
+            data["town_services"] = engine.town_services.to_dict()
+        except Exception:
+            pass
+
+    # Era
+    data["era_id"] = getattr(engine, "era_id", "gold_rush")
+    data["start_minutes"] = getattr(engine, "_start_minutes", engine.time.total_minutes)
+
+    # Combat seen messages (no-repeat system)
+    try:
+        from src.combat import _seen_messages
+        data["seen_combat_msgs"] = {k: list(v) for k, v in _seen_messages.items()}
+    except ImportError:
+        pass
+
+    # Tribal system
+    if hasattr(engine, "tribal") and engine.tribal:
+        try:
+            data["tribal"] = engine.tribal.to_dict()
+        except Exception:
+            pass
+
+    # War system
+    if hasattr(engine, "war_system") and engine.war_system:
+        data["war_system"] = engine.war_system.to_dict()
+
+    # Marriage
+    if engine.marriage_state:
+        from src.marriage import to_dict as _marriage_to_dict
+        data["marriage"] = _marriage_to_dict(engine.marriage_state)
 
     # Settlement price effects
     if hasattr(engine, "_settlement_price_effects"):
@@ -227,6 +327,15 @@ def load_game(engine: "Engine", slot: str = "autosave") -> bool:
     p.gold_oz    = pd.get("gold_oz", 0.0)
     p.left_hand  = pd.get("left_hand")
     p.right_hand = pd.get("right_hand")
+    p.pan_loaded   = pd.get("pan_loaded", False)
+    p.pan_source_x = pd.get("pan_source_x", 0)
+    p.pan_source_y = pd.get("pan_source_y", 0)
+    p.mounted      = pd.get("mounted", False)
+    p.mount_animal_id = pd.get("mount_animal_id", None)
+    p.languages    = pd.get("languages", {"english": "fluent"})
+    p._lang_exposure = pd.get("lang_exposure", {})
+    p._in_canoe    = pd.get("in_canoe", False)
+    p._canoe_type  = pd.get("canoe_type", "")
     p.stance     = pd.get("stance", "Standing")
     p.speed      = pd.get("speed",  "Walk")
 
@@ -237,6 +346,11 @@ def load_game(engine: "Engine", slot: str = "autosave") -> bool:
     s.thirst  = sd["thirst"]
     s.warmth  = sd["warmth"]
     s.fatigue = sd["fatigue"]
+    s.drunk_level = sd.get("drunk_level", 0.0)
+    s.gut_sick_hours = sd.get("gut_sick_hours", 0.0)
+    s.mercury_exposure = sd.get("mercury_exposure", 0.0)
+    s.days_meat_only = sd.get("days_meat_only", 0)
+    s.diseases = sd.get("diseases", [])
 
     from src.items import Item
     p.inventory = [_deserialize_item(i) for i in pd.get("inventory", [])]
@@ -266,34 +380,30 @@ def load_game(engine: "Engine", slot: str = "autosave") -> bool:
 
     # ── Restore NPC state ─────────────────────────────────────────────
     if "npcs" in data:
+        from src.npc_system import NPCExpanded
         from src.npc import NPC, NPCMemory
         for npc_id, nd in data["npcs"].items():
-            if npc_id in engine.npc_mgr.npcs:
-                npc = engine.npc_mgr.npcs[npc_id]
+            # Use NPCExpanded.from_dict if data has expanded fields
+            if "rel" in nd or "memory" in nd:
+                npc = NPCExpanded.from_dict(nd)
             else:
-                npc = NPC(npc_id=nd["npc_id"], name=nd["name"])
-                engine.npc_mgr.npcs[npc_id] = npc
-            npc.age = nd.get("age", 35)
-            npc.gender = nd.get("gender", "M")
-            npc.occupation = nd.get("occupation", "Prospector")
-            npc.attributes = nd.get("attributes", npc.attributes)
-            npc.skills = nd.get("skills", {})
-            npc.knowledge = nd.get("knowledge", {})
-            npc.traits = nd.get("traits", [])
-            npc.local_x = nd.get("local_x", 0)
-            npc.local_y = nd.get("local_y", 0)
-            npc.local_z = nd.get("local_z", 0)
-            npc.alive = nd.get("alive", True)
-            npc.present = nd.get("present", True)
-            npc.health = nd.get("health", 100.0)
-            npc.combat_state = nd.get("combat_state", "neutral")
-            npc.relationship = nd.get("relationship", 0.0)
-            npc.memory.knows_name = nd.get("knows_name", False)
-            npc.memory.last_seen_day = nd.get("last_seen_day", 0)
-            npc.memory.facts = nd.get("facts", [])
-            npc.backstory_revealed = nd.get("backstory_revealed", [])
-            npc.backstory_hidden = nd.get("backstory_hidden", [])
-            npc.schedule = nd.get("schedule", {})
+                # Legacy save — build NPCExpanded from old fields
+                npc = NPCExpanded(nd.get("npc_id", npc_id), nd.get("name", ""))
+                for k in ("age", "gender", "occupation", "attributes", "skills",
+                           "knowledge", "traits", "local_x", "local_y", "local_z",
+                           "alive", "present", "health", "combat_state",
+                           "backstory_revealed", "backstory_hidden", "schedule"):
+                    if k in nd:
+                        setattr(npc, k, nd[k])
+                npc.rel.affinity = nd.get("relationship", 0.0)
+                npc.memory.knows_name = nd.get("knows_name", False)
+                npc.memory.last_seen_day = nd.get("last_seen_day", 0)
+                for fact in nd.get("facts", []):
+                    npc.expanded_memory.add(fact, 0, significance=0.4)
+            engine.npc_mgr.npcs[npc_id] = npc
+            # Also restore into _npc_gen for background simulation
+            if hasattr(engine, '_npc_gen'):
+                engine._npc_gen.npcs[npc_id] = npc
 
     # ── Restore new systems ───────────────────────────────────────────
     from src.clothing import WornEquipment
@@ -321,6 +431,9 @@ def load_game(engine: "Engine", slot: str = "autosave") -> bool:
         engine.business_mgr = BusinessManager.from_dict(data["businesses"], engine.llm)
     if "action_history" in data:
         engine.action_history = ActionHistory.from_dict(data["action_history"])
+    if "journal" in data:
+        from src.journal import Journal
+        engine.journal = Journal.from_dict(data["journal"])
     if "writing" in data:
         from src.writing import WritingManager
         engine.writing = WritingManager.from_dict(data["writing"])
@@ -340,6 +453,65 @@ def load_game(engine: "Engine", slot: str = "autosave") -> bool:
     if "claims" in data:
         from src.claims import ClaimManager
         engine.claim_mgr = ClaimManager.from_dict(data["claims"])
+
+    # Vehicles
+    if "vehicles" in data:
+        from src.vehicles import VehicleManager
+        engine.vehicle_mgr = VehicleManager.from_dict(data["vehicles"])
+
+    # Bounty board
+    if "bounty_board" in data:
+        from src.bounty_system import BountyBoard
+        engine.bounty_board = BountyBoard.from_dict(data["bounty_board"])
+
+    # Newspaper
+    if "newspaper" in data:
+        from src.newspaper import NewspaperSystem
+        engine.newspaper = NewspaperSystem.from_dict(data["newspaper"])
+
+    # Property
+    if "property" in data:
+        from src.property import PropertyManager
+        engine.property_mgr = PropertyManager.from_dict(data["property"])
+
+    # Combat seen messages (no-repeat system)
+    if "seen_combat_msgs" in data:
+        try:
+            from src.combat import _seen_messages
+            _seen_messages.clear()
+            for k, v in data["seen_combat_msgs"].items():
+                _seen_messages[k] = set(v)
+        except ImportError:
+            pass
+
+    # Rival prospectors
+    if "rivals" in data:
+        from src.rival_prospectors import RivalProspectorSystem
+        engine.rival_system = RivalProspectorSystem.from_dict(data["rivals"])
+
+    # Era
+    engine.era_id = data.get("era_id", "gold_rush")
+    engine._start_minutes = data.get("start_minutes", engine.time.total_minutes)
+
+    # Tribal system
+    if "tribal" in data:
+        from src.tribal_system import TribalSystem
+        engine.tribal = TribalSystem.from_dict(data["tribal"])
+
+    # War system
+    if "war_system" in data:
+        from src.war_system import WarSystem
+        engine.war_system = WarSystem.from_dict(data["war_system"])
+
+    # Town services
+    if "town_services" in data:
+        from src.town_services import TownServiceRegistry
+        engine.town_services = TownServiceRegistry.from_dict(data["town_services"])
+
+    # Marriage
+    if "marriage" in data:
+        from src.marriage import from_dict as _marriage_from_dict
+        engine.marriage_state = _marriage_from_dict(data["marriage"])
 
     # Settlement price effects
     if "settlement_price_effects" in data:
@@ -415,28 +587,64 @@ def _deserialize_item(d: dict):
     )
 
 
+def _serialize_tile(t) -> dict:
+    """Serialize a single tile to dict, including only non-default fields."""
+    td = {
+        "terrain":  t.terrain,
+        "explored": t.explored,
+        "gold_grade": t.gold_grade,
+    }
+    if t.dig_depth:
+        td["dig_depth"] = t.dig_depth
+    if t.panned:
+        td["panned"] = True
+    if getattr(t, 'sluiced', False):
+        td["sluiced"] = True
+    if getattr(t, 'sluice_avg_grade', -1) >= 0:
+        td["sluice_avg_grade"] = t.sluice_avg_grade
+    if t.mineral_hint:
+        td["mineral_hint"] = t.mineral_hint
+    if t.blood:
+        td["blood"] = t.blood
+    if t.ground_items:
+        td["ground_items"] = [_serialize_item(i) for i in t.ground_items]
+    if t.gold_column:
+        td["gold_column"] = {
+            "total_dug_depth": t.gold_column.total_dug_depth,
+            "tailings_volume": t.gold_column.tailings_volume,
+            "layers": [
+                {"gold_grade": l.gold_grade,
+                 "remaining_volume": l.remaining_volume,
+                 "is_bedrock": l.is_bedrock}
+                for l in t.gold_column.layers
+            ],
+        }
+    return td
+
+
 def _serialize_local(lmap) -> dict:
-    tiles = []
-    for row in lmap.tiles:
-        row_data = []
-        for t in row:
-            td = {
-                "terrain":  t.terrain,
-                "explored": t.explored,
-                "gold_grade": t.gold_grade,
-            }
-            # Only save non-default values to keep file size down
-            if t.dig_depth:
-                td["dig_depth"] = t.dig_depth
-            if t.panned:
-                td["panned"] = True
-            if t.mineral_hint:
-                td["mineral_hint"] = t.mineral_hint
-            if t.ground_items:
-                td["ground_items"] = [_serialize_item(i) for i in t.ground_items]
-            row_data.append(td)
-        tiles.append(row_data)
-    result = {"tiles": tiles}
+    # Use sparse format: only save modified tiles to reduce file size
+    is_dirty = getattr(lmap, '_dirty', False)
+
+    if is_dirty and hasattr(lmap, '_original_terrain'):
+        # Sparse format: only save tiles that differ from generated state
+        modified_tiles = []
+        for y in range(lmap.height):
+            for x in range(lmap.width):
+                if lmap.is_tile_modified(x, y):
+                    td = _serialize_tile(lmap.tiles[y][x])
+                    td["_x"] = x
+                    td["_y"] = y
+                    modified_tiles.append(td)
+        result = {"format": "sparse", "modified_tiles": modified_tiles,
+                  "seed": lmap.seed}
+    else:
+        # Dense format (legacy): save all tiles
+        tiles = []
+        for row in lmap.tiles:
+            row_data = [_serialize_tile(t) for t in row]
+            tiles.append(row_data)
+        result = {"tiles": tiles}
 
     # Z-level elevation
     if hasattr(lmap, "surface_z") and lmap.surface_z is not None:
@@ -497,19 +705,45 @@ def _serialize_local(lmap) -> dict:
     return result
 
 
+def _apply_tile_data(tile, td):
+    """Apply saved data to a single tile."""
+    tile.terrain      = td.get("terrain", tile.terrain)
+    tile.explored     = td.get("explored", False)
+    tile.gold_grade   = td.get("gold_grade", tile.gold_grade)
+    tile.dig_depth    = td.get("dig_depth", 0)
+    tile.panned       = td.get("panned", False)
+    tile.sluiced      = td.get("sluiced", False)
+    tile.sluice_avg_grade = td.get("sluice_avg_grade", -1.0)
+    tile.mineral_hint = td.get("mineral_hint", "")
+    tile.blood        = td.get("blood", 0)
+    if "ground_items" in td:
+        tile.ground_items = [_deserialize_item(i) for i in td["ground_items"]]
+    if "gold_column" in td:
+        from src.volume_gold import GoldColumn, DepthLayer
+        gc = td["gold_column"]
+        tile.gold_column = GoldColumn(
+            total_dug_depth=gc.get("total_dug_depth", 0),
+            tailings_volume=gc.get("tailings_volume", 0.0),
+            layers=[DepthLayer(**ld) for ld in gc.get("layers", [])],
+        )
+
+
 def _deserialize_local(lmap, data: dict):
-    for y, row in enumerate(data.get("tiles", [])):
-        for x, td in enumerate(row):
+    fmt = data.get("format", "dense")
+
+    if fmt == "sparse":
+        # Sparse format: map was regenerated from seed, apply only modified tiles
+        for td in data.get("modified_tiles", []):
+            x, y = td["_x"], td["_y"]
             if y < lmap.height and x < lmap.width:
-                tile = lmap.tiles[y][x]
-                tile.terrain      = td.get("terrain", 0)
-                tile.explored     = td.get("explored", False)
-                tile.gold_grade   = td.get("gold_grade", 0.0)
-                tile.dig_depth    = td.get("dig_depth", 0)
-                tile.panned       = td.get("panned", False)
-                tile.mineral_hint = td.get("mineral_hint", "")
-                if "ground_items" in td:
-                    tile.ground_items = [_deserialize_item(i) for i in td["ground_items"]]
+                _apply_tile_data(lmap.tiles[y][x], td)
+        lmap._dirty = True
+    else:
+        # Dense format (legacy): overwrite all tiles
+        for y, row in enumerate(data.get("tiles", [])):
+            for x, td in enumerate(row):
+                if y < lmap.height and x < lmap.width:
+                    _apply_tile_data(lmap.tiles[y][x], td)
 
     # Restore z-level elevation
     if "surface_z" in data:

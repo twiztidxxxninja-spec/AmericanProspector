@@ -79,6 +79,8 @@ SETTLEMENT_PRICE_MULT: Dict[str, float] = {
     "boomtown":            1.8,    # high demand, growing supply
     "small_town":          1.2,    # established but limited
     "trading_post":        1.5,    # frontier post, markup for convenience
+    "frontier_fort":       2.0,    # remote fort, limited supply
+    "trapper_camp":        2.5,    # wilderness, everything scarce
     "city":                0.9,    # bulk supply, competition keeps prices down
 }
 
@@ -246,6 +248,14 @@ MERCHANT_TYPES: Dict[str, MerchantType] = {
         curiosity=0.0,
         stock_min=0, stock_max=0,
     ),
+    "fur_trader": MerchantType(
+        "fur_trader", "Fur Trader",
+        buys=["material"],
+        sells=["tool", "weapon", "food", "drink", "material", "clothing", "misc"],
+        markup=1.4, lowball=0.55,
+        curiosity=0.3,
+        stock_min=10, stock_max=25,
+    ),
 }
 
 # Map NPC occupation → merchant type
@@ -269,7 +279,7 @@ OCCUPATION_TO_MERCHANT: Dict[str, str] = {
     "Madam":              "saloon",
     "Trapper":            "general_store",
     "Mountain Man":       "general_store",
-    "Fur Trader":         "general_store",
+    "Fur Trader":         "fur_trader",
 }
 
 
@@ -360,8 +370,10 @@ class MerchantStock:
 
 
 def generate_stock(merchant_type: str, npc_id: str, seed: int,
-                    settlement_type: str = "small_town") -> MerchantStock:
-    """Generate merchant inventory from type + randomization."""
+                    settlement_type: str = "small_town",
+                    year: int = 1849) -> MerchantStock:
+    """Generate merchant inventory from type + randomization.
+    Items with year_available > current year are excluded."""
     mtype = MERCHANT_TYPES.get(merchant_type, MERCHANT_TYPES["general_store"])
     rng = random.Random(seed)
     from src.items import ITEM_TEMPLATES
@@ -377,6 +389,10 @@ def generate_stock(merchant_type: str, npc_id: str, seed: int,
         if rng.random() < prob:
             tpl = ITEM_TEMPLATES.get(item_id)
             if not tpl:
+                continue
+            # Year-gate: skip items not yet invented
+            yr_avail = tpl.get("year_available", 0)
+            if yr_avail and year < yr_avail:
                 continue
             qty = 1
             if tpl.get("stackable"):
@@ -422,6 +438,23 @@ class PriceEngine:
         price *= SETTLEMENT_PRICE_MULT.get(settlement_type, 1.0)
         price *= mtype.markup
 
+        # Wartime price spikes — check if active wars affect this region
+        try:
+            from src.war_system import WARS
+            _war_year = getattr(self, '_war_year', 1849)
+            for war in WARS:
+                if war.is_active(_war_year) and war.affects_region(region):
+                    # Military goods spike, food up, everything else mild
+                    if item_category in ("weapon", "tool"):
+                        price *= 1.0 + war.intensity * 1.5
+                    elif item_category == "food":
+                        price *= 1.0 + war.intensity * 0.5
+                    elif item_category == "material":
+                        price *= 1.0 + war.intensity * 0.8
+                    break  # only apply worst war once
+        except ImportError:
+            pass
+
         # Supply/demand
         demand = self._get_demand(region, item_category)
         price *= demand.buy_mult
@@ -441,7 +474,9 @@ class PriceEngine:
                     merchant_type: str,
                     item_condition: float = 100.0,
                     player_region_rep: float = 0.0,
-                    item_is_custom: bool = False) -> float:
+                    item_is_custom: bool = False,
+                    year: int = 1849,
+                    item_name: str = "") -> float:
         """
         What the merchant pays the player for their item.
         Lower = less money for the player.
@@ -470,16 +505,50 @@ class PriceEngine:
         rep_mod = 1.0 + (player_region_rep * 0.001)
         price *= max(0.9, min(1.1, rep_mod))
 
+        # Era-based pelt/hide pricing
+        # Long Hunter era: deerhides ARE the currency ($1 = 1 buck)
+        # Mountain Men era: beaver pelts peak, deerhides still trade
+        # Gold Rush: fur trade declining, gold is king
+        item_name_lower = item_name.lower() if item_name else ""
+        if "pelt" in item_name_lower or "fur" in item_name_lower or \
+                "hide" in item_name_lower or "skin" in item_name_lower:
+            if year < 1800:
+                price *= 1.5   # Long Hunter era — hides are the economy
+            elif year < 1830:
+                price *= 2.0   # peak fur trade (beaver boom)
+            elif year < 1840:
+                price *= 1.5
+            elif year < 1850:
+                price *= 1.0
+            else:
+                price *= 0.6   # fur trade dead
+
         return round(max(0.01, price), 2)
 
     def gold_to_cash(self, troy_oz: float, fineness: float = RAW_DUST_FINENESS,
-                      assay: bool = False) -> float:
+                      assay: bool = False, year: int = 1849) -> float:
         """
         Convert gold to dollars.
         Raw dust at raw fineness; assayed gold at refined value.
         Assay office takes a fee.
         """
-        value = troy_oz * GOLD_PRICE_PER_OZ * fineness
+        # Gold price varied by era:
+        # Pre-1792: no fixed price, traded by weight (~$19/oz equivalent)
+        # 1792-1834: $19.39/oz (Coinage Act)
+        # 1834-1933: $20.67/oz (Gold Act)
+        # 1934-1971: $35.00/oz (FDR)
+        # Post-1971: free market
+        if year < 1792:
+            price = 19.00
+        elif year < 1834:
+            price = 19.39
+        elif year < 1934:
+            price = GOLD_PRICE_PER_OZ  # 20.67
+        elif year < 1972:
+            price = 35.00
+        else:
+            price = 120.00 + (year - 1972) * 8  # rough approximation
+        value = troy_oz * price * fineness
         if assay:
             value *= (1.0 - ASSAY_FEE_PCT)
         return round(value, 2)
@@ -983,11 +1052,13 @@ class TradeEngine:
 
     def get_sell_price(self, item: "Item", region: str,
                         settlement_type: str, merchant_type: str,
-                        player_rep: float = 0.0) -> float:
+                        player_rep: float = 0.0,
+                        year: int = 1849) -> float:
         is_custom = item.id.startswith("llm_") or item.quality == "improvised"
         return self.price_engine.sell_price(
             item.base_value, item.category, region, settlement_type,
-            merchant_type, item.condition, player_rep, is_custom)
+            merchant_type, item.condition, player_rep, is_custom,
+            year=year, item_name=item.name.lower())
 
     def haggle_price(self, base_price: float, player,
                       merchant_type: str, is_buying: bool

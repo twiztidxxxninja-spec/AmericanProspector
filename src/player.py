@@ -58,7 +58,7 @@ ALL_SKILLS = [
     "coalMining", "survival", "tracking", "firstAid", "trading",
     "law", "engineering", "chemistry", "firearms", "driving",
     "farming", "literacy", "trapping", "furriery",
-    "fishing", "cooking",
+    "fishing", "cooking", "butchering",
 ]
 
 
@@ -67,9 +67,10 @@ class Player:
     name: str = "Unnamed"
     age:  int = 24
 
-    # World map position (Sacramento — overridden by character creation)
-    world_x: int = 95
-    world_y: int = 165
+    # World map position (near Sacramento, wilderness — overridden by character creation)
+    # Offset from Sacramento so player starts at a creek, not in town
+    world_x: int = 97
+    world_y: int = 163
 
     # Area patch within world tile (0–13, center = 7)
     area_x: int = 7
@@ -131,6 +132,15 @@ class Player:
     pan_loaded: bool = False   # True = pan holds raw material, needs water to wash
     pan_source_x: int = -1     # source tile coords (where material came from)
     pan_source_y: int = -1
+
+    # Riding state
+    mounted: bool = False
+    mount_animal_id: Optional[str] = None
+
+    # Languages: maps language_id → level ("none"/"sign"/"pidgin"/"fluent")
+    # Tribal languages tracked separately in engine.tribal system
+    languages: Dict[str, str] = field(default_factory=lambda: {"english": "fluent"})
+    _lang_exposure: Dict[str, int] = field(default_factory=dict)  # days near speakers
 
     def __post_init__(self):
         if self.worn is None:

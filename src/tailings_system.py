@@ -92,16 +92,16 @@ class TailingsSystem:
         take = min(volume_cy, pile.volume_cy)
         fraction = take / pile.volume_cy
 
-        gold_recovered = pile.trapped_gold_oz * fraction
+        raw_gold = pile.trapped_gold_oz * fraction
 
-        # Skill helps recover more from tails
-        skill_mult = 1.0 + (placer_skill * 0.11)
-        gold_recovered *= skill_mult
-
-        # Deplete the pile
+        # Deplete the pile by the raw fraction (before skill/pond bonuses)
         pile.volume_cy -= take
-        pile.trapped_gold_oz -= gold_recovered
+        pile.trapped_gold_oz -= raw_gold
+        pile.trapped_gold_oz = max(0.0, pile.trapped_gold_oz)
         pile.depletion = min(1.0, pile.depletion + fraction * 0.8)
+
+        # Skill helps recover more from tails (applied to returned amount only)
+        gold_recovered = raw_gold * (1.0 + placer_skill * 0.11)
 
         # If it's a settling pond, recovery is higher
         if pile.is_settling_pond:

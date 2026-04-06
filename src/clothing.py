@@ -436,12 +436,11 @@ class WornEquipment:
 
     # ── Condition degradation ──────────────────────────────────────────
 
-    def tick_wear(self, minutes: int, activity: str = "normal") -> List[str]:
+    def tick_wear(self, minutes: int, activity: str = "normal",
+                  weather: str = "clear") -> List[str]:
         """
-        Degrade all worn clothing based on time and activity.
-        Returns list of warning messages for items crossing condition thresholds.
-
-        activity: "normal" | "labor" | "combat" | "crawling" | "swimming"
+        Degrade all worn clothing based on time, activity, and weather.
+        Rain soaks leather, cold stiffens fabric, blizzard punishes everything.
         """
         warnings: List[str] = []
 
@@ -453,6 +452,13 @@ class WornEquipment:
             "crawling": 0.06,
             "swimming": 0.05,
         }.get(activity, 0.01)
+
+        # Weather multiplier on clothing wear
+        weather_mult = {
+            "rain": 2.0, "thunderstorm": 2.5, "snow": 1.5,
+            "blizzard": 3.0, "fog": 1.2,
+        }.get(weather, 1.0)
+        base_rate *= weather_mult
 
         hours = minutes / 60.0
 

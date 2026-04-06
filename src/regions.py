@@ -142,13 +142,16 @@ REGIONS: Dict[str, GameRegion] = {
     ),
     "Appalachians": GameRegion(
         name="Appalachians",
-        description="Old mountains. Coal, iron, and some old gold workings.",
-        gold_bias=0.20,
+        description="Old mountains. Gold in the Blue Ridge streams, coal in "
+                    "the hollows, iron in the hills. The first American gold "
+                    "rush was here — North Carolina, 1799.",
+        gold_bias=0.30,
         terrain_bias=["hills", "mountains", "forest"],
         stream_density=0.65,
-        feature_richness=0.35,
-        common_features=["bedrock_exposure"],
-        notes="Coal and oil (Titusville PA) more important than gold."
+        feature_richness=0.40,
+        common_features=["bedrock_exposure", "inside_bend"],
+        notes="Real placer gold in NC/GA/VA. Kentucky has trace amounts only. "
+              "Coal and iron become dominant in later eras."
     ),
 }
 
@@ -199,13 +202,28 @@ def get_region_for_world_tile(wx: int, wy: int) -> str:
     if 255 <= wx < 285 and 95 <= wy < 125:
         return "Black Hills"
 
-    # Gulf Coast / Texas lowlands
-    if wy >= 195:
-        return "Gulf Coast"
-
-    # Appalachians and eastern US
+    # Appalachians — the mountain chain runs from NY to Georgia
+    # Includes Kentucky mountains, Virginia, Carolinas, North Georgia
+    # The chain runs roughly NE-SW: wider in the south
+    if wx >= 330 and wy >= 160 and wy < 230:
+        # Southern Appalachians: KY, TN, NC, GA, VA, SC
+        return "Appalachians"
+    if wx >= 350 and wy >= 140 and wy < 160:
+        # Central Appalachians: PA, WV, western VA
+        return "Appalachians"
+    if wx >= 360 and wy < 140:
+        # Northern Appalachians: NY, New England
+        return "Appalachians"
+    # Old catch-all for eastern US outside Appalachian chain
     if wx >= 295 and wy < 160:
         return "Appalachians"
+
+    # Gulf Coast / Texas lowlands — only the deep south coast
+    if wy >= 230:
+        return "Gulf Coast"
+    # Gulf coastal plain — low, flat, minimal gold
+    if wx >= 300 and wy >= 215:
+        return "Gulf Coast"
 
     # Default: Great Plains
     return "Great Plains"

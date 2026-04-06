@@ -71,6 +71,38 @@ TIER_THRESHOLDS = {
 
 
 # ============================================================================
+#  PRICING STRATEGIES
+# ============================================================================
+
+PRICE_STRATEGIES = {
+    "undercut": {
+        "revenue_mult": 0.7,
+        "customer_mult": 1.5,
+        "rep_delta": 1,           # builds goodwill
+        "label": "Low prices — high volume",
+    },
+    "standard": {
+        "revenue_mult": 1.0,
+        "customer_mult": 1.0,
+        "rep_delta": 0,
+        "label": "Fair market price",
+    },
+    "premium": {
+        "revenue_mult": 1.4,
+        "customer_mult": 0.6,
+        "rep_delta": 0,
+        "label": "High prices — fewer customers",
+    },
+    "gouging": {
+        "revenue_mult": 2.0,
+        "customer_mult": 0.3,
+        "rep_delta": -2,          # people resent price gouging
+        "label": "Extreme markup — risk of backlash",
+    },
+}
+
+
+# ============================================================================
 #  PREDEFINED BUSINESS TYPES
 # ============================================================================
 
@@ -91,6 +123,9 @@ class BusinessBlueprint:
     inventory_categories: List[str] = field(default_factory=list)
     tags: List[str] = field(default_factory=list)
     source: str = "builtin"         # "builtin" | "llm"
+    # Production chains — what this business consumes and produces daily
+    consumes: List[Tuple[str, int]] = field(default_factory=list)  # [(item_id, qty_per_day)]
+    produces: List[Tuple[str, int]] = field(default_factory=list)  # [(item_id, qty_per_day)]
 
 
 BUSINESS_BLUEPRINTS: Dict[str, BusinessBlueprint] = {}
@@ -157,7 +192,7 @@ _bb("sawmill", "Sawmill",
     tags=["resource_dependent"])
 _bb("bakery", "Bakery",
     "Bread and baked goods. Always in demand.",
-    "production", 80, 2.0, 0.8, 1.0, 0.6, "survival",
+    "production", 80, 2.0, 0.8, 1.0, 0.6, "cooking",
     inv_cats=["food"])
 _bb("workshop", "Invention Workshop",
     "Custom manufacturing and experimental devices.",
@@ -192,6 +227,15 @@ _bb("assay_office", "Assay Office",
     "Testing and certifying ore and gold purity.",
     "service", 300, 3.0, 0.5, 2.0, 1.5, "assaying",
     bldg="assay_office")
+
+# Production chains — what each business consumes and produces per day.
+# A full day of work with employees. Quantities scale with tier/employees.
+BUSINESS_BLUEPRINTS["sawmill"].consumes = [("log", 5)]
+BUSINESS_BLUEPRINTS["sawmill"].produces = [("plank", 12)]
+BUSINESS_BLUEPRINTS["bakery"].consumes = [("hardtack", 3)]  # flour stand-in
+BUSINESS_BLUEPRINTS["bakery"].produces = [("bread", 15)]
+BUSINESS_BLUEPRINTS["blacksmith_shop"].consumes = [("iron_ingot", 2)]
+BUSINESS_BLUEPRINTS["blacksmith_shop"].produces = [("nails", 20), ("horseshoe", 4)]
 
 
 # ============================================================================
@@ -357,6 +401,9 @@ class BusinessEntity:
         self.last_update_day: int = day_founded  # day player last had fresh data
         self.paused: bool = False             # no manager + player away = paused
 
+        # Pricing strategy
+        self.price_strategy: str = "standard"  # key into PRICE_STRATEGIES
+
         # Market knowledge (prices player has learned)
         self.known_prices: Dict[str, Dict[str, float]] = {}  # item_id → {location: price}
 
@@ -430,6 +477,16 @@ class BusinessEntity:
         customer_rev = self._process_customers()
         rev += customer_rev
 
+        # ── Pricing strategy ──────────────────────────────────────
+        strategy = PRICE_STRATEGIES.get(self.price_strategy,
+                                         PRICE_STRATEGIES["standard"])
+        rev *= strategy["revenue_mult"]
+
+        # Pricing affects reputation
+        rep_delta = strategy.get("rep_delta", 0)
+        if rep_delta:
+            self.reputation = max(0, min(100, self.reputation + rep_delta * 0.1))
+
         # ── Modifiers ─────────────────────────────────────────────
         # Reputation bonus (0-100 → 0.5x to 2.0x)
         rep_mult = 0.5 + (self.reputation / 100.0) * 1.5
@@ -465,7 +522,8 @@ class BusinessEntity:
         return round(max(0, rev), 2)
 
     def _manager_auto_decisions(self):
-        """Manager makes autonomous buy/restock decisions."""
+        """Manager makes autonomous decisions based on skill and standing orders.
+        Higher skill managers make better decisions."""
         if not self.manager_npc_id:
             return
         # Find manager's skill level
@@ -496,8 +554,41 @@ class BusinessEntity:
                         except Exception:
                             pass
             elif otype == "set_price":
-                # Future: adjust pricing strategy
-                pass
+                strategy_key = order.get("strategy", "standard")
+                if strategy_key in PRICE_STRATEGIES:
+                    self.price_strategy = strategy_key
+
+            elif otype == "hire_if_busy" and mgr_skill >= 4:
+                # Hire a laborer if revenue exceeds threshold
+                rev_threshold = order.get("revenue_threshold", 5.0)
+                max_employees = order.get("max_employees", 10)
+                if len(self.employees) < max_employees:
+                    avg_rev = sum(h.revenue for h in self.history[-7:]
+                                 ) / max(len(self.history[-7:]), 1)
+                    if avg_rev > rev_threshold:
+                        # Auto-hire at standard wage
+                        wage = self.wage_per_employee
+                        self.employees.append(Employee(
+                            npc_id=f"hired_{len(self.employees)}",
+                            name=f"Laborer #{len(self.employees) + 1}",
+                            role="laborer", skill_level=2,
+                            wage_daily=wage, morale=50.0,
+                            days_employed=0, productivity=0.8,
+                        ))
+
+            elif otype == "fire_if_slow" and mgr_skill >= 5:
+                # Fire worst employee if revenue drops
+                rev_threshold = order.get("revenue_threshold", 2.0)
+                if len(self.employees) > 1:
+                    avg_rev = sum(h.revenue for h in self.history[-7:]
+                                 ) / max(len(self.history[-7:]), 1)
+                    if avg_rev < rev_threshold:
+                        # Fire lowest productivity non-manager
+                        non_mgr = [e for e in self.employees
+                                   if e.npc_id != self.manager_npc_id]
+                        if non_mgr:
+                            worst = min(non_mgr, key=lambda e: e.productivity)
+                            self.employees.remove(worst)
 
         # ── Auto-restock if low on key supplies and has cash ─────────
         _RESTOCK_MAP = {
@@ -508,7 +599,7 @@ class BusinessEntity:
             "hotel": [("candle", 3, 0.10)],
             "brothel": [("whiskey", 5, 0.50)],
             "dancehall": [("whiskey", 5, 0.50)],
-            "blacksmith": [("iron_ingot", 3, 1.00)],
+            "blacksmith_shop": [("iron_ingot", 3, 1.00)],
             "fur_trading": [("salt", 5, 0.30)],
             "freight_line": [("rope_10ft", 3, 0.20)],
             "mining_company": [("dynamite", 5, 1.50), ("candle", 5, 0.10)],
@@ -692,6 +783,33 @@ class BusinessEntity:
         if self.manager_npc_id and not self.paused:
             self._manager_auto_decisions()
 
+        # Production chains — consume inputs, produce outputs
+        bp = BUSINESS_BLUEPRINTS.get(self.blueprint_key)
+        if bp and bp.consumes and bp.produces:
+            # Check if we have all inputs
+            can_produce = True
+            for item_id, qty in bp.consumes:
+                available = sum(1 for i in self.inventory if i.id == item_id)
+                if available < qty:
+                    can_produce = False
+                    break
+            if can_produce:
+                # Consume inputs
+                for item_id, qty in bp.consumes:
+                    consumed = 0
+                    for item in list(self.inventory):
+                        if item.id == item_id and consumed < qty:
+                            self.inventory.remove(item)
+                            consumed += 1
+                # Produce outputs
+                from src.items import make_item
+                for item_id, qty in bp.produces:
+                    for _ in range(qty):
+                        try:
+                            self.inventory.append(make_item(item_id))
+                        except Exception:
+                            pass
+
         # Employee morale — wages already deducted via profit calculation
         can_pay = self.cash_reserve >= self.daily_wages
         for emp in self.employees:
@@ -815,7 +933,7 @@ class BusinessEntity:
         """Generate a manager's weekly report as letter text."""
         recent = self.history[-7:] if self.history else []
         total_rev = sum(d.revenue for d in recent)
-        total_exp = sum(d.expenses for d in recent)
+        total_exp = sum(d.expenses + d.wages for d in recent)
         total_net = sum(d.profit for d in recent)
 
         lines = [
@@ -901,6 +1019,7 @@ class BusinessEntity:
             "rev_per_employee": self.rev_per_employee,
             "wage_per_employee": self.wage_per_employee,
             "tags": self.tags, "tier": self.tier,
+            "price_strategy": self.price_strategy,
             "reputation": self.reputation, "days_operating": self.days_operating,
             "total_invested": self.total_invested,
             "total_revenue": self.total_revenue,
@@ -955,7 +1074,8 @@ class BusinessEntity:
                               ("pending_orders", []), ("last_report_day", 0),
                               ("last_update_day", 0), ("paused", False),
                               ("known_prices", {}), ("inventory", []),
-                              ("shipments", [])]:
+                              ("shipments", []),
+                              ("price_strategy", "standard")]:
             if not hasattr(biz, attr):
                 setattr(biz, attr, default)
         return biz
@@ -1212,7 +1332,7 @@ class BusinessManager:
     def highest_tier(self) -> int:
         if not self.businesses:
             return 0
-        return max(b.tier for b in self.businesses.values() if b.active)
+        return max((b.tier for b in self.businesses.values() if b.active), default=0)
 
     # ── Lookup ─────────────────────────────────────────────────────────
 

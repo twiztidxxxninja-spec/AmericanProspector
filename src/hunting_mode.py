@@ -370,6 +370,8 @@ def _hunting_loop(engine: "Engine", console, ctx) -> None:
                 if sym in moves:
                     dx, dy = moves[sym]
                     nx, ny = px + dx, py + dy
+                    if engine.check_edge_transition(nx, ny):
+                        return  # crossed into next patch
                     if lmap.in_bounds(nx, ny) and lmap.is_passable(nx, ny):
                         # Z-level transition
                         cur_z = player.local_z

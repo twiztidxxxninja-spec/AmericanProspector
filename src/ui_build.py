@@ -30,7 +30,11 @@ def _draw_equipment(con, x, y, w, h, state: MenuState, ctx: dict):
               fg=GREY, bg=BG)
     y += 2
 
-    bps = list(EQUIPMENT_BLUEPRINTS.values())
+    # Filter by year — only show structures available in current era.
+    # Player can still build anything via custom action (LLM path).
+    game_year = ctx.get("year", 9999)
+    bps = [bp for bp in EQUIPMENT_BLUEPRINTS.values()
+           if bp.year_available == 0 or bp.year_available <= game_year]
     visible = h - 5
     for i in range(visible):
         idx = state.scroll + i
@@ -62,7 +66,9 @@ def _handle_equipment(sym, state: MenuState, ctx: dict) -> bool:
     K = tcod.event.KeySym
     from src.construction import EQUIPMENT_BLUEPRINTS
 
-    bps = list(EQUIPMENT_BLUEPRINTS.values())
+    game_year = ctx.get("year", 9999)
+    bps = [bp for bp in EQUIPMENT_BLUEPRINTS.values()
+           if bp.year_available == 0 or bp.year_available <= game_year]
     count = len(bps)
 
     if sym in (K.DOWN, K.KP_2):
@@ -309,7 +315,8 @@ def _handle_status(sym, state: MenuState, ctx: dict) -> bool:
 #  PUBLIC
 # ============================================================================
 
-def open_build(con, ctx, player, local_map=None, construction=None) -> Any:
+def open_build(con, ctx, player, local_map=None, construction=None,
+               year: int = 1849) -> Any:
     tabs = [
         MenuTab("Equipment", _draw_equipment, _handle_equipment),
         MenuTab("Walls", _draw_walls, _handle_walls),
@@ -318,4 +325,4 @@ def open_build(con, ctx, player, local_map=None, construction=None) -> Any:
     ]
     menu = TabbedMenu("BUILD", tabs, width=72, height=40)
     return menu.run(con, ctx, player=player, local_map=local_map,
-                     construction=construction)
+                     construction=construction, year=year)

@@ -159,6 +159,51 @@ class Journal:
     def latest_aar(self) -> Optional[AfterActionReport]:
         return self.combat_log[-1] if self.combat_log else None
 
+    def unread_letters(self) -> int:
+        return sum(1 for l in self.letters if not l.read)
+
+    def to_dict(self) -> dict:
+        return {
+            "diary": [{"date_str": d.date_str, "text": d.text} for d in self.diary],
+            "rumors": [{"date_str": r.date_str, "source": r.source,
+                        "text": r.text, "verified": r.verified} for r in self.rumors],
+            "letters": [{"date_str": l.date_str, "sender": l.sender,
+                         "recipient": l.recipient, "body": l.body,
+                         "read": l.read, "replied": l.replied} for l in self.letters],
+            "places": [{"name": p.name, "world_x": p.world_x, "world_y": p.world_y,
+                        "notes": p.notes, "visited": p.visited} for p in self.places],
+            "people": self.people,
+            "combat_log": [
+                {"date_str": a.date_str, "location": a.location,
+                 "events": [{"text": e.text, "severity": e.severity} for e in a.events],
+                 "player_wounds": a.player_wounds,
+                 "enemies_killed": a.enemies_killed,
+                 "enemies_fled": a.enemies_fled,
+                 "summary": a.summary}
+                for a in self.combat_log
+            ],
+        }
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "Journal":
+        j = cls()
+        j.diary = [DiaryEntry(**e) for e in d.get("diary", [])]
+        j.rumors = [RumorEntry(**e) for e in d.get("rumors", [])]
+        j.letters = [Letter(**e) for e in d.get("letters", [])]
+        j.places = [PlaceNote(**e) for e in d.get("places", [])]
+        j.people = d.get("people", [])
+        for ad in d.get("combat_log", []):
+            aar = AfterActionReport(
+                date_str=ad["date_str"], location=ad.get("location", ""),
+                events=[CombatEvent(**e) for e in ad.get("events", [])],
+                player_wounds=ad.get("player_wounds", []),
+                enemies_killed=ad.get("enemies_killed", []),
+                enemies_fled=ad.get("enemies_fled", []),
+                summary=ad.get("summary", ""),
+            )
+            j.combat_log.append(aar)
+        return j
+
 
 def _generate_aar_summary(aar: AfterActionReport) -> str:
     """Build a narrative summary from combat events."""
@@ -197,9 +242,6 @@ def _generate_aar_summary(aar: AfterActionReport) -> str:
         lines.append("No casualties on either side.")
 
     return "\n".join(lines)
-
-    def unread_letters(self) -> int:
-        return sum(1 for l in self.letters if not l.read)
 
 
 TABS = ["Diary", "People", "Places", "Rumors", "Letters"]

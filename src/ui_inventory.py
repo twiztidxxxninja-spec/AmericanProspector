@@ -68,6 +68,8 @@ def _handle_items(sym, state: MenuState, ctx: dict) -> bool:
     inv = player.inventory
     count = len(inv)
 
+    if count == 0:
+        return False
     if sym in (K.DOWN, K.KP_2):
         state.selected = min(state.selected + 1, count - 1)
         if state.selected >= state.scroll + 30:
@@ -82,7 +84,7 @@ def _handle_items(sym, state: MenuState, ctx: dict) -> bool:
     if sym == K.d and count > 0:
         # Drop item
         item = inv.pop(state.selected)
-        state.selected = min(state.selected, len(inv) - 1)
+        state.selected = max(0, min(state.selected, len(inv) - 1))
         state.extra["dropped"] = item
         return True
 

@@ -41,9 +41,71 @@ HOTBAR = [
 ]
 
 
+def _season_overlay(terrain: int, glyph: str, fg: tuple, bg: tuple,
+                    season: str) -> tuple:
+    """Transform terrain glyph colors based on season. Returns (glyph, fg, bg)."""
+    from src.local_map import LocalTerrain as _LT
+
+    if season == "winter":
+        # Snow on ground
+        if terrain in (_LT.GROUND, _LT.GRASS, _LT.MUD, _LT.TUNDRA):
+            return (glyph, (200, 210, 220), (180, 190, 200))
+        # Bare deciduous trees
+        if terrain in (_LT.OAK, _LT.MAPLE, _LT.CHESTNUT, _LT.HICKORY,
+                       _LT.MAGNOLIA, _LT.ASPEN, _LT.CYPRESS):
+            return ("|", (100, 80, 60), (180, 190, 200))
+        # Evergreens with snow bg
+        if terrain in (_LT.PINE, _LT.CEDAR, _LT.JUNIPER):
+            return (glyph, fg, (160, 170, 180))
+        # Snow on gravel/sand
+        if terrain in (_LT.GRAVEL_BAR, _LT.SAND):
+            return (glyph, (180, 180, 180), (160, 165, 170))
+        # Brush under snow
+        if terrain == _LT.BRUSH:
+            return (glyph, (120, 120, 110), (170, 175, 180))
+        # Water features freeze over in winter
+        if terrain == _LT.WATER:
+            return (glyph, (150, 180, 220), (100, 130, 170))
+        if terrain == _LT.DEEP_WATER:
+            return (glyph, (120, 160, 210), (80, 110, 150))
+        if terrain == _LT.BEAVER_POND:
+            return ("=", (170, 195, 225), (120, 150, 180))
+        if terrain == _LT.BEAVER_DAM:
+            return (glyph, (160, 150, 140), (200, 200, 210))
+
+    elif season == "fall":
+        # Deciduous trees turn colors
+        if terrain == _LT.OAK:
+            return (glyph, (180, 120, 30), bg)
+        if terrain == _LT.MAPLE:
+            return (glyph, (200, 60, 30), bg)
+        if terrain == _LT.ASPEN:
+            return (glyph, (220, 190, 40), bg)
+        if terrain == _LT.CHESTNUT:
+            return (glyph, (170, 110, 40), bg)
+        if terrain == _LT.HICKORY:
+            return (glyph, (190, 160, 50), bg)
+        if terrain == _LT.MAGNOLIA:
+            return (glyph, (160, 100, 40), bg)
+        # Grass yellows
+        if terrain == _LT.GRASS:
+            return (glyph, (140, 150, 50), bg)
+
+    elif season == "spring":
+        # Brighter greens
+        if terrain == _LT.GRASS:
+            return (glyph, (90, 170, 70), (25, 60, 15))
+        if terrain == _LT.BRUSH:
+            return (glyph, (110, 150, 70), bg)
+
+    # Summer or no change
+    return (glyph, fg, bg)
+
+
 class Renderer:
     def __init__(self, console: tcod.console.Console):
         self.con = console
+        self._season = "summer"  # set by engine before render
 
     def render_all(self, local_map: Optional[LocalMap], world_map: WorldMap,
                    player: Player, messages: List[Tuple[str, str]],
@@ -159,6 +221,7 @@ class Renderer:
                                          wx, wy, ax, ay, tx, ty)
                     if adj and (adj.visible or adj.explored):
                         glyph, fg, bg = LOCAL_GLYPH.get(adj.terrain, ("?", WHITE, BLACK))
+                        glyph, fg, bg = _season_overlay(adj.terrain, glyph, fg, bg, self._season)
                         if adj.explored and not adj.visible:
                             fg = tuple(max(0, c // 4) for c in fg)
                             bg = tuple(max(0, c // 4) for c in bg)
@@ -185,6 +248,7 @@ class Renderer:
                             if below_tile is not None:
                                 glyph, fg, bg = LOCAL_GLYPH.get(
                                     below_tile.terrain, (".", WHITE, BLACK))
+                                glyph, fg, bg = _season_overlay(below_tile.terrain, glyph, fg, bg, self._season)
                                 dim = max(0.15, 1.0 - dz * 0.18)
                                 fg = tuple(int(c * dim) for c in fg)
                                 bg = tuple(int(c * dim * 0.5) for c in bg)
@@ -196,6 +260,41 @@ class Renderer:
                                 break
                         if not found:
                             self.con.print(sx, sy + 1, " ", fg=BLACK, bg=(3, 3, 5))
+                    elif view_z < sz:
+                        # Underground — check if this tile is open above
+                        # (pit, ramp, stairs) so player can see one level up
+                        above_z = view_z + 1
+                        above_tile = local_map.tile_at_z(tx, ty, above_z)
+                        if above_tile is not None:
+                            # Can see the z-level above (e.g. surface from a pit)
+                            glyph, fg, bg = LOCAL_GLYPH.get(
+                                above_tile.terrain, (".", WHITE, BLACK))
+                            glyph, fg, bg = _season_overlay(
+                                above_tile.terrain, glyph, fg, bg, self._season)
+                            # Brighten slightly — looking up toward light
+                            fg = tuple(min(255, int(c * 1.1)) for c in fg)
+                            if above_tile.visible or above_tile.explored:
+                                self.con.print(sx, sy + 1, glyph, fg=fg, bg=bg)
+                            else:
+                                self.con.print(sx, sy + 1, " ", fg=BLACK, bg=BLACK)
+                        elif above_z >= sz:
+                            # Open sky above — show sky/surface tile dimmed
+                            surf_tile = local_map.tile_at(tx, ty)
+                            if surf_tile.visible or surf_tile.explored:
+                                glyph, fg, bg = LOCAL_GLYPH.get(
+                                    surf_tile.terrain, (".", WHITE, BLACK))
+                                glyph, fg, bg = _season_overlay(
+                                    surf_tile.terrain, glyph, fg, bg, self._season)
+                                # Looking up from below — slightly bright
+                                fg = tuple(min(255, int(c * 0.8)) for c in fg)
+                                bg = tuple(int(c * 0.5) for c in bg)
+                                self.con.print(sx, sy + 1, glyph, fg=fg, bg=bg)
+                            else:
+                                self.con.print(sx, sy + 1, " ", fg=BLACK, bg=BLACK)
+                        else:
+                            # Solid earth above — can't see through
+                            self.con.print(sx, sy + 1, "#",
+                                           fg=(40, 35, 30), bg=(15, 12, 8))
                     else:
                         # Solid underground — not dug out
                         self.con.print(sx, sy + 1, "#",
@@ -203,6 +302,7 @@ class Renderer:
                     continue
 
                 glyph, fg, bg = LOCAL_GLYPH.get(tile.terrain, ("?", WHITE, BLACK))
+                glyph, fg, bg = _season_overlay(tile.terrain, glyph, fg, bg, self._season)
 
                 # Blood tint on background
                 blood = getattr(tile, "blood", 0)
@@ -211,17 +311,57 @@ class Renderer:
                 elif blood >= 2:  # heavy — dark red
                     bg = (max(bg[0], 90), min(bg[1], 10), min(bg[2], 10))
 
-                if gold_overlay and getattr(tile, "panned", False):
+                if gold_overlay and (getattr(tile, "panned", False) or
+                                      getattr(tile, "sluiced", False)):
+                    # Panned tiles: show actual tile grade (you saw it in the pan)
+                    # Sluiced tiles: show avg grade from cleanout batch
+                    #   (you don't know per-tile, only the batch average)
                     g = tile.gold_grade
-                    if g < 0.05:
-                        fg, glyph = (80, 80, 80), "·"
-                    elif g < 0.25:
-                        fg, glyph = (160, 130, 60), "·"
-                    elif g < 0.55:
-                        fg, glyph = (220, 180, 60), "$"
+                    if getattr(tile, "sluiced", False) and \
+                            getattr(tile, "sluice_avg_grade", -1) >= 0:
+                        g = tile.sluice_avg_grade
+                    # Color gradient: barren (dark red/brown) → bonanza (bright gold)
+                    # Unpanned/unsluiced tiles are NOT affected
+                    if g < 0.02:
+                        # Barren — dark red-brown, dead ground
+                        fg = (120, 50, 40)
+                        bg = (30, 10, 8)
+                        glyph = "·"
+                    elif g < 0.05:
+                        # Nearly barren — dull brown
+                        fg = (100, 70, 50)
+                        bg = (25, 12, 8)
+                        glyph = "·"
+                    elif g < 0.12:
+                        # Trace — faint tan
+                        fg = (140, 110, 60)
+                        bg = (20, 12, 6)
+                        glyph = "·"
+                    elif g < 0.20:
+                        # Light color — warm tan
+                        fg = (170, 140, 60)
+                        bg = (25, 15, 5)
+                        glyph = "~"
+                    elif g < 0.35:
+                        # Color — yellow-tan
+                        fg = (200, 170, 50)
+                        bg = (30, 20, 5)
+                        glyph = "~"
+                    elif g < 0.50:
+                        # Good color — warm gold
+                        fg = (230, 190, 40)
+                        bg = (35, 25, 5)
+                        glyph = "$"
+                    elif g < 0.70:
+                        # Rich — bright gold
+                        fg = (255, 220, 40)
+                        bg = (40, 30, 5)
+                        glyph = "$"
                     else:
-                        fg, glyph = (255, 220, 40), "$"
-                    bg = (15, 10, 5)
+                        # Bonanza — blazing gold on dark
+                        fg = (255, 240, 80)
+                        bg = (50, 35, 5)
+                        glyph = "$"
                     self.con.print(sx, sy + 1, glyph, fg=fg, bg=bg)
                     continue
 
@@ -270,26 +410,57 @@ class Renderer:
                     wc = tuple(c // 4 for c in _WALL_COLOR) if is_dim else _WALL_COLOR
                     dc = tuple(c // 4 for c in _DOOR_COLOR) if is_dim else _DOOR_COLOR
 
+                    # Wall glyph selection: edge names (N/S/E/W) indicate which
+                    # side of the tile the wall sits on. The glyph shows the wall
+                    # segment itself, which runs perpendicular to the direction.
+                    # N/S edges = horizontal wall segments (─)
+                    # E/W edges = vertical wall segments (│)
                     if door_here:
                         self.con.print(sx, sy + 1, "+", fg=dc)
                     elif has_n and has_s and has_e and has_w:
-                        self.con.print(sx, sy + 1, "#", fg=wc)
-                    elif has_n and has_s:
-                        self.con.print(sx, sy + 1, "│", fg=wc)
+                        self.con.print(sx, sy + 1, "┼", fg=wc)
+                    elif has_n and has_s and has_e:
+                        self.con.print(sx, sy + 1, "┤", fg=wc)
+                    elif has_n and has_s and has_w:
+                        self.con.print(sx, sy + 1, "├", fg=wc)
+                    elif has_n and has_e and has_w:
+                        self.con.print(sx, sy + 1, "┬", fg=wc)
+                    elif has_s and has_e and has_w:
+                        self.con.print(sx, sy + 1, "┴", fg=wc)
                     elif has_e and has_w:
-                        self.con.print(sx, sy + 1, "─", fg=wc)
-                    elif has_n and has_e:
-                        self.con.print(sx, sy + 1, "└", fg=wc)
-                    elif has_n and has_w:
-                        self.con.print(sx, sy + 1, "┘", fg=wc)
-                    elif has_s and has_e:
-                        self.con.print(sx, sy + 1, "┌", fg=wc)
-                    elif has_s and has_w:
-                        self.con.print(sx, sy + 1, "┐", fg=wc)
-                    elif has_n or has_s:
                         self.con.print(sx, sy + 1, "│", fg=wc)
-                    elif has_e or has_w:
+                    elif has_n and has_s:
                         self.con.print(sx, sy + 1, "─", fg=wc)
+                    elif has_n and has_w:
+                        self.con.print(sx, sy + 1, "┌", fg=wc)
+                    elif has_n and has_e:
+                        self.con.print(sx, sy + 1, "┐", fg=wc)
+                    elif has_s and has_w:
+                        self.con.print(sx, sy + 1, "└", fg=wc)
+                    elif has_s and has_e:
+                        self.con.print(sx, sy + 1, "┘", fg=wc)
+                    elif has_n or has_s:
+                        self.con.print(sx, sy + 1, "─", fg=wc)
+                    elif has_e or has_w:
+                        self.con.print(sx, sy + 1, "│", fg=wc)
+
+        # Placed structures (campfires, sluices, etc.)
+        from src.construction import PlacedEquipment, EQUIPMENT_BLUEPRINTS
+        for struct in local_map.structures.values():
+            if not isinstance(struct, PlacedEquipment) or struct.progress < 100:
+                continue
+            sx = struct.x - cam_x
+            sy = struct.y - cam_y + 1
+            if 0 <= sx < VIEWPORT_W and 1 <= sy < VIEWPORT_H + 1:
+                stile = local_map.tile_at(struct.x, struct.y) \
+                    if local_map.in_bounds(struct.x, struct.y) else None
+                if stile and (stile.visible or stile.explored):
+                    bp = EQUIPMENT_BLUEPRINTS.get(struct.blueprint_key)
+                    glyph = bp.glyph if bp else "*"
+                    fg = bp.fg_color if bp else (160, 130, 80)
+                    if stile.explored and not stile.visible:
+                        fg = tuple(max(0, c // 4) for c in fg)
+                    self.con.print(sx, sy, glyph, fg=fg, bg=BLACK)
 
         # Ground item indicators — small dot overlay on visible tiles with items
         for sy in range(VIEWPORT_H):
@@ -398,6 +569,7 @@ class Renderer:
                 continue
 
             _, _, bg = LOCAL_GLYPH.get(tile.terrain, (".", WHITE, BLACK))
+            _, _, bg = _season_overlay(tile.terrain, ".", (0, 0, 0), bg, self._season)
 
             # Color encodes state + relationship
             state = npc.combat_state
@@ -455,6 +627,7 @@ class Renderer:
                 continue
 
             _, _, bg = LOCAL_GLYPH.get(tile.terrain, (".", WHITE, BLACK))
+            _, _, bg = _season_overlay(tile.terrain, ".", (0, 0, 0), bg, self._season)
             glyph, fg = animal.glyph
 
             if animal.state == "hostile":
@@ -929,6 +1102,13 @@ class Renderer:
             if z_label:
                 self.con.print(x, y - 2, z_label, fg=z_color, bg=BLACK)
 
+            # World elevation (altitude above sea level)
+            elev = getattr(local_map, 'world_elevation_ft', 0)
+            if elev > 0:
+                self.con.print(x, y - 1,
+                               f"Elev: {elev:,} ft",
+                               fg=(140, 140, 160), bg=BLACK)
+
         # Hand slots
         lh = player.left_hand  or "[empty]"
         rh = player.right_hand or "[empty]"
@@ -1096,6 +1276,30 @@ class Renderer:
                            fg=load_color, bg=BLACK)
             y += 1
 
+    def draw_traps(self, player: Player, local_map: LocalMap, trap_mgr):
+        """Render placed traps on the local map."""
+        if not trap_mgr:
+            return
+        traps = trap_mgr.traps_at(
+            player.world_x, player.world_y,
+            player.area_x, player.area_y)
+        if not traps:
+            return
+        cam_x = player.local_x - VIEWPORT_W // 2
+        cam_y = player.local_y - VIEWPORT_H // 2
+        for trap in traps:
+            sx = trap.x - cam_x
+            sy = trap.y - cam_y + 1  # +1 for top bar
+            if 0 <= sx < VIEWPORT_W and 0 <= sy < VIEWPORT_H:
+                if local_map.tiles[trap.y][trap.x].visible:
+                    if trap.caught_species:
+                        glyph, fg = "!", (255, 200, 50)   # caught something
+                    elif trap.sprung:
+                        glyph, fg = "x", (180, 80, 80)    # sprung empty
+                    else:
+                        glyph, fg = "^", (140, 100, 60)   # set and waiting
+                    self.con.print(sx, sy, glyph, fg=fg, bg=(0, 0, 0))
+
     def draw_claims_on_map(self, player: Player, local_map: LocalMap,
                            claim_mgr=None):
         """Render claim boundary markers on the local map."""
@@ -1148,6 +1352,7 @@ class Renderer:
             if not tile.visible:
                 continue
             _, _, bg = LOCAL_GLYPH.get(tile.terrain, (".", WHITE, BLACK))
+            _, _, bg = _season_overlay(tile.terrain, ".", (0, 0, 0), bg, self._season)
             self.con.print(sx, sy + 1, a.species.glyph,
                            fg=a.species.color, bg=bg)
 

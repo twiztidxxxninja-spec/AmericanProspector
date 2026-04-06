@@ -477,7 +477,7 @@ def create_wound(damage: float, damage_type: str = DmgType.BLUNT,
     # Dirty — only wounds that break the skin can get contaminated
     # Bruises and crushes don't expose tissue to bacteria
     dirty = wpn.get("dirty", False)
-    skin_broken = wound_type not in (WndType.BRUISE, WndType.CRUSH)
+    skin_broken = wtype not in (WndType.BRUISE, WndType.CRUSH)
     if not dirty and skin_broken and rng.random() < 0.15:
         dirty = True   # 15% chance open wounds get contaminated
 
@@ -1011,7 +1011,7 @@ class HealthTracker:
         if not wound:
             return False, "No such wound."
 
-        part_info = PART_DATA.get(wound.part, {})
+        part_info = self._part_data.get(wound.part, PART_DATA.get(wound.part, {}))
         diff = part_info.get("treat_diff", 3)
 
         # Self-treatment penalty
@@ -1034,7 +1034,7 @@ class HealthTracker:
     def _apply_treatment(self, w: DetailedWound, treatment: str,
                           success: bool, quality: float
                           ) -> Tuple[bool, str]:
-        part_label = PART_DATA.get(w.part, {}).get("label", w.part).lower()
+        part_label = self._part_data.get(w.part, PART_DATA.get(w.part, {})).get("label", w.part).lower()
 
         if treatment == "bandage":
             w.bandaged = True

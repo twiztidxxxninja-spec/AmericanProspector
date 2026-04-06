@@ -239,15 +239,24 @@ def _show_ledger(engine, console, ctx, biz):
             console.print(X + 2, cy + 2, f"Reputation: {biz.reputation:.0f}/100", fg=(200, 200, 200), bg=BG)
             console.print(X + 2, cy + 3, f"Days operating: {biz.days_operating}", fg=(200, 200, 200), bg=BG)
             console.print(X + 2, cy + 4, f"Employees: {biz.employee_count}", fg=(200, 200, 200), bg=BG)
-            cy += 6
+            # Pricing strategy
+            from src.business import PRICE_STRATEGIES
+            strat = PRICE_STRATEGIES.get(
+                getattr(biz, 'price_strategy', 'standard'),
+                PRICE_STRATEGIES["standard"])
+            console.print(X + 2, cy + 5,
+                          f"Pricing: {strat['label']}",
+                          fg=(200, 180, 100), bg=BG)
+            cy += 7
             # Quick financials
             net = biz.base_revenue - biz.base_expenses
             console.print(X + 2, cy, f"Revenue: ${biz.base_revenue:.2f}/day", fg=(100, 200, 100), bg=BG)
             console.print(X + 2, cy + 1, f"Expenses: ${biz.base_expenses:.2f}/day", fg=(200, 100, 100), bg=BG)
             console.print(X + 2, cy + 2, f"Net: ${net:.2f}/day", fg=(255, 255, 200), bg=BG)
             console.print(X + 2, cy + 3, f"Cash reserve: ${biz.cash_reserve:.2f}", fg=(220, 200, 100), bg=BG)
+            console.print(X + 2, cy + 4, "[P] Change pricing strategy", fg=(120, 120, 120), bg=BG)
             # Events
-            cy += 5
+            cy += 6
             if biz.events:
                 console.print(X + 2, cy, "Active events:", fg=(180, 180, 180), bg=BG)
                 for evt in biz.events[:3]:
@@ -262,11 +271,11 @@ def _show_ledger(engine, console, ctx, biz):
                 cy += 1
                 for emp in biz.employees:
                     console.print(X + 2, cy,
-                        f"{emp.name[:20]:20s} {emp.role[:12]:12s} ${emp.wage:.0f}/d  {emp.morale:3.0f}%",
+                        f"{emp.name[:20]:20s} {emp.role[:12]:12s} ${emp.wage_daily:.0f}/d  {emp.morale:3.0f}%",
                         fg=(200, 200, 200), bg=BG)
                     cy += 1
             cy += 1
-            total_wages = sum(e.wage for e in biz.employees)
+            total_wages = sum(e.wage_daily for e in biz.employees)
             console.print(X + 2, cy, f"Total wages: ${total_wages:.2f}/day", fg=(200, 180, 100), bg=BG)
             cy += 2
             if is_present:
@@ -498,6 +507,22 @@ def _show_ledger(engine, console, ctx, biz):
                         biz.cash_reserve -= amt
                         engine.player.cash += amt
                         engine.add_message(f"Withdrew ${amt:.2f} from business.", "normal")
+                    break
+
+                # Set pricing strategy [P] (Overview tab)
+                if sym == K.p and tab == 0:
+                    from src.business import PRICE_STRATEGIES
+                    from src.menus import pick_from_list
+                    strats = list(PRICE_STRATEGIES.items())
+                    labels = [f"{v['label']}" for _, v in strats]
+                    sidx = pick_from_list(console, ctx,
+                        "Set pricing strategy", labels)
+                    if sidx is not None:
+                        key = strats[sidx][0]
+                        biz.price_strategy = key
+                        engine.add_message(
+                            f"Pricing set to: {strats[sidx][1]['label']}",
+                            "normal")
                     break
 
                 # Hire NPC as employee [H] (Employees tab, present)

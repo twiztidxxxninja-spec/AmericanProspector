@@ -722,11 +722,17 @@ class LegalSystem:
                       victim_npc_id: str = "",
                       self_defense: bool = False,
                       nearby_npcs: Optional[list] = None,
-                      player_rel_map: Optional[Dict[str, float]] = None
-                      ) -> CrimeRecord:
+                      player_rel_map: Optional[Dict[str, float]] = None,
+                      wartime_kill: bool = False,
+                      ) -> Optional["CrimeRecord"]:
         """
         Record a crime and automatically generate witnesses from nearby NPCs.
+        Returns None if the kill is a legitimate wartime action.
         """
+        # Wartime kills are not crimes
+        if wartime_kill:
+            return None
+
         crime = CrimeRecord(
             id=self._next_id(), crime_type=crime_type, day=day,
             world_x=wx, world_y=wy, region=region,
@@ -873,9 +879,10 @@ class LegalSystem:
                         for w in c.witnesses
                     ],
                     "evidence": [
-                        {"item_name": e.item_name, "type": e.evidence_type,
+                        {"item_name": e.item_name, "evidence_type": e.evidence_type,
+                         "description": e.description,
                          "strength": e.strength, "found": e.found,
-                         "disposed": e.disposed}
+                         "planted": e.planted, "disposed": e.disposed}
                         for e in c.evidence
                     ],
                 }
@@ -907,6 +914,28 @@ class LegalSystem:
                 tried=cd.get("tried", False), verdict=cd.get("verdict", ""),
                 escaped=cd.get("escaped", False),
             )
+            for wd in cd.get("witnesses", []):
+                crime.witnesses.append(Witness(
+                    npc_id=wd["npc_id"], npc_name=wd["npc_name"],
+                    knows_player=wd.get("knows_player", False),
+                    observation_quality=wd.get("observation_quality", 0.5),
+                    relationship=wd.get("relationship", 0.0),
+                    bias=wd.get("bias", 0.0),
+                    willing_to_testify=wd.get("willing_to_testify", True),
+                    testimony=wd.get("testimony", ""),
+                    intimidated=wd.get("intimidated", False),
+                    bribed=wd.get("bribed", False),
+                ))
+            for ed in cd.get("evidence", []):
+                crime.evidence.append(Evidence(
+                    item_name=ed["item_name"],
+                    evidence_type=ed.get("evidence_type", ed.get("type", "")),
+                    description=ed.get("description", ""),
+                    strength=ed.get("strength", 0.5),
+                    found=ed.get("found", True),
+                    planted=ed.get("planted", False),
+                    disposed=ed.get("disposed", False),
+                ))
             ls.crimes.append(crime)
         for sd in d.get("sentences", []):
             ls.sentences_active.append(Sentence(**sd))

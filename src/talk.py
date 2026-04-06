@@ -211,6 +211,78 @@ def _npc_response(npc: "NPC", topic: str, player: "Player") -> str:
             return f"\"Take care out there. Rough country.\""
         return "\"Right. Good luck.\""
 
+    # ── Sign language / gesture topics ────────────────────────────────
+    if topic == "peace_greeting":
+        npc.adjust_relationship(2)
+        import random as _srng
+        from src.npc_speech import SIGN_RESPONSES
+        pool = SIGN_RESPONSES.get("peace_greeting", [
+            f"*{npc.name} holds up an open palm.* Peace."])
+        return _srng.choice(pool).format(name=npc.name)
+
+    if topic == "ask_directions_sign":
+        import random as _srng
+        from src.npc_speech import SIGN_RESPONSES
+        pool = SIGN_RESPONSES.get("directions", [
+            f"*{npc.name} points and holds up fingers.*"])
+        dirs = ["north", "south", "east", "west"]
+        return _srng.choice(pool).format(
+            name=npc.name, direction=_srng.choice(dirs),
+            count=_srng.randint(1, 5))
+
+    if topic == "territory_sign":
+        import random as _srng
+        from src.npc_speech import SIGN_RESPONSES
+        pool = SIGN_RESPONSES.get("territory_warn", [
+            f"*{npc.name} sweeps their arm across the land.*"])
+        return _srng.choice(pool).format(name=npc.name)
+
+    # ── Pidgin-level tribal topics ────────────────────────────────────
+    if topic == "hunt_request":
+        import random as _srng
+        from src.npc_speech import PIDGIN_RESPONSES
+        pool = PIDGIN_RESPONSES.get("hunt_request", [
+            f"\"You want hunt? Ask chief.\""])
+        tribe = getattr(npc, 'tribe', 'the tribe')
+        return _srng.choice(pool).format(name=npc.name, tribe=tribe)
+
+    if topic == "safe_passage":
+        import random as _srng
+        from src.npc_speech import PIDGIN_RESPONSES
+        pool = PIDGIN_RESPONSES.get("safe_passage", [
+            f"\"Pass through? Maybe. Bring gift.\""])
+        return _srng.choice(pool).format(name=npc.name)
+
+    if topic == "guide_hire":
+        import random as _srng
+        from src.npc_speech import PIDGIN_RESPONSES
+        pool = PIDGIN_RESPONSES.get("guide_hire", [
+            f"\"I show you way. You pay.\""])
+        return _srng.choice(pool).format(name=npc.name)
+
+    if topic == "trapping_rights":
+        import random as _srng
+        from src.npc_speech import PIDGIN_RESPONSES
+        pool = PIDGIN_RESPONSES.get("trapping_rights", [
+            f"\"Trap here? This our water.\""])
+        return _srng.choice(pool).format(name=npc.name)
+
+    # ── Enlist in war ─────────────────────────────────────────────────
+    if topic == "enlist_war":
+        return "__ENLIST_WAR__"
+
+    # ── Barter ─────────────────────────────────────────────────────────
+    if topic == "barter":
+        return "__BARTER__"
+
+    # ── Learn language ────────────────────────────────────────────────
+    if topic == "learn_language":
+        return "__LEARN_LANGUAGE__"
+
+    # ── Fluent tribal topics (use LLM or template) ────────────────────
+    if topic in ("tribal_history", "sacred_places", "alliance", "marriage_tribal"):
+        return f"__TRIBAL_{topic.upper()}__"
+
     # Free text fallback (pre-LLM placeholder)
     return (f"*{npc.name} considers your words.* "
             f"\"Hmm. I don't rightly know what to make of that.\"")
@@ -441,6 +513,32 @@ def _handle_rumor(npc: "NPC", player: "Player",
     elif rumor.specificity == "specific" and rumor.wx >= 0:
         log.append(f"  [Location added to journal — {rumor.place_name}]")
 
+    # Sometimes also share an opinion about another NPC (gossip)
+    if hasattr(npc, 'npc_opinions') and npc.npc_opinions and _rnd.random() < 0.4:
+        # Pick a random opinion to share
+        oid = _rnd.choice(list(npc.npc_opinions.keys()))
+        od = npc.npc_opinions[oid]
+        other_name = od.get("name", oid)
+        op = od["opinion"]
+        reason = od["reason"]
+        if op > 30:
+            gossip = _rnd.choice([
+                f'"You know {other_name}? {reason.capitalize()}. Good sort."',
+                f'"If you see {other_name}, tell him I said hello. {reason.capitalize()}."',
+            ])
+        elif op > -15:
+            gossip = _rnd.choice([
+                f'"That {other_name}... {reason}. Take it how you will."',
+                f'*{npc.name} shrugs about {other_name}.* "{reason.capitalize()}."',
+            ])
+        else:
+            gossip = _rnd.choice([
+                f'"Watch yourself around {other_name}. {reason.capitalize()}."',
+                f'"I wouldn\'t trust {other_name}. {reason.capitalize()}."',
+                f'*{npc.name} lowers his voice.* "{other_name}? {reason.capitalize()}."',
+            ])
+        log.append(gossip)
+
     return rumor.text
 
 
@@ -448,10 +546,10 @@ def talk_menu(con: tcod.console.Console, ctx,
               npc: "NPC", player: "Player",
               llm: "Optional[LLMClient]" = None,
               world_map=None, journal=None, date_str: str = "",
-              **kwargs) -> List[str]:
+              **kwargs):
     """
     Conversation with an NPC.
-    Returns list of log messages for the message log.
+    Returns (log, llm_history) — log messages and conversation history.
     """
     W = 66
     H = 36
@@ -471,26 +569,88 @@ def talk_menu(con: tcod.console.Console, ctx,
         journal.add_person(npc.name, npc.occupation,
                            notes=f"Met {date_str}" if date_str else "")
 
-    # Opening greeting (with regional reputation)
+    # ── Language barrier detection ──────────────────────────────────────
+    npc_tribe = getattr(npc, 'tribe', '')
+    npc_ethnicity = getattr(npc, 'ethnicity', '')
+    tribal = kwargs.get("tribal")
+    weather = kwargs.get("weather", "clear")
+    time_period = kwargs.get("time_period", "day")
+    current_day = kwargs.get("current_day", 0)
+
+    # Determine shared language level
+    # If the NPC speaks English (bilingual or native English), full conversation.
+    # Otherwise, check player's knowledge of the NPC's language.
+    npc_speaks_english = getattr(npc, 'speaks_english', True)
+    language_level = "fluent"  # default
+
+    if npc_speaks_english:
+        # NPC speaks English — full conversation always available.
+        # They're bilingual: can also teach their native language.
+        language_level = "fluent"
+    elif npc_tribe and tribal:
+        language_level = tribal.get_language_level(npc_tribe)
+    elif npc_ethnicity == "chinese":
+        language_level = player.languages.get("chinese", "none")
+    elif npc_ethnicity == "mexican":
+        language_level = player.languages.get("spanish", "none")
+    elif npc_ethnicity == "french_canadian":
+        language_level = player.languages.get("french", "none")
+    elif npc_ethnicity == "german":
+        language_level = player.languages.get("german", "none")
+
+    # ── Opening greeting ─────────────────────────────────────────────
     _rep = 0.0
-    if kwargs.get("legal"):
-        # Get reputation from engine
-        _wm = world_map or kwargs.get("world_map")
-        if _wm and hasattr(kwargs.get("legal"), "__class__"):
-            # Reputation passed separately
-            pass
     _rep_tracker = kwargs.get("reputation")
     if _rep_tracker:
         _wm = world_map or kwargs.get("world_map")
         if _wm:
             _region = _wm.get_region(player.world_x, player.world_y)
             _rep = _rep_tracker.get(_region) if _region else 0.0
-    greeting = _npc_greeting(npc, player, player_rep=_rep)
-    log.append(greeting)
+
+    # Use memory-informed greeting if available
+    if language_level == "none":
+        # Untranslated greeting
+        from src.npc_speech import UNTRANSLATED
+        lang_key = npc_tribe.lower().replace(" ", "_") if npc_tribe else npc_ethnicity
+        pool = UNTRANSLATED.get(lang_key, UNTRANSLATED.get(npc_ethnicity, [
+            f"*{npc.name} speaks in a language you do not understand.*"]))
+        import random as _grng
+        greeting = _grng.choice(pool).format(name=npc.name)
+        log.append(greeting)
+        log.append("  [You share no common language. Only gestures.]")
+    elif language_level == "sign":
+        from src.npc_speech import SIGN_RESPONSES
+        pool = SIGN_RESPONSES.get("peace_greeting", [
+            f"*{npc.name} holds up an open palm.* Peace."])
+        import random as _grng
+        greeting = _grng.choice(pool).format(name=npc.name)
+        log.append(greeting)
+        log.append("  [Sign language only. Limited topics available.]")
+    else:
+        try:
+            from src.npc_speech import select_memory_greeting
+            import random as _grng
+            greeting = select_memory_greeting(npc, player.name, current_day,
+                                              rng=_grng.Random())
+        except (ImportError, Exception):
+            greeting = _npc_greeting(npc, player, player_rep=_rep)
+        log.append(greeting)
     npc.adjust_relationship(0.5)
 
+    # ── NPC-initiated topics (inject before player menu) ─────────────
+    if language_level in ("pidgin", "fluent"):
+        try:
+            from src.npc_speech import generate_npc_topics
+            import random as _trng
+            npc_topics = generate_npc_topics(
+                npc, player, time_period, weather, current_day,
+                tribal=tribal, rng=_trng.Random())
+            for urgency, line in npc_topics[:2]:
+                log.append(line)
+        except (ImportError, Exception):
+            pass
+
     # Schedule check — NPCs not available outside their work hours
-    time_period = kwargs.get("time_period", "day")
     schedule = getattr(npc, 'schedule', {})
     if schedule and time_period in ("night", "dusk"):
         activity = schedule.get(time_period, "home")
@@ -498,16 +658,17 @@ def talk_menu(con: tcod.console.Console, ctx,
                 "Merchant", "Banker", "Barber", "Assayer", "Baker",
                 "Butcher", "Tailor", "Cobbler", "Apothecary"):
             log.append(f"*{npc.name}'s shop is closed for the night.*")
-            return log
+            return log, llm_history
 
     # Warrant check — law NPCs react to wanted player
     legal = kwargs.get("legal")
     if legal and hasattr(legal, 'has_active_warrant') and legal.has_active_warrant():
-        if npc.occupation in ("Sheriff", "Marshal", "Deputy"):
+        if npc.occupation in ("Sheriff", "Marshal", "Deputy",
+                              "Militia Captain", "Fort Commander"):
             log.append(f'*{npc.name} narrows his eyes.* '
                        f'"Hold it right there. There\'s a warrant out for you."')
             npc.adjust_relationship(-10)
-            return log
+            return log, llm_history
 
     # Insight check — player reads the NPC based on Wisdom + Intelligence
     from src.npc_system import insight_check
@@ -515,14 +676,97 @@ def talk_menu(con: tcod.console.Console, ctx,
     if insight:
         log.append(f"  [{insight}]")
 
-    PRESET_TOPICS = [
-        ("Introduce yourself",    "introduce_self"),
-        ("Ask their name",        "ask_name"),
-        ("Ask what they do",      "ask_work"),
-        ("Ask where they're from","ask_region"),
-        ("Ask about rumors",      "ask_rumors"),
-        ("Ask about gold",        "ask_gold"),
-    ]
+    # ── Build preset topics based on language level ─────────────────────
+    if language_level == "none":
+        # Gesture-only: trade and leave
+        PRESET_TOPICS = [
+            ("Trade (gesture at goods)", "trade"),
+            ("Leave", "goodbye"),
+        ]
+    elif language_level == "sign":
+        # Sign language: limited topics
+        PRESET_TOPICS = [
+            ("Peace greeting (sign)", "peace_greeting"),
+            ("Trade (gesture)", "trade"),
+            ("Ask directions (point)", "ask_directions_sign"),
+        ]
+        # Tribal-specific sign topics
+        if npc_tribe and tribal:
+            standing = tribal.get_standing(npc_tribe).standing
+            if standing >= 0:
+                PRESET_TOPICS.append(("Territory? (gesture)", "territory_sign"))
+        PRESET_TOPICS.append(("Learn words (gesture, point at things)", "learn_language"))
+        PRESET_TOPICS.append(("Leave", "goodbye"))
+    elif language_level == "pidgin":
+        # Broken shared language: most topics, simplified
+        PRESET_TOPICS = [
+            ("Introduce yourself",    "introduce_self"),
+            ("Ask their name",        "ask_name"),
+            ("Ask what they do",      "ask_work"),
+            ("Ask about rumors",      "ask_rumors"),
+        ]
+        # Tribal pidgin topics
+        if npc_tribe and tribal:
+            standing = tribal.get_standing(npc_tribe).standing
+            PRESET_TOPICS.append(("Ask about hunting here", "hunt_request"))
+            PRESET_TOPICS.append(("Ask for safe passage", "safe_passage"))
+            if standing >= 10:
+                PRESET_TOPICS.append(("Hire as guide", "guide_hire"))
+                PRESET_TOPICS.append(("Ask about trapping rights", "trapping_rights"))
+        PRESET_TOPICS.append(("Practice their language", "learn_language"))
+    else:
+        # Fluent: full conversation
+        PRESET_TOPICS = [
+            ("Introduce yourself",    "introduce_self"),
+            ("Ask their name",        "ask_name"),
+            ("Ask what they do",      "ask_work"),
+            ("Ask where they're from","ask_region"),
+            ("Ask about rumors",      "ask_rumors"),
+            ("Ask about gold",        "ask_gold"),
+            ("▸ Ask about knowledge...", "show_knowledge"),
+        ]
+        # Fluent tribal topics
+        if npc_tribe and tribal:
+            standing = tribal.get_standing(npc_tribe).standing
+            if standing >= 20:
+                PRESET_TOPICS.append(("Ask about tribal history", "tribal_history"))
+                PRESET_TOPICS.append(("Ask about sacred places", "sacred_places"))
+            if standing >= 30:
+                PRESET_TOPICS.append(("Discuss alliance", "alliance"))
+            if standing >= 40 and getattr(npc, 'romantic_eligible', False):
+                PRESET_TOPICS.append(("Discuss marriage", "marriage_tribal"))
+
+    # Bilingual NPC can teach their native language even when you're fluent
+    # in your shared language (English). E.g. a French-Canadian trapper speaks
+    # English but can teach you French. A Native Guide speaks English but can
+    # teach you Crow.
+    if language_level in ("pidgin", "fluent"):
+        _teach_lang = None
+        _teach_label = None
+        if npc_tribe:
+            # Native NPC who speaks English — can teach tribal language
+            tribal_lvl = tribal.get_language_level(npc_tribe) if tribal else "fluent"
+            if tribal_lvl != "fluent":
+                _teach_lang = npc_tribe
+                _teach_label = f"{npc_tribe} language"
+        elif npc_ethnicity == "french_canadian":
+            if player.languages.get("french", "none") != "fluent":
+                _teach_lang = "french"
+                _teach_label = "French"
+        elif npc_ethnicity == "chinese":
+            if player.languages.get("chinese", "none") != "fluent":
+                _teach_lang = "chinese"
+                _teach_label = "Chinese"
+        elif npc_ethnicity == "mexican":
+            if player.languages.get("spanish", "none") != "fluent":
+                _teach_lang = "spanish"
+                _teach_label = "Spanish"
+        elif npc_ethnicity == "german":
+            if player.languages.get("german", "none") != "fluent":
+                _teach_lang = "german"
+                _teach_label = "German"
+        if _teach_lang:
+            PRESET_TOPICS.append((f"Ask for {_teach_label} lesson", "learn_language"))
 
     # Dynamic topics based on NPC and player state
     npc_id = getattr(npc, "npc_id", "")
@@ -531,6 +775,7 @@ def talk_menu(con: tcod.console.Console, ctx,
     from src.economy import OCCUPATION_TO_MERCHANT
     if npc.occupation in OCCUPATION_TO_MERCHANT:
         PRESET_TOPICS.append(("Trade / Buy / Sell", "trade"))
+        PRESET_TOPICS.append(("Barter (trade items directly)", "barter"))
 
     # Mail pickup — available at merchant NPCs in towns
     writing_mgr = kwargs.get("writing")
@@ -577,6 +822,25 @@ def talk_menu(con: tcod.console.Console, ctx,
         PRESET_TOPICS.append(("Ask to join you (companion)", "recruit_companion"))
     elif comp_mgr and npc.relationship > 5:
         PRESET_TOPICS.append(("Offer employment", "recruit_employee"))
+
+    # Wartime enlistment — military NPCs offer enlistment during active wars
+    if npc_ethnicity != "native_american" and \
+            npc.occupation in ("Militia Captain", "Fort Commander", "Soldier",
+                               "Officer", "Ranger"):
+        try:
+            from src.war_system import WarSystem
+            _ws = kwargs.get("war_system")
+            if _ws:
+                _active = _ws.get_active_wars(
+                    kwargs.get("year", 1849),
+                    kwargs.get("region", ""))
+                if _active and not _ws.player_enlisted:
+                    war = _active[0]
+                    PRESET_TOPICS.append(
+                        (f"Enlist ({war.factions[0]})", "enlist_war"))
+
+        except (ImportError, Exception):
+            pass
 
     PRESET_TOPICS.append(("Say goodbye", "goodbye"))
 
@@ -642,7 +906,7 @@ def talk_menu(con: tcod.console.Console, ctx,
 
         for event in tcod.event.wait():
             if isinstance(event, tcod.event.Quit):
-                return log
+                return log, llm_history
             if isinstance(event, tcod.event.TextInput) and input_mode:
                 text_input += event.text
                 continue
@@ -739,6 +1003,45 @@ def talk_menu(con: tcod.console.Console, ctx,
                         if trade_handled:
                             continue
 
+                        # Try hardcoded knowledge before LLM
+                        knowledge_handled = False
+                        try:
+                            from src.npc_knowledge import match_topic, get_npc_response
+                            topic = match_topic(said)
+                            if topic:
+                                occ = getattr(npc, 'occupation', '')
+                                _npc_traits = getattr(npc, 'traits', [])
+                                resp = get_npc_response(topic, occ, npc.name,
+                                                        npc_traits=_npc_traits)
+                                log.append(resp)
+                                llm_history.append((npc.name, resp))
+                                # Teach plants
+                                for plant_id in topic.teaches_plants:
+                                    if plant_id not in player.knowledge:
+                                        player.knowledge[plant_id] = 1
+                                        log.append(f"  [Learned to identify: {plant_id.replace('_', ' ')}]")
+                                # Grant skill XP
+                                if topic.teaches_skill_xp[1] > 0:
+                                    player.gain_skill_xp(
+                                        topic.teaches_skill_xp[0],
+                                        topic.teaches_skill_xp[1])
+                                knowledge_handled = True
+                        except ImportError:
+                            pass
+
+                        if knowledge_handled:
+                            # Store in NPC memory
+                            if hasattr(npc, 'expanded_memory'):
+                                current_day = kwargs.get("current_day", 0)
+                                npc.expanded_memory.add(
+                                    content=f'Player asked: "{said}" — {npc.name} replied: "{resp[:120]}"',
+                                    day=current_day,
+                                    significance=0.5,
+                                    valence=0.0,
+                                    category="dialogue",
+                                )
+                            continue
+
                         if llm is not None and llm.available:
                             # Show "thinking" indicator
                             log.append(f"*{npc.name} considers...*")
@@ -751,11 +1054,26 @@ def talk_menu(con: tcod.console.Console, ctx,
                                 npc_ctx = build_npc_llm_context(npc, player)
                             except (ImportError, AttributeError):
                                 npc_ctx = _npc_context_block(npc, player)
+                            # Build speech/mood/lying context for LLM
+                            _speech_dir = ""
+                            _mood_ctx = ""
+                            _lying_inst = ""
+                            try:
+                                _speech_dir = npc.build_speech_direction(
+                                    language_level=language_level)
+                                _mood_ctx = npc.build_mood_context(
+                                    time_period=time_period, weather=weather)
+                                _lying_inst = npc.build_lying_instruction()
+                            except (AttributeError, Exception):
+                                pass
                             resp = llm.npc_reply(
                                 npc_name=npc.name,
                                 npc_context=npc_ctx,
                                 player_said=said,
                                 history=llm_history,
+                                speech_direction=_speech_dir,
+                                mood_context=_mood_ctx,
+                                lying_instruction=_lying_inst,
                             )
                             log.pop()   # remove "thinking" line
                         else:
@@ -763,12 +1081,95 @@ def talk_menu(con: tcod.console.Console, ctx,
 
                         log.append(resp)
                         llm_history.append((npc.name, resp))
+
+                        # Store each free-text exchange in NPC memory
+                        if hasattr(npc, 'expanded_memory'):
+                            current_day = kwargs.get("current_day", 0)
+                            npc.expanded_memory.add(
+                                content=f'Player said: "{said}" — {npc.name} replied: "{resp[:120]}"',
+                                day=current_day,
+                                significance=0.5,
+                                valence=0.0,
+                                category="dialogue",
+                            )
+
+                        # ── Provocation check ─────────────────────────
+                        # Insults, threats, and aggressive language can
+                        # anger NPCs. Hot-tempered ones may attack.
+                        _PROVOKE_WORDS = {
+                            "insult": ("idiot", "fool", "coward", "bastard",
+                                       "ugly", "stupid", "worthless", "pathetic",
+                                       "scum", "trash", "pig", "worm", "dog"),
+                            "threat": ("kill you", "shoot you", "gut you",
+                                       "cut you", "murder", "i'll end you",
+                                       "die", "throat", "bury you"),
+                            "slur": ("chink", "redskin", "greaser", "paddy",
+                                     "kraut", "squaw", "savage", "half-breed"),
+                        }
+                        said_l = said.lower()
+                        provoke_level = 0  # 0=none, 1=insult, 2=threat, 3=slur
+                        for cat, words in _PROVOKE_WORDS.items():
+                            if any(w in said_l for w in words):
+                                if cat == "threat":
+                                    provoke_level = max(provoke_level, 2)
+                                elif cat == "slur":
+                                    provoke_level = max(provoke_level, 3)
+                                else:
+                                    provoke_level = max(provoke_level, 1)
+
+                        if provoke_level > 0:
+                            import random as _prng
+                            npc.adjust_relationship(-provoke_level * 5)
+                            traits_l = [t.lower() for t in getattr(npc, 'traits', [])]
+                            # Hot-tempered NPCs react strongly
+                            anger_threshold = 12  # d20 roll needed to stay calm
+                            if "hot-tempered" in traits_l:
+                                anger_threshold = 6
+                            elif "patient" in traits_l or "stoic" in traits_l:
+                                anger_threshold = 16
+                            if "brave" in traits_l:
+                                anger_threshold -= 2
+                            if "coward" in traits_l or "nervous" in traits_l:
+                                anger_threshold += 4
+                            # Threats are harder to ignore than insults
+                            anger_threshold -= provoke_level * 2
+
+                            calm_roll = _prng.randint(1, 20)
+                            if calm_roll < anger_threshold:
+                                # NPC snaps
+                                if provoke_level >= 2:
+                                    snap_msgs = [
+                                        f'*{npc.name}\'s face goes dark.* "You just made a mistake."',
+                                        f'*{npc.name} reaches for his belt.* "Say that again."',
+                                        f'"That\'s it." *{npc.name} stands up, fists clenched.*',
+                                    ]
+                                else:
+                                    snap_msgs = [
+                                        f'*{npc.name} shoves you.* "Watch your mouth."',
+                                        f'*{npc.name} stands up fast, knocking over his chair.* "You want trouble?"',
+                                        f'"Outside. Now." *{npc.name} is done talking.*',
+                                    ]
+                                log.append(_prng.choice(snap_msgs))
+                                npc.combat_state = "hostile"
+                                return log, llm_history  # exit talk → engine handles combat
+                            elif calm_roll < anger_threshold + 4:
+                                # NPC is angry but holds back
+                                warn_msgs = [
+                                    f'*{npc.name}\'s jaw tightens.* "Careful."',
+                                    f'"You\'re pushing your luck." *{npc.name} glares.*',
+                                    f'*{npc.name} takes a slow breath.* "Don\'t say that again."',
+                                ]
+                                log.append(_prng.choice(warn_msgs))
+                            # else: NPC ignores it
                     continue
 
                 if sym == K.ESCAPE or sym == K.t and not input_mode:
                     if sym == K.ESCAPE:
-                        return log
+                        return log, llm_history
                 if sym == K.t:
+                    if language_level in ("none", "sign"):
+                        log.append("  [You cannot converse — no shared language.]")
+                        continue
                     input_mode = True
                     text_input = ""
                     ctx.sdl_window.start_text_input()
@@ -778,6 +1179,49 @@ def talk_menu(con: tcod.console.Console, ctx,
                     selected = min(len(PRESET_TOPICS) - 1, selected + 1)
                 elif sym in (K.RETURN, K.KP_ENTER):
                     label, topic = PRESET_TOPICS[selected]
+
+                    # Knowledge menu — show expandable topic list
+                    if topic == "show_knowledge":
+                        try:
+                            from src.npc_knowledge import get_topic_menu, get_npc_response
+                            from src.npc_knowledge import KNOWLEDGE_DB
+                            from src.menus import pick_from_list
+                            occ = getattr(npc, 'occupation', '')
+                            topic_list = get_topic_menu(occ)
+                            if not topic_list:
+                                log.append(f'*{npc.name} shrugs.* "Can\'t help you there."')
+                                continue
+                            labels = [f"[{cat}] {lbl}" for lbl, cat in topic_list]
+                            kidx = pick_from_list(con, ctx,
+                                f"Ask {npc.name} about...", labels)
+                            if kidx is not None:
+                                chosen_label = topic_list[kidx][0]
+                                # Find matching topic
+                                kt = None
+                                for t in KNOWLEDGE_DB:
+                                    if t.label == chosen_label:
+                                        kt = t
+                                        break
+                                if kt:
+                                    _npc_traits = getattr(npc, 'traits', [])
+                                    resp = get_npc_response(kt, occ, npc.name,
+                                                            npc_traits=_npc_traits)
+                                    log.append(f'You: "{chosen_label}"')
+                                    log.append(resp)
+                                    llm_history.append(("player", chosen_label))
+                                    llm_history.append((npc.name, resp))
+                                    for plant_id in kt.teaches_plants:
+                                        if plant_id not in player.knowledge:
+                                            player.knowledge[plant_id] = 1
+                                            log.append(f"  [Learned: {plant_id.replace('_', ' ')}]")
+                                    if kt.teaches_skill_xp[1] > 0:
+                                        player.gain_skill_xp(
+                                            kt.teaches_skill_xp[0],
+                                            kt.teaches_skill_xp[1])
+                        except ImportError:
+                            log.append(f'*{npc.name} has nothing to say about that.*')
+                        continue
+
                     log.append(f'You: "{label}"')
                     resp = _npc_response(npc, topic, player)
 
@@ -867,8 +1311,10 @@ def talk_menu(con: tcod.console.Console, ctx,
 
                         stock_key = f"_stock_{npc_id}"
                         if stock_key not in state_extra_cache:
+                            _trade_year = kwargs.get("year", 1849)
                             stock = generate_stock(mtype_key, npc_id,
-                                                    hash(npc_id) & 0x7FFFFFFF, stype)
+                                                    hash(npc_id) & 0x7FFFFFFF, stype,
+                                                    year=_trade_year)
                             state_extra_cache[stock_key] = stock
                         stock = state_extra_cache[stock_key]
 
@@ -950,11 +1396,183 @@ def talk_menu(con: tcod.console.Console, ctx,
                         else:
                             resp = f'"Sorry, can\'t help you with animals right now."'
 
+                    elif resp == "__ENLIST_WAR__":
+                        _ws = kwargs.get("war_system")
+                        if _ws:
+                            _active = _ws.get_active_wars(
+                                kwargs.get("year", 1849),
+                                kwargs.get("region", ""))
+                            if _active:
+                                war = _active[0]
+                                from src.menus import pick_from_list
+                                roles = [
+                                    f"Scout/Guide (${1 + player.skills.get('tracking', 0) * 0.5:.0f}/day)",
+                                    f"Soldier (${1:.0f}/day)",
+                                    f"Medic (${1 + player.skills.get('firstAid', 0) * 0.5:.0f}/day)",
+                                ]
+                                ridx = pick_from_list(con, ctx,
+                                    f"Enlist with the {war.factions[0]} as:", roles)
+                                if ridx is not None:
+                                    enlist_msg = _ws.enlist(
+                                        war.war_id, war.factions[0])
+                                    log.append(enlist_msg)
+                                    role_names = ["scout", "soldier", "medic"]
+                                    log.append(
+                                        f'*{npc.name} nods.* "Good man. '
+                                        f'We need {role_names[ridx]}s. '
+                                        f'Report at dawn."')
+                                    npc.adjust_relationship(10)
+                                resp = ""
+                        else:
+                            resp = f'"No war to enlist in right now."'
+
+                    elif resp == "__BARTER__":
+                        # Simple barter: player picks items to offer,
+                        # NPC picks items to trade. Values compared.
+                        from src.menus import pick_from_list
+                        # Player offers
+                        offer_items = [i for i in player.inventory
+                                       if i.base_value > 0 and i.weight < 50]
+                        if not offer_items:
+                            resp = f'"You have nothing worth trading."'
+                        else:
+                            labels = [f"{i.name} (${i.base_value:.2f})"
+                                      for i in offer_items]
+                            oidx = pick_from_list(con, ctx,
+                                "Offer what?", labels)
+                            if oidx is not None:
+                                offered = offer_items[oidx]
+                                # NPC offers items of similar value
+                                npc_inv = getattr(npc, 'inventory', [])
+                                if not npc_inv:
+                                    resp = f'"I don\'t have anything to trade right now."'
+                                else:
+                                    match = [i for i in npc_inv
+                                             if abs(i.base_value - offered.base_value) < offered.base_value * 0.5]
+                                    if not match:
+                                        match = list(npc_inv)
+                                    nlabels = [f"{i.name} (${i.base_value:.2f})"
+                                               for i in match]
+                                    nidx = pick_from_list(con, ctx,
+                                        f"Trade {offered.name} for what?", nlabels)
+                                    if nidx is not None:
+                                        received = match[nidx]
+                                        player.inventory.remove(offered)
+                                        npc.inventory.remove(received)
+                                        player.inventory.append(received)
+                                        npc.inventory.append(offered)
+                                        resp = (f'You trade your {offered.name} for '
+                                                f'{npc.name}\'s {received.name}.')
+                                        npc.adjust_relationship(2)
+                                    else:
+                                        resp = ""
+                            else:
+                                resp = ""
+
+                    elif resp == "__LEARN_LANGUAGE__":
+                        # Active language learning — grants exposure days
+                        import random as _lrng
+                        _lang_key = None
+                        _lang_label = ""
+                        if npc_tribe and tribal:
+                            _lang_key = "tribal"
+                            _lang_label = npc_tribe
+                        elif npc_ethnicity == "chinese":
+                            _lang_key = "chinese"
+                            _lang_label = "Chinese"
+                        elif npc_ethnicity == "mexican":
+                            _lang_key = "spanish"
+                            _lang_label = "Spanish"
+                        elif npc_ethnicity == "french_canadian":
+                            _lang_key = "french"
+                            _lang_label = "French"
+
+                        if _lang_key == "tribal" and tribal:
+                            # Tribal language — add days to tribal system
+                            ts = tribal.get_standing(npc_tribe)
+                            ts.days_near_tribe += 3
+                            old_lvl = ts.language_level
+                            adv_msg = tribal._advance_language(npc_tribe)
+                            if adv_msg:
+                                log.append(f"  [{adv_msg}]")
+                                language_level = ts.language_level
+                            # Bilingual NPC teaches in English
+                            _bilingual = (language_level == "fluent")
+                            if _bilingual:
+                                _teach_msgs = [
+                                    f"*{npc.name} switches to {_lang_label} and translates each phrase.* \"Say it again. Slower.\"",
+                                    f"*{npc.name} names things in {_lang_label}, then English, back and forth.* \"You're getting it.\"",
+                                    f"*{npc.name} tells a short story in {_lang_label}, stopping to explain each word.*",
+                                    f"\"Listen —\" *{npc.name} speaks a sentence in {_lang_label}.* \"Now you try.\"",
+                                    f"*{npc.name} teaches you the {_lang_label} words for trade goods, animals, and directions.*",
+                                ]
+                            else:
+                                _teach_msgs = [
+                                    f"*{npc.name} points at objects, naming each one slowly. You repeat after them.*",
+                                    f"*{npc.name} teaches you words for water, fire, food, friend. You practice.*",
+                                    f"*{npc.name} speaks slowly, gesturing. Some words start to stick.*",
+                                    f"*{npc.name} draws in the dirt and names things. You begin to understand.*",
+                                ]
+                            resp = _lrng.choice(_teach_msgs)
+                            npc.adjust_relationship(3)
+                        elif _lang_key:
+                            # Non-tribal language
+                            _bilingual = (language_level == "fluent")
+                            player._lang_exposure[_lang_key] = \
+                                player._lang_exposure.get(_lang_key, 0) + 3
+                            days = player._lang_exposure[_lang_key]
+                            cur_lvl = player.languages.get(_lang_key, "none")
+                            lvl_up = False
+                            if cur_lvl == "none" and days >= 7:
+                                player.languages[_lang_key] = "sign"
+                                log.append(f"  [You've learned basic {_lang_label} gestures.]")
+                                language_level = "sign"
+                                lvl_up = True
+                            elif cur_lvl == "sign" and days >= 21:
+                                player.languages[_lang_key] = "pidgin"
+                                log.append(f"  [You can now speak pidgin {_lang_label}.]")
+                                language_level = "pidgin"
+                                lvl_up = True
+                            elif cur_lvl == "pidgin" and days >= 90:
+                                player.languages[_lang_key] = "fluent"
+                                log.append(f"  [You are now fluent in {_lang_label}!]")
+                                language_level = "fluent"
+                                lvl_up = True
+
+                            if _bilingual:
+                                _teach_msgs = [
+                                    f"*{npc.name} teaches you {_lang_label} over coffee.* \"Repeat after me...\"",
+                                    f"\"You want to learn {_lang_label}? Alright.\" *{npc.name} starts with greetings and numbers.*",
+                                    f"*{npc.name} corrects your pronunciation patiently.* \"No, no. Like this —\"",
+                                    f"*{npc.name} tells you the {_lang_label} names for everything in sight.*",
+                                    f"\"Your {_lang_label} is getting better,\" *{npc.name} says.* \"Keep practicing.\"",
+                                ]
+                            else:
+                                _teach_msgs = [
+                                    f"*{npc.name} patiently names objects, correcting your pronunciation.*",
+                                    f"*You spend time learning {_lang_label} words. Some stick, some don't.*",
+                                    f"*{npc.name} teaches you useful phrases. The language starts making sense.*",
+                                ]
+                            resp = _lrng.choice(_teach_msgs)
+                            npc.adjust_relationship(2)
+                        else:
+                            resp = f"*{npc.name} doesn't seem to understand what you want.*"
+
+                        # Show progress
+                        if _lang_key == "tribal" and tribal:
+                            ts = tribal.get_standing(npc_tribe)
+                            log.append(f"  [{npc_tribe} language: {ts.language_level} "
+                                       f"({ts.days_near_tribe} days exposure)]")
+                        elif _lang_key:
+                            days = player._lang_exposure.get(_lang_key, 0)
+                            lvl = player.languages.get(_lang_key, "none")
+                            log.append(f"  [{_lang_label}: {lvl} ({days} days exposure)]")
+
                     if resp:
                         log.append(resp)
                         llm_history.append(("player", label))
                         llm_history.append((npc.name, resp))
                     if topic == "goodbye":
-                        return log
+                        return log, llm_history
                 elif sym == K.ESCAPE:
-                    return log
+                    return log, llm_history

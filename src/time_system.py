@@ -6,11 +6,13 @@ Real calendar date derived from start date + elapsed minutes.
 import math
 from dataclasses import dataclass
 
-# Game start: April 1, 1849, 6:00 AM
-START_YEAR  = 1849
-START_MONTH = 4
+# Calendar anchor — all elapsed time is relative to this date.
+# Using 1750-01-01 as anchor to support all eras (Long Hunter 1780+).
+# The actual game start date is set per-era in _apply_character.
+START_YEAR  = 1750
+START_MONTH = 1
 START_DAY   = 1
-START_HOUR  = 6
+START_HOUR  = 0
 START_MIN   = 0
 
 DAYS_IN_MONTH = [0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
@@ -18,8 +20,29 @@ MONTH_NAMES   = ["", "January", "February", "March", "April", "May", "June",
                  "July", "August", "September", "October", "November", "December"]
 DAY_NAMES     = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 
-# April 1 1849 was a Sunday (index 6)
-START_DOW = 6
+# January 1, 1750 was a Monday (index 0)
+START_DOW = 0
+
+
+def minutes_from_anchor(year: int, month: int = 1, day: int = 1,
+                         hour: int = 6) -> int:
+    """Compute total minutes from the anchor date (Jan 1, 1800) to the given date.
+    Accounts for leap years correctly."""
+    total_days = 0
+    # Count full years
+    for y in range(START_YEAR, year):
+        if y % 4 == 0 and (y % 100 != 0 or y % 400 == 0):
+            total_days += 366
+        else:
+            total_days += 365
+    # Count full months in the target year
+    for m in range(1, month):
+        total_days += DAYS_IN_MONTH[m]
+        if m == 2 and year % 4 == 0 and (year % 100 != 0 or year % 400 == 0):
+            total_days += 1  # leap day
+    # Add remaining days (minus 1 since day 1 = 0 offset)
+    total_days += day - 1
+    return total_days * 24 * 60 + hour * 60
 
 
 @dataclass
@@ -76,7 +99,7 @@ class GameTime:
         day += days_remaining
         while True:
             dim = DAYS_IN_MONTH[month]
-            if month == 2 and year % 4 == 0:
+            if month == 2 and year % 4 == 0 and (year % 100 != 0 or year % 400 == 0):
                 dim = 29
             if day <= dim:
                 break
@@ -168,3 +191,30 @@ class GameTime:
                 "snow": 0.6, "blizzard": 0.3, "fog": 0.4,
                 "thunderstorm": 0.6, "hot": 1.0, "cold": 0.9,
                 }.get(self.weather, 1.0)
+
+    @property
+    def weather_temp_mod(self) -> float:
+        """Temperature modifier from weather for survival.tick().
+        Negative = cold, positive = hot."""
+        base = {"spring": 0.0, "summer": 5.0, "fall": -2.0, "winter": -10.0
+                }.get(self.season, 0.0)
+        weather_adj = {"clear": 0.0, "overcast": -2.0, "rain": -5.0,
+                       "snow": -12.0, "blizzard": -20.0, "fog": -3.0,
+                       "thunderstorm": -4.0, "hot": 8.0, "cold": -8.0,
+                       }.get(self.weather, 0.0)
+        # Night is colder
+        night_adj = -5.0 if self.period == "night" else 0.0
+        return base + weather_adj + night_adj
+
+    @property
+    def weather_mining_mult(self) -> float:
+        """Mining/panning efficiency multiplier from weather."""
+        return {"clear": 1.0, "overcast": 1.0, "rain": 0.7,
+                "snow": 0.5, "blizzard": 0.1, "fog": 0.9,
+                "thunderstorm": 0.4, "hot": 0.85, "cold": 0.8,
+                }.get(self.weather, 1.0)
+
+    @property
+    def weather_fire_risk(self) -> bool:
+        """True if weather makes fire unreliable (rain/snow/storm)."""
+        return self.weather in ("rain", "snow", "blizzard", "thunderstorm")

@@ -49,20 +49,20 @@ if TYPE_CHECKING:
 
 _TOWN_TERRAIN_REGISTERED = False
 
-# Terrain type IDs (start at 30 to avoid clashing with local_map.py 0-22)
-ROAD        = 30
-WOOD_FLOOR  = 31
-WOOD_WALL   = 32
-STONE_WALL  = 33
-DOOR        = 34
-FENCE       = 35
-TENT_CANVAS = 36
-HITCHING    = 37
-WELL_TILE   = 38
-FIREPIT_T   = 39
-SIGN_POST   = 40
-PORCH       = 41
-COUNTER     = 42
+# Terrain type IDs (100+ to avoid clashing with worked ground 30-34 and furniture 43-53)
+ROAD        = 100
+WOOD_FLOOR  = 101
+WOOD_WALL   = 102
+STONE_WALL  = 103
+DOOR        = 104
+FENCE       = 105
+TENT_CANVAS = 106
+HITCHING    = 107
+WELL_TILE   = 108
+FIREPIT_T   = 109
+SIGN_POST   = 110
+PORCH       = 111
+COUNTER     = 112
 
 _TOWN_GLYPHS = {
     #              glyph   fg_rgb              bg_rgb
@@ -436,11 +436,11 @@ class SettlementLayout:
 #  SETTLEMENT TYPE CLASSIFIER
 # ============================================================================
 
-def classify_settlement(loc_type: str, population: int) -> str:
+def classify_settlement(loc_type: str, population: int,
+                        year: int = 1849) -> str:
     """
     Determine settlement_type from a WorldLocation's type and population.
-
-    Also handles DynamicLocation.loc_type values.
+    Year-aware: pre-1800 forts use frontier_fort settlement type.
     """
     lt = loc_type.lower()
     if lt == "mining_camp":
@@ -456,7 +456,7 @@ def classify_settlement(loc_type: str, population: int) -> str:
     if population > 5000:
         return "small_town"
     if lt == "fort" or lt == "outpost":
-        return "trading_post"
+        return "frontier_fort" if year < 1820 else "trading_post"
     if lt == "camp":
         return "mining_camp_small" if population < 25 else "mining_camp_medium"
     if lt == "town":
@@ -906,9 +906,9 @@ class TownGenerator:
                     nx, ny = cx + dx, cy + dy
                     if lm.in_bounds(nx, ny):
                         t = lm.tiles[ny][nx].terrain
-                        # Only clear natural terrain, not water or rock
-                        if t not in (LocalTerrain.WATER, LocalTerrain.ROCK,
-                                     LocalTerrain.BEDROCK):
+                        # Clear everything except bedrock — settlements flatten
+                        # terrain including streams (wells/pumps replace them)
+                        if t not in (LocalTerrain.BEDROCK,):
                             lm.tiles[ny][nx].terrain = LocalTerrain.GROUND
 
     # ── Apply layout to local map ──────────────────────────────────────

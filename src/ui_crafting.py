@@ -25,15 +25,15 @@ _CAT_ORDER = [
 ]
 
 _CAT_LABELS = {
-    "food": "Food & Drink",
+    "food": "Food",
     "tools": "Tools",
-    "materials": "Materials",
-    "medical": "Medical",
-    "leatherwork": "Leatherwork",
-    "furwork": "Fur Clothing",
-    "bonework": "Bonework",
-    "woodwork": "Woodwork",
-    "trapping": "Trapping",
+    "materials": "Mats",
+    "medical": "Med",
+    "leatherwork": "Leather",
+    "furwork": "Fur",
+    "bonework": "Bone",
+    "woodwork": "Wood",
+    "trapping": "Trap",
     "shelter": "Shelter",
 }
 
@@ -203,7 +203,7 @@ def open_crafting(con, ctx, player) -> Any:
     if not tabs:
         return None
 
-    menu = TabbedMenu("CRAFTING", tabs, width=76, height=38)
+    menu = TabbedMenu("CRAFTING", tabs, width=90, height=40)
 
     # Hack: inject active category via ctx — updates when tab changes
     class CraftCtx(dict):
@@ -219,7 +219,7 @@ def open_crafting(con, ctx, player) -> Any:
     from src.ui_framework import draw_box, draw_tabs, draw_separator, MenuState as _MS
 
     SW, SH = con.width, con.height
-    W, H = 76, 38
+    W, H = 90, 40
     X = (SW - W) // 2
     Y = (SH - H) // 2
     active_tab = 0

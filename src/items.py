@@ -41,6 +41,10 @@ class Item:
     # Extra data for special items (ammo count, map data, etc.)
     extra: Dict[str, Any] = field(default_factory=dict)
 
+    # Year-gating: earliest year this item is available at merchants.
+    # 0 = always available. Items before their year don't appear in shops.
+    year_available: int = 0
+
     # Theft tracking — True if picked up from a store without paying
     unpaid: bool = False
 
@@ -182,6 +186,52 @@ ITEM_TEMPLATES: Dict[str, dict] = {
         "category": "tool", "base_value": 0.10,
         "tool_tags": ["sew"],
         "description": "A thin bone needle. Needed for leatherwork and sutures.",
+    },
+    # Portable structures — can be placed and picked up
+    "fleshing_beam": {
+        "id": "fleshing_beam", "name": "Fleshing Beam", "weight": 15.0,
+        "category": "tool", "tool_tags": ["portable_structure"],
+        "description": "A smooth log for scraping hides and pelts. Place to use.",
+        "base_value": 1.00,
+        "extra": {"structure_key": "fleshing_beam"},
+    },
+    "stretching_board": {
+        "id": "stretching_board", "name": "Hide & Pelt Frame", "weight": 12.0,
+        "category": "tool", "tool_tags": ["portable_structure"],
+        "description": "A frame for stretching pelts and hides to dry. Place to use.",
+        "base_value": 1.50,
+        "extra": {"structure_key": "stretching_board"},
+    },
+    "drying_rack": {
+        "id": "drying_rack", "name": "Drying Rack", "weight": 12.0,
+        "category": "tool", "tool_tags": ["portable_structure"],
+        "description": "Frame for drying meat and fish. Place to use.",
+        "base_value": 1.00,
+        "extra": {"structure_key": "drying_rack"},
+    },
+    "hitching_rail": {
+        "id": "hitching_rail", "name": "Hitching Rail", "weight": 10.0,
+        "category": "tool", "tool_tags": ["portable_structure"],
+        "description": "A rail for tying up horses and pack animals. Place to use.",
+        "base_value": 0.75,
+        "extra": {"structure_key": "hitching_rail"},
+    },
+    # ── Water vehicles (as inventory items when not deployed) ──────────
+    "birchbark_canoe": {
+        "id": "birchbark_canoe", "name": "Birchbark Canoe", "weight": 60.0,
+        "category": "tool", "tool_tags": ["water_vehicle"],
+        "description": "A light canoe made from birch bark stretched over a cedar frame. "
+                       "Fast on rivers, light enough for one man to portage.",
+        "base_value": 10.00,
+        "extra": {"vehicle_type": "birchbark_canoe"},
+    },
+    "dugout_canoe": {
+        "id": "dugout_canoe", "name": "Dugout Canoe", "weight": 200.0,
+        "category": "tool", "tool_tags": ["water_vehicle"],
+        "description": "A canoe carved from a single cottonwood or tulip poplar log. "
+                       "Heavy but durable. Takes days to carve.",
+        "base_value": 5.00,
+        "extra": {"vehicle_type": "dugout_canoe"},
     },
     "fish_guts": {
         "id": "fish_guts", "name": "Fish Guts", "weight": 0.2,
@@ -338,6 +388,342 @@ ITEM_TEMPLATES: Dict[str, dict] = {
         "description": "Fresh mint leaves. Tea, flavoring, or medicinal.",
         "base_value": 0.05, "stackable": True, "perishable": True, "days_until_spoil": 5,
     },
+    "pine_needles": {
+        "id": "pine_needles", "name": "Pine Needles", "weight": 0.1,
+        "category": "food", "nutrition": 2.0,
+        "description": "Fresh green pine needles. Rich in vitamin C. "
+                       "Steep in hot water for tea that prevents scurvy.",
+        "base_value": 0.02, "stackable": True, "perishable": True, "days_until_spoil": 7,
+    },
+    "pine_needle_tea": {
+        "id": "pine_needle_tea", "name": "Pine Needle Tea", "weight": 0.3,
+        "category": "drink", "hydration": 15.0, "nutrition": 3.0,
+        "description": "Hot tea brewed from fresh pine needles. Tart, resinous, "
+                       "and packed with the stuff that keeps scurvy at bay. "
+                       "Every mountain man knows this one.",
+        "base_value": 0.05, "stackable": True,
+    },
+    # ── Medicine items ────────────────────────────────────────────────
+    "willow_tea": {
+        "id": "willow_tea", "name": "Willow Bark Tea", "weight": 0.3,
+        "category": "drink", "hydration": 10.0,
+        "description": "Tea brewed from willow bark. Contains salicin — "
+                       "nature's aspirin. Reduces fever, eases pain. "
+                       "The frontier's best medicine.",
+        "base_value": 0.10, "stackable": True,
+        "extra": {"treats_disease": True},
+    },
+    "quinine": {
+        "id": "quinine", "name": "Quinine Powder", "weight": 0.1,
+        "category": "misc",
+        "description": "Powdered cinchona bark — the only treatment for malaria. "
+                       "Bitter as sin. Imported from South America.",
+        "base_value": 2.00, "stackable": True, "year_available": 1820,
+        "extra": {"treats_disease": True, "treats": "malaria"},
+    },
+    "laudanum": {
+        "id": "laudanum", "name": "Laudanum", "weight": 0.2,
+        "category": "misc",
+        "description": "Tincture of opium in alcohol. Kills pain, stops diarrhea, "
+                       "and is dangerously addictive. Standard frontier medicine.",
+        "base_value": 1.00, "stackable": True,
+        "extra": {"treats_disease": True, "painkiller": True},
+    },
+    "wild_onion": {
+        "id": "wild_onion", "name": "Wild Onion", "weight": 0.1,
+        "category": "food", "nutrition": 4.0,
+        "description": "Pulled from the earth. Sharp smell, good flavor in stews. "
+                       "Grows in meadows and along streams.",
+        "base_value": 0.03, "stackable": True, "perishable": True, "days_until_spoil": 10,
+    },
+    "wild_turnip": {
+        "id": "wild_turnip", "name": "Wild Turnip", "weight": 0.2,
+        "category": "food", "nutrition": 6.0,
+        "description": "Prairie turnip dug from grassland soil. Starchy, filling. "
+                       "Native peoples call it tipsin.",
+        "base_value": 0.04, "stackable": True, "perishable": True, "days_until_spoil": 14,
+    },
+    "cattail_root": {
+        "id": "cattail_root", "name": "Cattail Root", "weight": 0.3,
+        "category": "food", "nutrition": 8.0,
+        "description": "Starchy root pulled from pond edges. Can be roasted, "
+                       "mashed, or dried into flour. Filling and reliable.",
+        "base_value": 0.03, "stackable": True, "perishable": True, "days_until_spoil": 7,
+    },
+    "rose_hips": {
+        "id": "rose_hips", "name": "Rose Hips", "weight": 0.1,
+        "category": "food", "nutrition": 3.0,
+        "description": "Small red fruit from wild rose bushes. Tart and full of "
+                       "vitamins. Good raw, better as tea.",
+        "base_value": 0.03, "stackable": True, "perishable": True, "days_until_spoil": 10,
+    },
+    "watercress": {
+        "id": "watercress", "name": "Watercress", "weight": 0.1,
+        "category": "food", "nutrition": 3.0,
+        "description": "Peppery green growing in cold streams. Eat raw — "
+                       "one of the best scurvy preventers in the wild.",
+        "base_value": 0.02, "stackable": True, "perishable": True, "days_until_spoil": 3,
+    },
+    "acorns": {
+        "id": "acorns", "name": "Acorns", "weight": 0.3,
+        "category": "food", "nutrition": 5.0,
+        "description": "Oak acorns. Bitter raw — need to be leached in water "
+                       "to remove tannins, then roasted or ground into flour.",
+        "base_value": 0.02, "stackable": True,
+    },
+    "wild_sage": {
+        "id": "wild_sage", "name": "Wild Sage", "weight": 0.05,
+        "category": "material",
+        "description": "Aromatic sage. Used as seasoning, smudge, or insect repellent. "
+                       "Smells like the frontier.",
+        "base_value": 0.03, "stackable": True,
+    },
+    "yarrow": {
+        "id": "yarrow", "name": "Yarrow", "weight": 0.05,
+        "category": "material",
+        "description": "A medicinal herb. Stops bleeding, treats fever. "
+                       "Every trapper knows to pack the wound with yarrow.",
+        "base_value": 0.05, "stackable": True,
+    },
+    # ── Edible mushrooms (identifiable by skilled foragers) ────────────
+    "morel_mushroom": {
+        "id": "morel_mushroom", "name": "Morel Mushroom", "weight": 0.1,
+        "category": "food", "nutrition": 8.0,
+        "description": "Morchella — honeycomb cap on a hollow stem. Grows in "
+                       "burned areas and near cottonwoods in spring. One of the "
+                       "safest mushrooms to identify. Excellent fried in fat.",
+        "base_value": 0.10, "stackable": True, "perishable": True, "days_until_spoil": 3,
+    },
+    "chanterelle": {
+        "id": "chanterelle", "name": "Pacific Golden Chanterelle", "weight": 0.1,
+        "category": "food", "nutrition": 6.0,
+        "description": "Cantharellus formosus — golden trumpet-shaped, false gills, "
+                       "peppery apricot smell. Grows under Douglas fir and spruce "
+                       "in mossy Pacific Northwest and Rocky Mountain forests.",
+        "base_value": 0.08, "stackable": True, "perishable": True, "days_until_spoil": 3,
+    },
+    "puffball_mushroom": {
+        "id": "puffball_mushroom", "name": "Giant Puffball", "weight": 0.3,
+        "category": "food", "nutrition": 10.0,
+        "description": "Calvatia gigantea — white ball, sometimes bigger than your head. "
+                       "Edible only when flesh is pure white throughout. Slice thick "
+                       "and fry. Found in meadows and forest clearings, late summer.",
+        "base_value": 0.06, "stackable": True, "perishable": True, "days_until_spoil": 2,
+    },
+    "oyster_mushroom": {
+        "id": "oyster_mushroom", "name": "Oyster Mushroom", "weight": 0.1,
+        "category": "food", "nutrition": 6.0,
+        "description": "Pleurotus ostreatus — shelf-like clusters on dead hardwoods. "
+                       "White to grey, gills run down the stem. Safe and common. "
+                       "Good in stews.",
+        "base_value": 0.06, "stackable": True, "perishable": True, "days_until_spoil": 3,
+    },
+    # ── Poisonous/unknown (danger items) ─────────────────────────────
+    "unknown_mushroom": {
+        "id": "unknown_mushroom", "name": "Unidentified Mushroom", "weight": 0.1,
+        "category": "food", "nutrition": 5.0,
+        "description": "A mushroom you can't confidently identify. Could be a "
+                       "harmless Russula. Could be a destroying angel. "
+                       "Without knowledge, you're gambling with your life.",
+        "base_value": 0.02, "stackable": True, "perishable": True, "days_until_spoil": 3,
+        "extra": {"poison_chance": 0.4},
+    },
+    "destroying_angel": {
+        "id": "destroying_angel", "name": "Destroying Angel", "weight": 0.1,
+        "category": "food", "nutrition": 3.0,
+        "description": "Amanita virosa — pure white, elegant, deadly. Contains "
+                       "amatoxins that destroy the liver. Symptoms delayed 6-12 hours. "
+                       "By the time you vomit, the damage is done. No cure on the frontier.",
+        "base_value": 0.01, "stackable": True, "perishable": True, "days_until_spoil": 5,
+        "extra": {"poison_chance": 1.0, "poison_severity": "lethal"},
+    },
+    # ── Poisonous berries ────────────────────────────────────────────
+    "unknown_berries": {
+        "id": "unknown_berries", "name": "Unidentified Berries", "weight": 0.1,
+        "category": "food", "nutrition": 4.0,
+        "description": "Bright berries from an unfamiliar bush. Could be "
+                       "chokecherries (safe). Could be baneberries (not safe). "
+                       "Without plant knowledge, there's no way to tell.",
+        "base_value": 0.02, "stackable": True, "perishable": True, "days_until_spoil": 3,
+        "extra": {"poison_chance": 0.3},
+    },
+    "baneberry": {
+        "id": "baneberry", "name": "White Baneberry", "weight": 0.1,
+        "category": "food", "nutrition": 2.0,
+        "description": "Actaea pachypoda — 'doll's eyes.' Clusters of white berries "
+                       "with black dots on red stems. Highly toxic. Six berries can "
+                       "kill a grown man. Grows in shaded Rocky Mountain forests.",
+        "base_value": 0.01, "stackable": True,
+        "extra": {"poison_chance": 1.0, "poison_severity": "lethal"},
+    },
+    "water_hemlock": {
+        "id": "water_hemlock", "name": "Water Hemlock Root", "weight": 0.2,
+        "category": "food", "nutrition": 3.0,
+        "description": "Cicuta douglasii — the most toxic plant in North America. "
+                       "Looks like wild parsnip or carrot. Grows near streams and "
+                       "wet meadows. One bite of the root causes violent seizures.",
+        "base_value": 0.01, "stackable": True,
+        "extra": {"poison_chance": 1.0, "poison_severity": "lethal"},
+    },
+    # ── Safe real plants (identifiable) ──────────────────────────────
+    "chokecherry": {
+        "id": "chokecherry", "name": "Chokecherries", "weight": 0.2,
+        "category": "food", "nutrition": 5.0,
+        "description": "Prunus virginiana — small dark red berries in clusters. "
+                       "Extremely tart raw but safe to eat. Native peoples dried "
+                       "them and pounded into pemmican. Common along streams.",
+        "base_value": 0.04, "stackable": True, "perishable": True, "days_until_spoil": 5,
+    },
+    "serviceberry": {
+        "id": "serviceberry", "name": "Serviceberries", "weight": 0.1,
+        "category": "food", "nutrition": 6.0,
+        "description": "Amelanchier alnifolia — sweet blue-purple berries. "
+                       "Called saskatoon berries by the Cree. One of the best "
+                       "wild fruits in the Rockies. Ripe in July.",
+        "base_value": 0.06, "stackable": True, "perishable": True, "days_until_spoil": 4,
+    },
+    "camas_root": {
+        "id": "camas_root", "name": "Camas Root", "weight": 0.2,
+        "category": "food", "nutrition": 10.0,
+        "description": "Camassia quamash — a starchy bulb dug from mountain meadows. "
+                       "Staple food of the Nez Perce and Shoshone. Must be slow-roasted "
+                       "in a pit for a full day. Tastes like sweet potato.",
+        "base_value": 0.08, "stackable": True,
+    },
+    "bitterroot": {
+        "id": "bitterroot", "name": "Bitterroot", "weight": 0.1,
+        "category": "food", "nutrition": 7.0,
+        "description": "Lewisia rediviva — Montana's state flower. Small starchy root "
+                       "dug in spring before flowering. Extremely bitter raw but "
+                       "nutritious. Boil to remove bitterness. Traded by the Flathead.",
+        "base_value": 0.06, "stackable": True,
+    },
+    "wild_carrot": {
+        "id": "wild_carrot", "name": "Wild Carrot", "weight": 0.1,
+        "category": "food", "nutrition": 5.0,
+        "description": "Daucus carota — Queen Anne's lace. The root smells like "
+                       "carrot. CAUTION: easily confused with poison hemlock. "
+                       "Only eat if you can smell carrot in the root.",
+        "base_value": 0.03, "stackable": True, "perishable": True, "days_until_spoil": 7,
+    },
+    # ── Eastern / Appalachian ────────────────────────────────────────
+    "ramps": {
+        "id": "ramps", "name": "Ramps (Wild Leek)", "weight": 0.1,
+        "category": "food", "nutrition": 4.0,
+        "description": "Allium tricoccum — pungent wild leek. Broad leaves in spring, "
+                       "garlicky smell. Grows in rich eastern hardwood forests. "
+                       "Excellent raw or cooked. Appalachian staple.",
+        "base_value": 0.05, "stackable": True, "perishable": True, "days_until_spoil": 5,
+    },
+    "pawpaw": {
+        "id": "pawpaw", "name": "Pawpaw Fruit", "weight": 0.3,
+        "category": "food", "nutrition": 12.0,
+        "description": "Asimina triloba — North America's largest native fruit. "
+                       "Custard-like flesh, tropical flavor. Grows in bottomlands "
+                       "from the Ohio Valley south. Ripe in September.",
+        "base_value": 0.10, "stackable": True, "perishable": True, "days_until_spoil": 3,
+    },
+    "black_walnut": {
+        "id": "black_walnut", "name": "Black Walnuts", "weight": 0.3,
+        "category": "food", "nutrition": 10.0,
+        "description": "Juglans nigra — hard-shelled nut with intense flavor. "
+                       "Takes effort to crack. Grows throughout the eastern woodlands. "
+                       "Rich in fat and protein. Keeps well.",
+        "base_value": 0.08, "stackable": True,
+    },
+    "persimmon": {
+        "id": "persimmon", "name": "Wild Persimmon", "weight": 0.2,
+        "category": "food", "nutrition": 8.0,
+        "description": "Diospyros virginiana — orange fruit that must be fully ripe "
+                       "or it puckers your mouth like cotton. Wait for frost. "
+                       "Southern and midwestern bottomlands.",
+        "base_value": 0.06, "stackable": True, "perishable": True, "days_until_spoil": 5,
+    },
+    "hickory_nut": {
+        "id": "hickory_nut", "name": "Hickory Nuts", "weight": 0.2,
+        "category": "food", "nutrition": 9.0,
+        "description": "Carya — sweet, rich nut inside a thick husk. Shagbark "
+                       "hickory is the best. Eastern forests, fall harvest. "
+                       "Native peoples made hickory nut milk from them.",
+        "base_value": 0.07, "stackable": True,
+    },
+    # ── Great Plains ─────────────────────────────────────────────────
+    "prickly_pear": {
+        "id": "prickly_pear", "name": "Prickly Pear Fruit", "weight": 0.2,
+        "category": "food", "nutrition": 6.0,
+        "description": "Opuntia — red-purple fruit of the paddle cactus. "
+                       "Burn off the spines first. Sweet, seedy. The pads are "
+                       "edible too. Plains, desert, and dry mountain slopes.",
+        "base_value": 0.04, "stackable": True, "perishable": True, "days_until_spoil": 7,
+    },
+    "prairie_clover": {
+        "id": "prairie_clover", "name": "Prairie Clover Root", "weight": 0.1,
+        "category": "food", "nutrition": 4.0,
+        "description": "Dalea purpurea — a legume root chewed raw or brewed into tea. "
+                       "Licorice-like flavor. Grows in dry grassland.",
+        "base_value": 0.03, "stackable": True,
+    },
+    # ── Southwest / Desert ───────────────────────────────────────────
+    "pinon_nuts": {
+        "id": "pinon_nuts", "name": "Pinon Nuts", "weight": 0.2,
+        "category": "food", "nutrition": 12.0,
+        "description": "Pinus edulis — rich, buttery pine nuts from pinon trees. "
+                       "Staple food of Great Basin and Southwest peoples. "
+                       "Harvested in fall. High fat, stores well.",
+        "base_value": 0.12, "stackable": True,
+    },
+    "manzanita_berries": {
+        "id": "manzanita_berries", "name": "Manzanita Berries", "weight": 0.1,
+        "category": "food", "nutrition": 3.0,
+        "description": "Arctostaphylos — dry mealy berries from red-barked shrubs. "
+                       "Make a tart cider by soaking in water. California foothills "
+                       "and dry mountain slopes.",
+        "base_value": 0.03, "stackable": True,
+    },
+    # ── Pacific Northwest ────────────────────────────────────────────
+    "salal_berries": {
+        "id": "salal_berries", "name": "Salal Berries", "weight": 0.1,
+        "category": "food", "nutrition": 5.0,
+        "description": "Gaultheria shallon — dark purple berries from coastal "
+                       "underbrush. Mild, slightly mealy. Important food for "
+                       "Northwest Coast peoples. Dried into cakes.",
+        "base_value": 0.04, "stackable": True, "perishable": True, "days_until_spoil": 4,
+    },
+    "thimbleberry": {
+        "id": "thimbleberry", "name": "Thimbleberries", "weight": 0.1,
+        "category": "food", "nutrition": 4.0,
+        "description": "Rubus parviflorus — soft red raspberry-like berry. "
+                       "Delicate, crushes easily. Eat immediately. "
+                       "Common in mountain clearings and burned areas.",
+        "base_value": 0.03, "stackable": True, "perishable": True, "days_until_spoil": 1,
+    },
+    "oregon_grape": {
+        "id": "oregon_grape", "name": "Oregon Grape Berries", "weight": 0.1,
+        "category": "food", "nutrition": 3.0,
+        "description": "Mahonia aquifolium — tart blue berries on holly-leaved shrubs. "
+                       "Very sour raw. The root bark is medicinal — treats infection. "
+                       "Pacific Northwest and northern Rockies.",
+        "base_value": 0.04, "stackable": True,
+    },
+    # ── Poisonous plants across regions ──────────────────────────────
+    "nightshade_berries": {
+        "id": "nightshade_berries", "name": "Nightshade Berries", "weight": 0.1,
+        "category": "food", "nutrition": 2.0,
+        "description": "Solanum — shiny black berries that look tempting. "
+                       "Causes severe vomiting, hallucinations, sometimes death. "
+                       "Found in disturbed soil and waste places across America.",
+        "base_value": 0.01, "stackable": True,
+        "extra": {"poison_chance": 1.0, "poison_severity": "severe"},
+    },
+    "pokeweed": {
+        "id": "pokeweed", "name": "Pokeweed Berries", "weight": 0.1,
+        "category": "food", "nutrition": 3.0,
+        "description": "Phytolacca americana — dark purple berries on red stems. "
+                       "Young spring shoots are edible when boiled twice. "
+                       "The berries and root are toxic. Eastern woodlands.",
+        "base_value": 0.01, "stackable": True,
+        "extra": {"poison_chance": 0.8, "poison_severity": "severe"},
+    },
     "smoked_meat": {
         "id": "smoked_meat", "name": "Smoked Meat", "weight": 0.5,
         "category": "food", "nutrition": 25.0,
@@ -470,7 +856,7 @@ ITEM_TEMPLATES: Dict[str, dict] = {
         "description": "Premium rendered fat. Excellent for cooking, lamp oil, and rubbing on leather.",
         "base_value": 0.50, "stackable": True, "perishable": True, "days_until_spoil": 60,
     },
-    "sinew": {
+    "brain": {
         "id": "brain", "name": "Brain", "weight": 0.5,
         "category": "material",
         "description": "Animal brain. Mixed with water to tan hides into leather.",
@@ -554,6 +940,76 @@ ITEM_TEMPLATES: Dict[str, dict] = {
         "description": "Hooves. Boiled down for hide glue.",
         "base_value": 0.02, "stackable": True,
     },
+    "organ_meat": {
+        "id": "organ_meat", "name": "Organ Meat", "weight": 1.0,
+        "category": "food", "nutrition": 30.0,
+        "description": "Heart, liver, and kidneys. Very nutritious, spoils fast.",
+        "base_value": 0.08, "stackable": True,
+        "perishable": True, "days_until_spoil": 2,
+    },
+    "liver": {
+        "id": "liver", "name": "Liver", "weight": 0.5,
+        "category": "food", "nutrition": 20.0,
+        "description": "Fresh liver. The most nutritious part of the animal. "
+                       "Mountain men ate it raw and warm from the kill. "
+                       "Rich in iron. Spoils in a day.",
+        "base_value": 0.06, "stackable": True,
+        "perishable": True, "days_until_spoil": 1,
+    },
+    "heart": {
+        "id": "heart", "name": "Heart", "weight": 0.4,
+        "category": "food", "nutrition": 18.0,
+        "description": "Animal heart. Dense muscle, good flavor when roasted. "
+                       "Tough but nutritious.",
+        "base_value": 0.05, "stackable": True,
+        "perishable": True, "days_until_spoil": 2,
+    },
+    "kidneys": {
+        "id": "kidneys", "name": "Kidneys", "weight": 0.3,
+        "category": "food", "nutrition": 12.0,
+        "description": "Pair of kidneys. Fry in fat. Strong flavor, "
+                       "not everyone's taste.",
+        "base_value": 0.04, "stackable": True,
+        "perishable": True, "days_until_spoil": 2,
+    },
+    "intestines": {
+        "id": "intestines", "name": "Intestines", "weight": 0.8,
+        "category": "material",
+        "description": "Cleaned intestines. Sausage casings — stuff with "
+                       "chopped meat and smoke. Also makes good cordage.",
+        "base_value": 0.03, "stackable": True,
+        "perishable": True, "days_until_spoil": 1,
+    },
+    "stomach_lining": {
+        "id": "stomach_lining", "name": "Stomach", "weight": 0.5,
+        "category": "material",
+        "description": "Cleaned animal stomach. Use as a cooking vessel — "
+                       "fill with meat and hot stones to boil. Or dry it "
+                       "into a water bag.",
+        "base_value": 0.03,
+        "perishable": True, "days_until_spoil": 2,
+    },
+    "lungs": {
+        "id": "lungs", "name": "Lungs", "weight": 0.6,
+        "category": "food", "nutrition": 8.0,
+        "description": "Animal lungs. Spongy, bland. Used as pemmican filler, "
+                       "dog food, or bait. Not great eating on their own.",
+        "base_value": 0.02, "stackable": True,
+        "perishable": True, "days_until_spoil": 1,
+    },
+    "offal": {
+        "id": "offal", "name": "Offal", "weight": 1.0,
+        "category": "food", "nutrition": 10.0,
+        "description": "Mixed organ scraps. Used in sausage and haggis.",
+        "base_value": 0.03, "stackable": True,
+        "perishable": True, "days_until_spoil": 1,
+    },
+    "teeth_claws": {
+        "id": "teeth_claws", "name": "Teeth & Claws", "weight": 0.3,
+        "category": "material",
+        "description": "Predator teeth and claws. Crafting material for jewelry and decoration.",
+        "base_value": 1.50, "stackable": True,
+    },
 
     # ── Drink ──────────────────────────────────────────────────────────────
     "water_quart": {
@@ -584,7 +1040,7 @@ ITEM_TEMPLATES: Dict[str, dict] = {
         "category": "weapon",
         "description": "A .50 caliber percussion rifle. Single shot; 30 second reload. "
                        "Requires both hands to fire accurately.",
-        "base_value": 15.00, "weapon_type": "firearm",
+        "base_value": 15.00, "weapon_type": "firearm", "year_available": 1820,
         "damage_min": 35, "damage_max": 70,  # .50 cal ball — devastating
         "extra": {"loaded": False, "ammo_type": "rifle_ball", "reload_time": 30,
                   "two_handed": True, "capacity": 1},
@@ -594,7 +1050,7 @@ ITEM_TEMPLATES: Dict[str, dict] = {
         "category": "weapon",
         "description": "A .44 caliber Colt Dragoon revolver. Six shots. "
                        "Heavy, powerful, the standard sidearm of 1848.",
-        "base_value": 25.00, "weapon_type": "firearm",
+        "base_value": 25.00, "weapon_type": "firearm", "year_available": 1835,
         "damage_min": 25, "damage_max": 50,  # .44 cal — heavier than Navy
         "extra": {"loaded": 0, "ammo_type": "revolver_ball", "reload_time": 60,
                   "two_handed": False, "capacity": 6},
@@ -603,10 +1059,97 @@ ITEM_TEMPLATES: Dict[str, dict] = {
         "id": "shotgun", "name": "Double-Barrel Shotgun", "weight": 8.0,
         "category": "weapon",
         "description": "A 12-gauge side-by-side. Devastating at close range. Two shots.",
-        "base_value": 20.00, "weapon_type": "firearm",
+        "base_value": 20.00, "weapon_type": "firearm", "year_available": 1800,
         "damage_min": 40, "damage_max": 80,  # buckshot — kills at close range
         "extra": {"loaded": 0, "ammo_type": "shotgun_shell", "reload_time": 20,
                   "two_handed": True, "capacity": 2},
+    },
+
+    # ── Flintlock Weapons (pre-1840) ─────────────────────────────────────
+    "flintlock_rifle": {
+        "id": "flintlock_rifle", "name": "Flintlock Rifle", "weight": 10.0,
+        "category": "weapon",
+        "description": "A .54 caliber flintlock long rifle. Accurate at range "
+                       "but slow to reload and temperamental in wet weather.",
+        "base_value": 12.00, "weapon_type": "firearm",
+        "damage_min": 35, "damage_max": 70,
+        "extra": {"loaded": 0, "ammo_type": "rifle_ball_flint", "reload_time": 45,
+                  "two_handed": True, "capacity": 1, "ignition": "flintlock"},
+    },
+    "flintlock_pistol": {
+        "id": "flintlock_pistol", "name": "Flintlock Pistol", "weight": 2.5,
+        "category": "weapon",
+        "description": "A .50 caliber horse pistol. Inaccurate past ten yards "
+                       "but useful in close quarters. Slow to reload.",
+        "base_value": 8.00, "weapon_type": "firearm",
+        "damage_min": 20, "damage_max": 45,
+        "extra": {"loaded": 0, "ammo_type": "rifle_ball_flint", "reload_time": 40,
+                  "two_handed": False, "capacity": 1, "ignition": "flintlock"},
+    },
+    "trade_gun": {
+        "id": "trade_gun", "name": "Northwest Trade Gun", "weight": 7.0,
+        "category": "weapon",
+        "description": "A cheap smoothbore musket made for the Indian trade. "
+                       "Fires ball or shot. Inaccurate but serviceable.",
+        "base_value": 6.00, "weapon_type": "firearm",
+        "damage_min": 25, "damage_max": 55,
+        "extra": {"loaded": 0, "ammo_type": "rifle_ball_flint", "reload_time": 35,
+                  "two_handed": True, "capacity": 1, "ignition": "flintlock"},
+    },
+    "tomahawk": {
+        "id": "tomahawk", "name": "Tomahawk", "weight": 1.5,
+        "category": "weapon",
+        "description": "A light hand axe. Weapon and tool in one. Can be thrown.",
+        "base_value": 3.00, "weapon_type": "melee",
+        "damage_min": 10, "damage_max": 25, "tool_tags": ["chop"],
+    },
+    # ── Flintlock Supplies ───────────────────────────────────────────────
+    "powder_horn": {
+        "id": "powder_horn", "name": "Powder Horn", "weight": 1.0,
+        "category": "misc",
+        "description": "A carved horn holding black powder. Essential for flintlock firearms.",
+        "base_value": 2.00,
+    },
+    "flint_stones": {
+        "id": "flint_stones", "name": "Spare Flints", "weight": 0.1,
+        "category": "material",
+        "description": "Knapped flint pieces for a flintlock. Each lasts about 20 shots.",
+        "base_value": 0.10, "stackable": True,
+    },
+    "rifle_ball_flint": {
+        "id": "rifle_ball_flint", "name": "Rifle Ball & Patch", "weight": 0.05,
+        "category": "material",
+        "description": "A lead ball and greased linen patch. One shot for a flintlock.",
+        "base_value": 0.04, "stackable": True,
+    },
+    # ── Trade Goods ──────────────────────────────────────────────────────
+    "trade_beads": {
+        "id": "trade_beads", "name": "Trade Beads", "weight": 0.2,
+        "category": "material",
+        "description": "Glass beads — universal trade goods with Native peoples.",
+        "base_value": 0.50, "stackable": True,
+    },
+    "trade_blanket": {
+        "id": "trade_blanket", "name": "Trade Blanket", "weight": 4.0,
+        "category": "misc",
+        "description": "A wool point blanket. Premium trade good and warm bedding.",
+        "base_value": 3.00,
+        "extra": {"warmth_bonus": 15},
+    },
+    "pemmican": {
+        "id": "pemmican", "name": "Pemmican", "weight": 0.3,
+        "category": "food",
+        "description": "Dried meat pounded with fat and berries. Keeps for months. "
+                       "The mountain man's trail ration.",
+        "base_value": 0.40, "stackable": True,
+        "nutrition": 25.0, "hydration": 0.0,
+        "perishable": False,
+    },
+    "tobacco": {
+        "id": "tobacco", "name": "Tobacco", "weight": 0.2,
+        "category": "material",
+        "description": "Pipe tobacco. Valuable trade good and personal comfort.",
+        "base_value": 0.60, "stackable": True,
     },
 
     # ── Ammunition ────────────────────────────────────────────────────────
@@ -628,6 +1171,50 @@ ITEM_TEMPLATES: Dict[str, dict] = {
         "description": "Loose shot, powder, and wadding for a shotgun. "
                        "Load down the barrel — no metal cartridges in this era.",
         "base_value": 0.08, "stackable": True,
+    },
+
+    # ── Ammo Crafting Materials ───────────────────────────────────────────
+    "lead_bar": {
+        "id": "lead_bar", "name": "Lead Bar", "weight": 2.0,
+        "category": "material",
+        "description": "A bar of soft lead. Melt and cast into balls for firearms.",
+        "base_value": 0.30, "stackable": True,
+    },
+    "gunpowder": {
+        "id": "gunpowder", "name": "Gunpowder", "weight": 0.5,
+        "category": "material",
+        "description": "Black powder — saltpeter, charcoal, sulfur. Handle with care.",
+        "base_value": 0.50, "stackable": True,
+    },
+    "primer_caps": {
+        "id": "primer_caps", "name": "Percussion Caps", "weight": 0.05,
+        "category": "material",
+        "description": "Copper percussion caps. Essential for igniting powder charges.",
+        "base_value": 0.20, "stackable": True,
+    },
+    "bullet_mold": {
+        "id": "bullet_mold", "name": "Bullet Mold", "weight": 1.5,
+        "category": "tool",
+        "description": "Iron mold for casting lead balls. Essential for making ammunition.",
+        "base_value": 2.50, "tool_tags": ["mold"],
+    },
+    "arrow_shaft": {
+        "id": "arrow_shaft", "name": "Arrow Shafts", "weight": 0.1,
+        "category": "material",
+        "description": "Straight wooden shafts, stripped and dried. Ready for fletching.",
+        "base_value": 0.05, "stackable": True,
+    },
+    "fletching": {
+        "id": "fletching", "name": "Fletching Feathers", "weight": 0.02,
+        "category": "material",
+        "description": "Turkey or goose feathers split for arrow fletching.",
+        "base_value": 0.03, "stackable": True,
+    },
+    "arrowhead_iron": {
+        "id": "arrowhead_iron", "name": "Iron Arrowheads", "weight": 0.1,
+        "category": "material",
+        "description": "Forged iron broadheads. Sharp enough to punch through hide.",
+        "base_value": 0.10, "stackable": True,
     },
 
     # ── Melee Weapons ─────────────────────────────────────────────────────
@@ -736,6 +1323,36 @@ ITEM_TEMPLATES: Dict[str, dict] = {
         "category": "material",
         "description": "A handful of cut iron nails. Essential for plank construction.",
         "base_value": 0.15, "stackable": True,
+    },
+    "iron_ingot": {
+        "id": "iron_ingot", "name": "Iron Ingot", "weight": 5.0,
+        "category": "material",
+        "description": "A pig of smelted iron. Raw material for the blacksmith.",
+        "base_value": 1.00, "stackable": True,
+    },
+    "horseshoe": {
+        "id": "horseshoe", "name": "Horseshoe", "weight": 0.8,
+        "category": "material",
+        "description": "A forged iron horseshoe. Every horse needs four.",
+        "base_value": 0.50, "stackable": True,
+    },
+    "bread": {
+        "id": "bread", "name": "Bread", "weight": 0.5,
+        "category": "food", "nutrition": 20.0,
+        "description": "A loaf of frontier bread. Keeps a day or two.",
+        "base_value": 0.15, "stackable": True, "perishable": True, "days_until_spoil": 3,
+    },
+    "candle": {
+        "id": "candle", "name": "Candle", "weight": 0.2,
+        "category": "misc",
+        "description": "A tallow candle. Light for dark places.",
+        "base_value": 0.10, "stackable": True,
+    },
+    "dynamite": {
+        "id": "dynamite", "name": "Dynamite", "weight": 1.0,
+        "category": "tool", "tool_tags": ["blast"],
+        "description": "A stick of Nobel's dynamite. Blasts rock. Handle with care.",
+        "base_value": 1.50, "stackable": True, "year_available": 1867,
     },
     "iron_bar": {
         "id": "iron_bar", "name": "Iron Bar", "weight": 8.0,
@@ -920,7 +1537,7 @@ ITEM_TEMPLATES: Dict[str, dict] = {
         "category": "weapon",
         "description": "A tiny single-shot pocket pistol. Concealable. Deadly at "
                        "close range, useless beyond 10 feet.",
-        "base_value": 8.00, "weapon_type": "firearm",
+        "base_value": 8.00, "weapon_type": "firearm", "year_available": 1825,
         "damage_min": 15, "damage_max": 35,
         "extra": {"loaded": 0, "ammo_type": "revolver_ball", "reload_time": 20,
                   "two_handed": False, "capacity": 1, "concealable": True},
@@ -955,6 +1572,28 @@ ITEM_TEMPLATES: Dict[str, dict] = {
                        "Weaker than hemp rope but gets the job done.",
         "base_value": 0.05, "stackable": True,
     },
+    # ── Processed hides (intermediate steps) ────────────────────────────
+    "scraped_pelt": {
+        "id": "scraped_pelt", "name": "Scraped Pelt", "weight": 1.5,
+        "category": "material",
+        "description": "A pelt with the flesh scraped clean. Needs to be "
+                       "stretched on a frame to finish drying.",
+        "base_value": 3.00, "perishable": True, "days_until_spoil": 5,
+    },
+    "scraped_hide": {
+        "id": "scraped_hide", "name": "Scraped Hide", "weight": 3.0,
+        "category": "material",
+        "description": "A de-furred hide scraped clean. Needs brain-working "
+                       "and stretching to become leather.",
+        "base_value": 1.50, "perishable": True, "days_until_spoil": 5,
+    },
+    "brained_hide": {
+        "id": "brained_hide", "name": "Brained Hide", "weight": 3.0,
+        "category": "material",
+        "description": "A hide worked with brain paste. Needs to be stretched "
+                       "on a frame and dried to become leather.",
+        "base_value": 2.00, "perishable": True, "days_until_spoil": 3,
+    },
     # ── Pelts (raw — spoils in 3 days unless stretched) ─────────────────
     "beaver_pelt":    {"id": "beaver_pelt",    "name": "Beaver Pelt",    "weight": 2.0, "category": "material", "base_value": 4.00, "perishable": True, "days_until_spoil": 3, "description": "Raw beaver pelt. Stretch to preserve."},
     "fox_pelt":       {"id": "fox_pelt",       "name": "Fox Pelt",       "weight": 1.0, "category": "material", "base_value": 2.00, "perishable": True, "days_until_spoil": 3, "description": "Raw fox fur. Red or gray."},
@@ -972,9 +1611,10 @@ ITEM_TEMPLATES: Dict[str, dict] = {
     "skunk_pelt":     {"id": "skunk_pelt",     "name": "Skunk Pelt",     "weight": 0.5, "category": "material", "base_value": 0.50, "perishable": True, "days_until_spoil": 3, "description": "Raw skunk fur. Smells terrible."},
     "bear_pelt":      {"id": "bear_pelt",      "name": "Bear Pelt",      "weight": 8.0, "category": "material", "base_value": 5.00, "perishable": True, "days_until_spoil": 3, "description": "Raw bear hide with fur."},
     "buffalo_robe":   {"id": "buffalo_robe",   "name": "Buffalo Robe",   "weight": 15.0,"category": "material", "base_value": 12.00,"perishable": True, "days_until_spoil": 3, "description": "Raw buffalo hide. Massive."},
-    "deer_pelt":      {"id": "deer_pelt",      "name": "Deer Pelt",      "weight": 3.0, "category": "material", "base_value": 2.00, "perishable": True, "days_until_spoil": 3, "description": "Raw deer hide with fur."},
+    "deer_pelt":      {"id": "deer_pelt",      "name": "Deer Pelt",      "weight": 3.0, "category": "material", "base_value": 1.00, "perishable": True, "days_until_spoil": 3, "description": "Raw deer hide with fur. A 'buck' — one dollar."},
     "elk_pelt":       {"id": "elk_pelt",       "name": "Elk Pelt",       "weight": 6.0, "category": "material", "base_value": 4.00, "perishable": True, "days_until_spoil": 3, "description": "Raw elk hide."},
     "cougar_pelt":    {"id": "cougar_pelt",    "name": "Cougar Pelt",    "weight": 4.0, "category": "material", "base_value": 6.00, "perishable": True, "days_until_spoil": 3, "description": "Raw mountain lion pelt."},
+    "rabbit_pelt":    {"id": "rabbit_pelt",    "name": "Rabbit Pelt",    "weight": 0.3, "category": "material", "base_value": 0.10, "perishable": True, "days_until_spoil": 5, "description": "Small rabbit skin. Low value but easy to get."},
 
     # ── Trapping Tools ────────────────────────────────────────────────────
     "deadfall_trap": {
@@ -986,6 +1626,7 @@ ITEM_TEMPLATES: Dict[str, dict] = {
         "id": "steel_trap", "name": "Steel Trap", "weight": 4.0,
         "category": "tool", "base_value": 3.00, "tool_tags": ["trap"],
         "description": "A steel jaw trap. Catches medium and large furbearers.",
+        "year_available": 1800,
     },
     "skinning_knife": {
         "id": "skinning_knife", "name": "Skinning Knife", "weight": 0.3,
@@ -1124,6 +1765,7 @@ def starting_inventory() -> List[Item]:
         make_item("pickaxe"),
         make_item("shovel"),
         make_item("hunting_knife"),
+        make_item("hand_axe"),
         make_item("flint_steel"),
         make_item("compass"),
         make_item("canteen"),
@@ -1134,7 +1776,101 @@ def starting_inventory() -> List[Item]:
         make_item("percussion_rifle"),
         make_item("rifle_ball", quantity=20),
         make_item("rope_10ft", quantity=3),
+        make_item("nails",     quantity=10),
     ]
+
+
+def starting_inventory_mountain_men(background_id: str = "mountain_man") -> List[Item]:
+    """Starting gear for the Mountain Men era (1820s)."""
+    base = [
+        make_item("rucksack"),
+        make_item("flintlock_rifle"),
+        make_item("rifle_ball_flint"),  # stackable, quantity set below
+        make_item("powder_horn"),
+        make_item("flint_stones"),
+        make_item("hunting_knife"),
+        make_item("skinning_knife"),
+        make_item("tomahawk"),
+        make_item("hand_axe"),
+        make_item("flint_steel"),
+        make_item("canteen"),
+        make_item("bedroll"),
+        make_item("trade_blanket"),
+        make_item("jerky"),
+        make_item("pemmican"),
+        make_item("rope_10ft"),
+    ]
+    # Set quantities for stackable items
+    for item in base:
+        if item.id == "rifle_ball_flint":
+            item.quantity = 30
+        elif item.id == "flint_stones":
+            item.quantity = 5
+        elif item.id == "jerky":
+            item.quantity = 5
+        elif item.id == "pemmican":
+            item.quantity = 5
+        elif item.id == "rope_10ft":
+            item.quantity = 2
+    # Add steel traps
+    traps = make_item("steel_trap")
+    traps.quantity = 6
+    base.append(traps)
+    # Background-specific extras
+    if background_id == "voyageur":
+        beads = make_item("trade_beads")
+        beads.quantity = 10
+        base.append(beads)
+        base.append(make_item("trade_blanket"))
+    elif background_id == "company_man":
+        beads = make_item("trade_beads")
+        beads.quantity = 20
+        base.append(beads)
+        base.append(make_item("trade_blanket"))
+        base.append(make_item("trade_blanket"))
+    return base
+
+
+def starting_inventory_long_hunter(background_id: str = "long_hunter") -> List[Item]:
+    """Starting gear for the Long Hunter era (1770s-1790s).
+    No steel traps, no percussion weapons, no gold pans.
+    You carry your rifle, your knife, and enough to survive."""
+    base = [
+        make_item("rucksack"),
+        make_item("flintlock_rifle"),
+        make_item("rifle_ball_flint"),
+        make_item("powder_horn"),
+        make_item("flint_stones"),
+        make_item("hunting_knife"),
+        make_item("hand_axe"),
+        make_item("flint_steel"),
+        make_item("canteen"),
+        make_item("bedroll"),
+        make_item("jerky"),
+        make_item("rope_10ft"),
+    ]
+    for item in base:
+        if item.id == "rifle_ball_flint":
+            item.quantity = 25
+        elif item.id == "flint_stones":
+            item.quantity = 3
+        elif item.id == "jerky":
+            item.quantity = 3
+    # Background extras
+    if background_id == "frontier_scout":
+        base.append(make_item("compass"))
+    elif background_id == "settlers_son":
+        corn = make_item("jerky")
+        corn.quantity = 5
+        base.append(corn)
+        base.append(make_item("shovel"))
+    elif background_id == "deserter":
+        extra_balls = make_item("rifle_ball_flint")
+        extra_balls.quantity = 20
+        base.append(extra_balls)
+        # Bayonet — improvised melee weapon
+        base.append(make_item("hunting_knife"))  # second knife as bayonet stand-in
+    return base
 
 
 # ── Food priority sorting ────────────────────────────────────────────────────

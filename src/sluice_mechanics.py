@@ -10,7 +10,7 @@ from dataclasses import dataclass
 import random
 from typing import Optional, Tuple
 
-from src.volume_gold import VolumeGoldSystem, GoldColumn
+from src.volume_gold import GoldColumn
 from src.fluid_system import FluidSystem
 
 
@@ -23,6 +23,46 @@ class SluiceBox:
     riffle_type: str = "wooden"         # "wooden", "blanket", "mercury"
     accumulated_paydirt: float = 0.0    # cubic yards fed in
     accumulated_gold: float = 0.0       # gold currently trapped (not cleaned out yet)
+
+    @property
+    def riffle_capacity(self) -> float:
+        """Max gold (oz) the riffles can hold before overflow.
+
+        Historical basis:
+        - A 12-ft sluice with wooden riffles (1-inch crossbars every 6 inches)
+          traps gold in the dead zones behind each riffle. Each riffle pocket
+          holds roughly 1-2 cubic inches of heavy concentrate (gold + black
+          sand + mercury if used). With 24 riffles, total capacity is about
+          1.0-1.5 troy oz of gold before the pockets are full and new gold
+          washes over.
+        - Blanket (carpet/burlap under riffles) catches fine flour gold that
+          wooden riffles miss. Adds ~30% capacity.
+        - Mercury (quicksilver in riffle pockets) amalgamates gold on contact.
+          Dramatically increases capacity — mercury can hold 2-3× its weight
+          in gold. But mercury poisoning is the price.
+        - Rockers are smaller (4-5 ft), fewer riffles, need cleanout more often.
+        - Long toms (16-20 ft) have more riffles and a perforated grizzly plate
+          that pre-sorts material. Higher capacity.
+        """
+        base = 0.08 * self.length  # ~1.0 oz for 12-ft sluice
+        if self.riffle_type == "blanket":
+            base *= 1.3
+        elif self.riffle_type == "mercury":
+            base *= 2.5  # mercury dramatically increases capacity
+        return base
+
+    @property
+    def riffles_full_pct(self) -> float:
+        """How full the riffles are (0.0 to 1.0+)."""
+        cap = self.riffle_capacity
+        if cap <= 0:
+            return 1.0
+        return self.accumulated_gold / cap
+
+    @property
+    def riffles_need_cleanout(self) -> bool:
+        """True when riffles are near capacity — gold starting to wash over."""
+        return self.riffles_full_pct >= 0.85
 
 
 class SluiceMechanics:
@@ -75,10 +115,21 @@ class SluiceMechanics:
         efficiency = SluiceMechanics.calculate_efficiency(sluice, water_flow, placer_skill)
 
         # Extract gold from the column at current depth
-        gold_in_material = VolumeGoldSystem.remove_volume(tile.gold_column, volume_cy)
+        gold_in_material = tile.gold_column.remove_volume(volume_cy)
+
+        # Riffle overflow — if riffles are near capacity, efficiency drops
+        # Gold starts washing over the end. This is the historical reason
+        # you clean out frequently in rich ground.
+        overflow_penalty = 1.0
+        if sluice.riffles_full_pct >= 1.0:
+            overflow_penalty = 0.2  # 80% of gold washing away
+        elif sluice.riffles_full_pct >= 0.85:
+            overflow_penalty = 0.6  # losing 40%
+        elif sluice.riffles_full_pct >= 0.7:
+            overflow_penalty = 0.85  # losing 15%
 
         # Gold actually trapped in sluice
-        gold_trapped = gold_in_material * efficiency
+        gold_trapped = gold_in_material * efficiency * overflow_penalty
 
         sluice.accumulated_paydirt += volume_cy
         sluice.accumulated_gold += gold_trapped
@@ -109,10 +160,17 @@ class SluiceMechanics:
 
     @staticmethod
     def get_status_message(sluice: SluiceBox) -> str:
-        if sluice.accumulated_gold > 1.0:
-            return f"Sluice is heavy — {sluice.accumulated_gold:.3f} oz of gold trapped inside."
-        elif sluice.accumulated_gold > 0.3:
-            return f"Good accumulation — {sluice.accumulated_gold:.3f} oz ready for clean-out."
-        elif sluice.accumulated_paydirt > 0:
-            return f"Sluice has processed {sluice.accumulated_paydirt:.1f} cubic yards of paydirt."
-        return "Sluice is clean and ready to be fed."
+        pct = sluice.riffles_full_pct
+        if pct >= 1.0:
+            return (f"Riffles are OVERLOADED — gold is washing over the end! "
+                    f"Clean out immediately!")
+        if pct >= 0.85:
+            return (f"Riffles are nearly full — you can see gold piling up "
+                    f"against the crossbars. Clean out soon or lose gold.")
+        if pct >= 0.5:
+            return (f"Good concentrates building in the riffles. "
+                    f"{sluice.accumulated_paydirt:.1f} yards processed.")
+        if sluice.accumulated_paydirt > 0:
+            return (f"Sluice running. {sluice.accumulated_paydirt:.1f} yards "
+                    f"processed. Riffles look fine.")
+        return "Sluice is clean and ready."

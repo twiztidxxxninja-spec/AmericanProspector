@@ -277,6 +277,7 @@ def butcher(animal: "WildlifeInstance", method: str,
     # Place on tile
     tile = lmap.tile_at(animal.local_x, animal.local_y)
     tile.ground_items.extend(items_out)
+    lmap.mark_dirty(animal.local_x, animal.local_y)
 
     # Mark as butchered
     animal.state = "butchered"

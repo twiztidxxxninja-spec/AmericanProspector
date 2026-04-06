@@ -71,47 +71,38 @@ BG_SEL = ( 35,  35,  65)
 
 # Always visible in the default menu
 COMMON_ACTIONS: List[str] = [
-    "Eat food",
-    "Drink water",
-    "Dig here",
-    "Reload firearm",
-    "Light a fire",
-    "Make camp here",
-    "Rest here",
-    "Search the area",
+    "Eat",
+    "Drink",
+    "Forage",
+    "Make camp",
+    "Rest",
+    "Sleep until dawn",
+    "Craft",
     "Chop wood",
+    "Dig",
+    "Reload",
 ]
-# "Pan for gold", "Fill canteen", "Work the sluice", "Cook food" appear
-# in the NEARBY section only when terrain/structures are appropriate.
 
-# Shown when "Show more" is expanded — full hardcoded set
+# Shown when "Show more" is expanded
 MORE_ACTIONS: List[str] = [
-    # Prospecting
-    "Loosen dirt and pan it",
-    "Load pan from adjacent pile",
-    "Sample the ground (geology)",
-    "Examine terrain for mineral signs",
-    "Pan bedrock crevices",
-    "Read the streamflow",
-    # Ground work
-    "Dig a test pit",
-    "Move rocks aside",
-    "Clear brush",
-    # Water
-    "Cross the water",
-    "Follow the stream upstream",
-    # Construction
-    "Build a rocker box",
-    "Build a sluice box",
     # Survival
+    "Light a fire",
     "Bandage wounds",
-    "Check wounds",
-    "Set up tent",
-    "Look around carefully",
-    "Forage for food",
-    "Fish",
-    "Read a book",
+    "Inspect wounds",
     "Throw item",
+    "Read sign / Scout",
+    # Prospecting
+    "Pan for gold",
+    "Stake a claim",
+    # Ground work
+    "Move rocks",
+    "Clear brush",
+    # Hide processing
+    "Process hide",
+    "Stretch pelt",
+    # Social
+    "Rob someone",
+    "Investigate nearby",
 ]
 
 # Combined for search matching
@@ -180,15 +171,16 @@ def _build_default_entries(history: ActionHistory,
     """Build the default (non-searching) entry list."""
     entries: List[MenuEntry] = []
 
-    # Context-sensitive actions (nearby objects) — shown first in different color
-    if context_actions:
-        for a in context_actions:
-            entries.append(MenuEntry(a, "context", False, is_context=True))
-
-    # Recent custom actions
+    # Recent actions first — what the player did last is most likely what they want
     recent = history.get_recent_custom()
     for a in recent:
         entries.append(MenuEntry(a, "recent", True))
+
+    # Context-sensitive actions (nearby objects)
+    if context_actions:
+        for a in context_actions:
+            if a not in recent:  # don't duplicate
+                entries.append(MenuEntry(a, "context", False, is_context=True))
 
     # Common hardcoded
     for a in COMMON_ACTIONS:

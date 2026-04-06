@@ -58,14 +58,16 @@ STAT_WARNING  = 30   # advisory warning
 STAT_CRITICAL = 15   # task pause / danger
 STAT_ZERO     = 0    # damage begins
 
-# Z-levels (vertical terrain)
-Z_MIN = -20              # deepest mine shaft
-Z_MAX = 20               # tallest peak relative to reference
-Z_LEVELS = Z_MAX - Z_MIN + 1   # 41
+# Z-levels (vertical terrain within a single local map patch)
+# Each z-level = 3 feet. Local relief is modest — real elevation
+# comes from WORLD-LEVEL elevation that shifts between patches.
+Z_MIN = -30              # deepest mine shaft (~90 ft)
+Z_MAX = 30               # tallest local ridge (~90 ft)
+Z_LEVELS = Z_MAX - Z_MIN + 1   # 61
 Z_SURFACE_DEFAULT = 0    # reference "sea level" elevation
 Z_FEET_PER_LEVEL = 3     # display conversion
 CLIMB_TIME_MULT = 1.5    # climbing ramps/stairs takes 1.5x walk time
-VIEW_Z_BELOW = 5         # how many z-levels below to show through open air
+VIEW_Z_BELOW = 6         # how many z-levels below to show through open air
 
 # Title
 from src.version import VERSION, VERSION_NAME

@@ -162,7 +162,10 @@ class NPCRelationship:
     times_met: int = 0
     gifts_given: int = 0
     favors_done: int = 0
+    favors_owed_by_npc: int = 0   # NPC owes player this many favors
+    favors_owed_by_player: int = 0  # player owes NPC
     betrayals: int = 0
+    debts: List[str] = field(default_factory=list)  # descriptions of active debts/favors
 
     def _clamp(self) -> None:
         self.affinity  = max(-100.0, min(100.0, self.affinity))
@@ -297,6 +300,8 @@ class NPCExpanded:
         self.health: float = 100.0
         self.combat_state: str = "neutral"
         self.wounds: HealthTracker = HealthTracker(MAX_BLOOD["human"])
+        self.inventory: List[Any] = kwargs.get("inventory", [])
+        self.equipped_weapon: Optional[str] = None  # item id of equipped weapon
 
         # ── Relationship (backward-compat: .relationship is a float) ──
         self.rel: NPCRelationship = NPCRelationship()
@@ -318,11 +323,34 @@ class NPCExpanded:
         self.backstory_hidden: List[str]   = kwargs.get("backstory_hidden", [])
         self.appearance: str = ""   # LLM-generated on first meeting
 
+        # ── Tribal affiliation ──
+        self.tribe: str = kwargs.get("tribe", "")
+
+        # ── Language ──
+        # Whether this NPC speaks English (regardless of ethnicity).
+        # Native Guides, Native Traders, French-Canadian voyageurs, etc.
+        # are bilingual — they speak English AND their native language.
+        self.speaks_english: bool = kwargs.get("speaks_english",
+            self._default_speaks_english())
+
         # ── Schedule ──
         self.schedule: Dict[str, str] = kwargs.get("schedule", {
             "dawn": "camp", "morning": "work", "afternoon": "work",
             "dusk": "camp", "night": "sleep",
         })
+
+        # ── Opinions of other NPCs ──
+        # {npc_id: {"opinion": float(-100..100), "reason": str}}
+        self.npc_opinions: Dict[str, Dict[str, Any]] = kwargs.get(
+            "npc_opinions", {})
+
+        # ── Merchant credit/debt ──
+        # How much the player owes this merchant (positive = player owes)
+        self.player_debt: float = kwargs.get("player_debt", 0.0)
+
+        # ── Life state (changes over time) ──
+        self.fortune: str = kwargs.get("fortune", "average")
+        # "destitute", "struggling", "average", "comfortable", "wealthy"
 
     # ── Backward-compat properties ──────────────────────────────────────
 
@@ -364,6 +392,185 @@ class NPCExpanded:
     def short_desc(self) -> str:
         return f"{self.display_name()} ({self.occupation}, {self.rel_label()})"
 
+    # ── Inventory / Equipment ──────────────────────────────────────────
+
+    def get_weapon(self):
+        """Return the equipped weapon Item, or None."""
+        if not self.inventory:
+            return None
+        if self.equipped_weapon:
+            for item in self.inventory:
+                if item.id == self.equipped_weapon:
+                    return item
+        # Fallback: first weapon in inventory
+        for item in self.inventory:
+            if getattr(item, 'weapon_type', '') in ('melee', 'firearm'):
+                return item
+        return None
+
+    def equip_occupation_weapon(self):
+        """Give this NPC gear based on their occupation. Call at spawn."""
+        import random as _eq_rng
+        from src.items import make_item
+        rng = _eq_rng.Random(hash(self.npc_id))
+
+        # Weapon by occupation
+        OCC_WEAPONS = {
+            "Scout": "percussion_rifle", "Trapper": "percussion_rifle",
+            "Rancher": "percussion_rifle", "Drifter": "percussion_rifle",
+            "Hunter": "percussion_rifle",
+            "Gambler": "percussion_revolver", "Lawyer": "percussion_revolver",
+            "Sheriff": "percussion_revolver", "Marshal": "percussion_revolver",
+            "Deputy": "percussion_revolver", "Ranger": "percussion_revolver",
+            "Miner": "pickaxe", "Blacksmith": "hammer",
+            "Merchant": "percussion_revolver",
+            "Prospector": "hunting_knife",
+            "Soldier": "percussion_rifle",
+        }
+        weapon_id = OCC_WEAPONS.get(self.occupation)
+        if not weapon_id and "hot-tempered" in self.traits:
+            weapon_id = "hunting_knife"
+        if weapon_id:
+            try:
+                weapon = make_item(weapon_id)
+                self.inventory.append(weapon)
+                self.equipped_weapon = weapon.id
+            except (ValueError, KeyError):
+                pass
+
+        # Profession tools
+        OCC_TOOLS = {
+            "Prospector": ["gold_pan", "shovel"],
+            "Miner": ["shovel", "candle"],
+            "Trapper": ["hunting_knife", "rope_10ft"],
+            "Doctor": ["laudanum"],
+            "Merchant": ["candle"],
+            "Blacksmith": ["hammer"],
+            "Cook": ["hunting_knife"],
+        }
+        for tool_id in OCC_TOOLS.get(self.occupation, []):
+            if tool_id == self.equipped_weapon:
+                continue  # don't duplicate the weapon
+            try:
+                self.inventory.append(make_item(tool_id))
+            except (ValueError, KeyError):
+                pass
+
+        # Everyday carry — most frontier people carry a few basics
+        everyday = []
+        if rng.random() < 0.6:
+            everyday.append("hardtack")
+        if rng.random() < 0.4:
+            everyday.append("canteen")
+        if rng.random() < 0.3:
+            everyday.append("rope_10ft")
+        if rng.random() < 0.2:
+            everyday.append("candle")
+        if rng.random() < 0.15:
+            everyday.append("whiskey")
+        # Ammo for weapon carriers
+        if weapon_id and "rifle" in weapon_id:
+            everyday.append("rifle_ball")
+        elif weapon_id and "revolver" in weapon_id:
+            everyday.append("revolver_ball")
+        for eid in everyday:
+            try:
+                self.inventory.append(make_item(eid))
+            except (ValueError, KeyError):
+                pass
+
+    # ── NPC Opinions ───────────────────────────────────────────────────
+
+    def set_opinion(self, npc_id: str, opinion: float, reason: str,
+                    name: str = "") -> None:
+        """Set this NPC's opinion of another NPC."""
+        self.npc_opinions[npc_id] = {
+            "opinion": max(-100.0, min(100.0, opinion)),
+            "reason": reason,
+            "name": name,
+        }
+
+    def get_opinion(self, npc_id: str) -> Optional[Dict]:
+        return self.npc_opinions.get(npc_id)
+
+    def opinion_summary(self, all_npcs: Dict[str, "NPCExpanded"]) -> List[str]:
+        """Return human-readable opinion strings for the LLM context."""
+        lines = []
+        for npc_id, data in self.npc_opinions.items():
+            other = all_npcs.get(npc_id)
+            name = other.name if other else npc_id
+            op = data["opinion"]
+            label = ("hates" if op < -50 else "dislikes" if op < -15
+                     else "neutral toward" if op < 15
+                     else "likes" if op < 50 else "greatly respects")
+            lines.append(f"{label} {name}: {data['reason']}")
+        return lines
+
+    # ── Favors & Debts ─────────────────────────────────────────────────
+
+    def record_favor(self, description: str, player_helped: bool,
+                     day: int) -> None:
+        """Record a favor. player_helped=True means player helped the NPC."""
+        if player_helped:
+            self.rel.favors_owed_by_npc += 1
+            self.rel.adjust(affinity=8, trust=5, respect=3)
+        else:
+            self.rel.favors_owed_by_player += 1
+            self.rel.adjust(affinity=5, trust=3)
+        self.rel.debts.append(description)
+        self.expanded_memory.add(
+            content=description,
+            day=day,
+            significance=0.7,
+            valence=0.3 if player_helped else -0.1,
+            category="favor",
+        )
+
+    # ── NPC-Initiated Greeting ─────────────────────────────────────────
+
+    def generate_greeting(self, player_name: str, days_since: int) -> Optional[str]:
+        """Generate a greeting if the NPC would initiate conversation.
+        Returns None if they wouldn't bother."""
+        aff = self.rel.affinity
+        status = self.rel.status
+        traits = set(self.traits)
+
+        # Enemies and strangers don't greet
+        if aff < -30:
+            hostile_greets = [
+                f'*{self.name} glares at you.*',
+                f'*{self.name} spits on the ground as you pass.*',
+                f'{self.name} mutters, "Look who showed up."',
+            ]
+            import random
+            return random.choice(hostile_greets) if random.random() < 0.4 else None
+        if status == "stranger":
+            return None
+
+        # Friends and close friends greet warmly
+        if aff > 40 or status in ("friend", "close_friend"):
+            if days_since > 14:
+                greetings = [
+                    f'{self.name} calls out, "Well I\'ll be! Haven\'t seen you in weeks, {player_name}!"',
+                    f'{self.name} waves. "Where\'ve you been? Thought the mountains got you."',
+                    f'"Hey, {player_name}!" {self.name} looks glad to see you.',
+                ]
+            else:
+                greetings = [
+                    f'{self.name} nods. "Good to see you, {player_name}."',
+                    f'"Morning, {player_name}." {self.name} tips his hat.',
+                    f'{self.name} gives a friendly wave.',
+                ]
+            import random
+            return random.choice(greetings)
+
+        # Acquaintances — occasional nod
+        if status == "acquaintance" and aff > 5:
+            import random
+            if random.random() < 0.3:
+                return f'{self.name} gives you a nod of recognition.'
+        return None
+
     # ── Serialization ───────────────────────────────────────────────────
 
     def to_dict(self) -> Dict:
@@ -387,6 +594,8 @@ class NPCExpanded:
             "backstory_revealed": self.backstory_revealed,
             "backstory_hidden": self.backstory_hidden,
             "appearance": self.appearance,
+            "tribe": self.tribe,
+            "speaks_english": self.speaks_english,
             "schedule": self.schedule,
             "rel": {
                 "affinity": self.rel.affinity, "trust": self.rel.trust,
@@ -396,6 +605,9 @@ class NPCExpanded:
                 "last_interaction_day": self.rel.last_interaction_day,
                 "times_met": self.rel.times_met, "gifts_given": self.rel.gifts_given,
                 "favors_done": self.rel.favors_done, "betrayals": self.rel.betrayals,
+                "favors_owed_by_npc": self.rel.favors_owed_by_npc,
+                "favors_owed_by_player": self.rel.favors_owed_by_player,
+                "debts": self.rel.debts,
             },
             "memory": {
                 "knows_name": self.memory.knows_name,
@@ -409,6 +621,15 @@ class NPCExpanded:
                 ],
             },
         }
+        # Inventory (weapons, tools, everyday items)
+        if self.inventory:
+            inv_list = []
+            for item in self.inventory:
+                if hasattr(item, 'id'):
+                    inv_list.append({"id": item.id, "name": item.name})
+            d["inventory"] = inv_list
+        if self.equipped_weapon:
+            d["equipped_weapon"] = self.equipped_weapon
         if self.pregnancy:
             d["pregnancy"] = {
                 "conceived_day": self.pregnancy.conceived_day,
@@ -421,6 +642,13 @@ class NPCExpanded:
             }
         if self.children:
             d["children"] = self.children
+        if self.npc_opinions:
+            d["npc_opinions"] = self.npc_opinions
+        d["fortune"] = self.fortune
+        if self.player_debt:
+            d["player_debt"] = self.player_debt
+        if self.tribe:
+            d["tribe"] = self.tribe
         return d
 
     @classmethod
@@ -439,7 +667,9 @@ class NPCExpanded:
         # Restore relationship
         if "rel" in d:
             r = d["rel"]
-            npc.rel = NPCRelationship(**{k: r[k] for k in r if hasattr(NPCRelationship, k)})
+            from dataclasses import fields as _dc_fields
+            valid = {f.name for f in _dc_fields(NPCRelationship)}
+            npc.rel = NPCRelationship(**{k: r[k] for k in r if k in valid})
         # Restore memory
         if "memory" in d:
             m = d["memory"]
@@ -452,7 +682,231 @@ class NPCExpanded:
             npc.pregnancy = PregnancyState(**d["pregnancy"])
         if "children" in d:
             npc.children = d["children"]
+        if "npc_opinions" in d:
+            npc.npc_opinions = d["npc_opinions"]
+        npc.fortune = d.get("fortune", "average")
+        npc.player_debt = d.get("player_debt", 0.0)
+        npc.tribe = d.get("tribe", "")
+        npc.speaks_english = d.get("speaks_english", npc._default_speaks_english())
+        npc.equipped_weapon = d.get("equipped_weapon", None)
+        # Restore inventory items
+        if "inventory" in d:
+            from src.items import make_item
+            for item_d in d["inventory"]:
+                try:
+                    npc.inventory.append(make_item(item_d["id"]))
+                except (ValueError, KeyError):
+                    pass
+        # Sync memory intelligence with restored attributes
+        npc.expanded_memory.intelligence = npc.attributes.get("intelligence", 10)
         return npc
+
+    # ── Context builders for conversation system ──────────────────────
+
+    _EDUCATED_OCCUPATIONS = {
+        "Doctor", "Lawyer", "Teacher", "Newspaper Editor", "Banker",
+        "Assayer", "Telegraph Operator", "Preacher", "Judge",
+    }
+
+    # Occupations that imply bilingualism (speak English + native language)
+    _BILINGUAL_OCCUPATIONS = {
+        "Native Guide", "Native Trader", "Scout", "Interpreter",
+        "Voyageur", "Fur Factor", "Brigade Leader",
+    }
+
+    def _default_speaks_english(self) -> bool:
+        """Determine if NPC speaks English by default based on ethnicity/occupation."""
+        # English-native ethnicities always speak English
+        if self.ethnicity in ("american", "irish", "british", "other"):
+            return True
+        # Bilingual occupations
+        if self.occupation in self._BILINGUAL_OCCUPATIONS:
+            return True
+        # French-Canadians in the fur trade generally spoke workable English
+        if self.ethnicity == "french_canadian":
+            return True
+        # Germans and Mexicans at settlements usually picked up English
+        if self.ethnicity in ("german", "mexican"):
+            # Those working trade/service roles speak English
+            if self.occupation in ("Merchant", "Teamster", "Stable Hand",
+                                   "Barber", "Cook", "Blacksmith",
+                                   "Carpenter", "Bartender"):
+                return True
+        # Chinese merchants at established camps often spoke pidgin
+        if self.ethnicity == "chinese" and self.occupation == "Merchant":
+            return True
+        return False
+
+    def build_speech_direction(self, language_level: str = "fluent") -> str:
+        """Generate LLM instruction for how this NPC speaks."""
+        parts = []
+
+        # Ethnicity-based speech
+        eth = self.ethnicity
+        if eth == "native_american":
+            if language_level == "sign":
+                parts.append(
+                    "Communicate only through gestures and single English words. "
+                    "You do not speak English.")
+            elif language_level == "pidgin":
+                parts.append(
+                    "Speak very simple broken English. Short sentences. "
+                    "Drop articles. Use gestures to fill gaps.")
+            else:
+                parts.append(
+                    "You speak English well but with Native phrasing. "
+                    "Speak with dignity and directness.")
+        elif eth == "french_canadian":
+            parts.append(
+                "Speak broken English with French words mixed in. "
+                "Drop 'h' at word starts ('ave instead of have). "
+                "Use 'mon ami', 'oui', 'tabernac', 'sacre bleu'.")
+        elif eth == "chinese":
+            parts.append(
+                "Speak simple English. Drop articles (the, a). "
+                "Short sentences. Occasional Chinese words.")
+        elif eth == "irish":
+            parts.append(
+                "Irish speech patterns. Use 'ye' for 'you', "
+                "'meself', 'sure', 'aye', ''tis'.")
+        elif eth == "mexican":
+            parts.append(
+                "Mix Spanish words into English. 'Amigo', 'si', "
+                "'no bueno', 'comprende'. Slightly formal.")
+        elif eth == "german":
+            parts.append(
+                "Occasional German words. 'Ja', 'nein', 'gut'. "
+                "Formal sentence structure.")
+
+        # Occupation speech
+        if self.occupation == "Preacher":
+            parts.append("Quote scripture. Reference the Bible.")
+        elif self.occupation in self._EDUCATED_OCCUPATIONS and \
+                self.attributes.get("intelligence", 10) >= 12:
+            parts.append("Speak formally. No contractions. Educated vocabulary.")
+
+        # Trait-based speech
+        traits_lower = [t.lower() for t in self.traits]
+        if "taciturn" in traits_lower or "quiet" in traits_lower:
+            parts.append("Man of few words. Keep answers very short.")
+        if "boastful" in traits_lower:
+            parts.append("Brag and exaggerate your accomplishments.")
+        if "nervous" in traits_lower:
+            parts.append("Anxious. Stammer occasionally. Second-guess yourself.")
+        if "cruel" in traits_lower:
+            parts.append("Cold and mean-spirited. Enjoy others' misfortune.")
+        if "melancholy" in traits_lower or "grief" in traits_lower:
+            parts.append("Sad and weary. Speak with heavy resignation.")
+        if "charming" in traits_lower:
+            parts.append("Smooth and likeable. Easy wit.")
+
+        return " ".join(parts) if parts else ""
+
+    def build_mood_context(self, time_period: str = "day",
+                           weather: str = "clear") -> str:
+        """Describe NPC's current mood and situation for LLM."""
+        parts = []
+
+        # Wounds
+        if hasattr(self, 'wounds') and self.wounds and \
+                hasattr(self.wounds, 'wounds') and self.wounds.wounds:
+            from src.health_system import PART_DATA
+            worst = self.wounds.wounds[0]
+            part_label = PART_DATA.get(worst.part, {}).get("label", worst.part)
+            if worst.is_bleeding:
+                parts.append(f"You are bleeding from a wound on your {part_label}.")
+            elif worst.infected:
+                parts.append(f"You have an infected wound on your {part_label}. You feel feverish.")
+            else:
+                parts.append(f"You are hurt — wounded on your {part_label}.")
+
+        # Fortune
+        if self.fortune == "destitute":
+            parts.append("You are starving and desperate. You have nothing.")
+        elif self.fortune == "struggling":
+            parts.append("Times are hard. You are barely scraping by.")
+        elif self.fortune == "wealthy":
+            parts.append("Business is good. You are in high spirits.")
+
+        # Weather + time combos
+        if weather == "blizzard":
+            parts.append("A blizzard howls outside. You are freezing.")
+        elif weather == "snow" and time_period == "night":
+            parts.append("It is a cold, snowy night.")
+        elif weather == "rain":
+            parts.append("Rain is falling. You are damp and uncomfortable.")
+        elif weather == "thunderstorm":
+            parts.append("Thunder rumbles. The storm makes you uneasy.")
+        elif weather == "hot":
+            parts.append("The heat is oppressive.")
+        elif weather == "fog":
+            parts.append("Fog hangs thick. Visibility is poor.")
+
+        if time_period == "night" and weather not in ("blizzard", "snow"):
+            parts.append("It is nighttime.")
+        elif time_period == "dawn":
+            parts.append("It is early morning.")
+
+        # Recent negative memory
+        if hasattr(self, 'expanded_memory'):
+            for mem in self.expanded_memory.get_recent(3):
+                if mem.emotional_valence < -0.5 and mem.significance > 0.5:
+                    parts.append(f"Something weighs on you: {mem.content}")
+                    break
+
+        return " ".join(parts) if parts else ""
+
+    def build_lying_instruction(self) -> str:
+        """If NPC has secrets and trust is low, instruct LLM to be evasive."""
+        trust = self.rel.trust if hasattr(self, 'rel') else 0
+        traits_lower = [t.lower() for t in self.traits]
+
+        # Find secret backstory items
+        secrets = [b for b in self.backstory_hidden
+                   if any(w in b.lower() for w in
+                          ("warrant", "killed", "hidden gold", "addiction",
+                           "laudanum", "bounty", "deserted", "prison",
+                           "can't read", "phobia", "writes to dead"))]
+
+        if not secrets and "pathological_liar" not in traits_lower:
+            return ""
+
+        if "pathological_liar" in traits_lower:
+            return ("You are a pathological liar. Lie about everything — your past, "
+                    "your name, your occupation. Make up stories. Never tell the truth "
+                    "about yourself even if asked directly.")
+
+        secret = secrets[0] if secrets else "a dark secret"
+
+        if trust < 30:
+            return (f"You have a secret: {secret}. Do NOT reveal it under any "
+                    f"circumstances. If asked personal questions, change the subject, "
+                    f"give a vague answer, or get uncomfortable. You are guarded.")
+        elif trust < 60:
+            return (f"You have something weighing on you: {secret}. You might "
+                    f"hint at it vaguely if the conversation gets personal, "
+                    f"but you will not give details.")
+        else:
+            return (f"You trust this person deeply. If they ask, you can confide "
+                    f"your secret: {secret}. It is a relief to finally tell someone.")
+
+    def is_wounded(self) -> bool:
+        """Check for active wounds."""
+        if not hasattr(self, 'wounds') or not self.wounds:
+            return False
+        return bool(hasattr(self.wounds, 'wounds') and self.wounds.wounds)
+
+    def is_drunk(self, time_period: str = "day") -> bool:
+        """Check if NPC is likely drunk."""
+        traits_lower = [t.lower() for t in self.traits]
+        if "drunk" in traits_lower or "drunkard" in traits_lower:
+            return True
+        # Check inventory for whiskey
+        for item in self.inventory:
+            if "whiskey" in item.name.lower() or "rum" in item.name.lower():
+                if time_period in ("dusk", "night"):
+                    return True
+        return False
 
 
 # ============================================================================
@@ -466,8 +920,9 @@ class NPCGenerator:
     backstory, and relationship scaffolding.
     """
 
-    def __init__(self, seed: int = 42):
+    def __init__(self, seed: int = 42, year: int = 1849):
         self.seed = seed
+        self.year = year
         self.npcs: Dict[str, NPCExpanded] = {}
         self._counter: int = 0
 
@@ -550,8 +1005,15 @@ class NPCGenerator:
         is_male = rng.random() < sett["male_ratio"]
         gender = "M" if is_male else "F"
 
-        # Ethnicity
-        ethnicity = _pick_weighted(rng, ORIGIN_WEIGHTS)
+        # Ethnicity — era-appropriate demographics
+        from src.npc_data import ORIGIN_WEIGHTS_LONG_HUNTER, ORIGIN_WEIGHTS_MOUNTAIN_MEN
+        if self.year < 1810:
+            _weights = ORIGIN_WEIGHTS_LONG_HUNTER
+        elif self.year < 1845:
+            _weights = ORIGIN_WEIGHTS_MOUNTAIN_MEN
+        else:
+            _weights = ORIGIN_WEIGHTS
+        ethnicity = _pick_weighted(rng, _weights)
 
         # Name
         if gender == "M":
@@ -821,6 +1283,9 @@ class BackgroundSimulator:
             # ── Memory decay ──
             npc.expanded_memory.decay(current_day, days)
 
+        # ── NPC-to-NPC opinion formation ──
+        events.extend(self._sim_npc_opinions(npcs, current_day, rng))
+
         return events
 
     def _sim_spouse(self, npc: NPCExpanded, days: int,
@@ -874,7 +1339,7 @@ class BackgroundSimulator:
         # Friends occasionally send word (every ~60 days)
         if days >= 14 and rng.random() < days / 90.0:
             events.append(BackgroundEvent(
-                npc.npc_id, npc.name, "letter",
+                npc.npc_id, npc.name, "friend_letter",
                 f"Word from {npc.name}: they've been "
                 f"{rng.choice(['working a new claim', 'doing well', 'laid up sick but recovering', 'thinking of heading home'])}.",
                 current_day, affects_player=True,
@@ -921,25 +1386,214 @@ class BackgroundSimulator:
                 f"Sad news: {npc.name} has died of {cause}.",
                 current_day, affects_player=True,
             ))
-        elif roll < 0.08:  # 6% sick
-            events.append(BackgroundEvent(
-                npc.npc_id, npc.name, "sick",
-                f"{npc.name} has taken ill.",
-                current_day, affects_player=False,
-            ))
-        elif roll < 0.14:  # 6% moved
+        elif roll < 0.08:  # 6% sick — disease with type
+            diseases = ["fever", "dysentery", "cholera", "ague"]
+            disease = rng.choice(diseases)
+            # Cholera/dysentery can become epidemic
+            fatal = disease in ("cholera",) and rng.random() < 0.15
+            if fatal:
+                npc.alive = False
+                npc.present = False
+                events.append(BackgroundEvent(
+                    npc.npc_id, npc.name, "died",
+                    f"{npc.name} has died of {disease}.",
+                    current_day, affects_player=True,
+                ))
+            else:
+                events.append(BackgroundEvent(
+                    npc.npc_id, npc.name, "sick",
+                    f"{npc.name} has taken ill with {disease}.",
+                    current_day, affects_player=False,
+                ))
+        elif roll < 0.14:  # 6% moved — NPC migrates to another area
             npc.present = False
+            destinations = [
+                "upriver", "downstream", "the next valley",
+                "a new strike", "back east", "the nearest town",
+                "the mountains", "California",
+            ]
+            dest = rng.choice(destinations)
             events.append(BackgroundEvent(
                 npc.npc_id, npc.name, "moved",
-                f"{npc.name} has moved on from the area.",
+                f"{npc.name} has packed up and headed for {dest}.",
                 current_day, affects_player=True,
             ))
         elif roll < 0.20:  # 6% found gold
+            if npc.fortune in ("destitute", "struggling", "average"):
+                npc.fortune = rng.choice(["comfortable", "comfortable", "wealthy"])
+            elif npc.fortune == "comfortable":
+                npc.fortune = "wealthy"
             events.append(BackgroundEvent(
                 npc.npc_id, npc.name, "found_gold",
                 f"Word is {npc.name} made a nice find recently.",
                 current_day, affects_player=False,
             ))
+        elif roll < 0.26:  # 6% fortune change (decline)
+            if npc.fortune in ("comfortable", "wealthy", "average"):
+                prev = npc.fortune
+                npc.fortune = {"wealthy": "comfortable", "comfortable": "average",
+                               "average": "struggling"}.get(prev, "struggling")
+                events.append(BackgroundEvent(
+                    npc.npc_id, npc.name, "fortune_change",
+                    f"{npc.name} has fallen on harder times lately.",
+                    current_day, affects_player=False,
+                ))
+        elif roll < 0.40:  # 14% mishap — darkly comic frontier incidents
+            traits_l = [t.lower() for t in npc.traits]
+            occ = npc.occupation.lower()
+            mishaps = [
+                f"{npc.name} got drunk and fell in the creek. Lost his boots.",
+                f"{npc.name} shot at a rabbit and hit somebody's mule. "
+                f"The owner is furious.",
+                f"{npc.name} got into a fistfight over a card game. "
+                f"Both men lost teeth.",
+                f"{npc.name} tried to ford the river with a loaded pack mule. "
+                f"The mule refused. The supplies didn't.",
+                f"{npc.name} accidentally set his tent on fire while cooking.",
+                f"{npc.name} lost three days' worth of gold dust "
+                f"in a poker game. Hasn't stopped talking about it.",
+                f"{npc.name} was chased up a tree by a bear. "
+                f"Stayed up there till morning.",
+                f"{npc.name} ate something he shouldn't have. "
+                f"Been behind a bush all day.",
+                f"{npc.name}'s claim got jumped while he was in town "
+                f"buying whiskey.",
+                f"{npc.name} got his beard caught in a sluice box. "
+                f"Had to cut himself free.",
+                f"A raccoon got into {npc.name}'s supplies. "
+                f"Ate everything except the hardtack.",
+                f"{npc.name} told everyone he found a vein of gold. "
+                f"It was iron pyrite. Nobody will let him forget it.",
+                f"{npc.name} bet his best knife in a poker game and lost. "
+                f"Won it back the next hand, then lost it again.",
+                f"{npc.name} got spooked by a rattlesnake and fired his "
+                f"rifle into the ground. Ruined his only pair of good pants.",
+                f"{npc.name} tried to break a wild horse. "
+                f"The horse broke {npc.name} instead. He's limping.",
+                f"{npc.name} passed out drunk and somebody swapped his boots "
+                f"for a pair two sizes too small.",
+                f"{npc.name} tried to bluff at poker with a pair of twos. "
+                f"The other man had a full house and a knife.",
+                f"{npc.name} dug a privy too close to his tent. "
+                f"Nobody will camp near him now.",
+                f"{npc.name} bought a 'genuine treasure map' for five dollars. "
+                f"It led to an empty hole somebody already dug.",
+                f"{npc.name} accidentally fired his gun inside the saloon. "
+                f"Hit the chandelier. Got banned.",
+                f"{npc.name} fell asleep on watch. A coyote ate his dinner.",
+                f"{npc.name} tried to distill his own whiskey. "
+                f"The still exploded. He's missing an eyebrow.",
+                f"{npc.name} got kicked by a mule. In the face. "
+                f"He's fine but his pride isn't.",
+                f"{npc.name} traded a good rifle for what he thought was a gold nugget. "
+                f"It was brass.",
+                f"{npc.name} tried to smoke out a skunk from under his tent. "
+                f"Everyone within a hundred yards knows how that went.",
+                f"{npc.name} staked a claim on land that turned out to be "
+                f"somebody else's outhouse.",
+                f"{npc.name} wrote a love letter to a woman back east. "
+                f"The postmaster read it out loud to the whole camp.",
+                f"{npc.name}'s pants split while climbing a hill. "
+                f"He worked the rest of the day in a blanket.",
+                f"{npc.name} challenged a man to a duel. The man laughed. "
+                f"{npc.name} also laughed. Then they both went to the saloon.",
+                f"A crow stole {npc.name}'s only spoon. He eats with a stick now.",
+            ]
+            # Trait-specific mishaps
+            if "greedy" in traits_l:
+                mishaps.append(
+                    f"{npc.name} tried to steal from a sleeping man's claim. "
+                    f"The man wasn't sleeping.")
+            if "boastful" in traits_l:
+                mishaps.append(
+                    f"{npc.name} told everyone he could outshoot any man alive. "
+                    f"Lost the contest to a schoolteacher. Hasn't spoken since.")
+            if "nervous" in traits_l:
+                mishaps.append(
+                    f"{npc.name} heard a noise at night and shot a hole through "
+                    f"his own tent. It was a squirrel.")
+            if "devout" in traits_l:
+                mishaps.append(
+                    f"{npc.name} tried to baptize a miner in the creek. "
+                    f"The miner punched him.")
+            if "drunk" in traits_l or "drunkard" in traits_l:
+                mishaps.append(
+                    f"{npc.name} passed out drunk in the road. "
+                    f"Someone drew a mustache on his face with axle grease.")
+
+            msg = rng.choice(mishaps)
+            events.append(BackgroundEvent(
+                npc.npc_id, npc.name, "mishap", msg,
+                current_day, affects_player=False,
+            ))
+            # Some mishaps affect fortune
+            if "lost" in msg or "supplies" in msg or "gold dust" in msg:
+                if npc.fortune in ("comfortable", "wealthy", "average"):
+                    npc.fortune = {"wealthy": "comfortable",
+                                   "comfortable": "average",
+                                   "average": "struggling"}.get(npc.fortune,
+                                                                "struggling")
+        return events
+
+    def _sim_npc_opinions(self, npcs: Dict[str, NPCExpanded],
+                           current_day: int, rng: random.Random
+                           ) -> List[BackgroundEvent]:
+        """NPCs form opinions of each other based on proximity and traits."""
+        events = []
+        npc_list = [n for n in npcs.values() if n.alive and n.present]
+        for npc in npc_list:
+            if rng.random() > 0.1:  # only 10% chance per sim tick
+                continue
+            # Pick a random other NPC in the same area
+            neighbors = [o for o in npc_list
+                         if o.npc_id != npc.npc_id
+                         and o.world_x == npc.world_x
+                         and o.world_y == npc.world_y
+                         and o.npc_id not in npc.npc_opinions]
+            if not neighbors:
+                continue
+            other = rng.choice(neighbors)
+
+            # Generate opinion based on trait compatibility
+            npc_traits = set(npc.traits)
+            other_traits = set(other.traits)
+            opinion = rng.uniform(-15, 15)  # baseline random
+
+            # Trait synergies
+            if "generous" in other_traits:
+                opinion += 15
+            if "cruel" in other_traits or "psychopathic" in other_traits:
+                opinion -= 25
+            if "charming" in other_traits:
+                opinion += 10
+            if "greedy" in other_traits and "generous" in npc_traits:
+                opinion -= 20
+            if "devout" in npc_traits and "devout" in other_traits:
+                opinion += 15
+            if "suspicious" in npc_traits:
+                opinion -= 10
+
+            # Same occupation = rivalry or camaraderie
+            if npc.occupation == other.occupation:
+                opinion += rng.choice([-15, -10, 10, 15])
+
+            opinion = max(-100, min(100, opinion))
+            reasons = []
+            if opinion > 30:
+                reasons = [f"seems like good folk", f"we get along fine",
+                           f"been helpful around camp"]
+            elif opinion > 0:
+                reasons = [f"decent enough", f"keeps to himself",
+                           f"haven't had trouble"]
+            elif opinion > -30:
+                reasons = [f"something off about that one",
+                           f"don't fully trust him", f"keeps odd hours"]
+            else:
+                reasons = [f"bad reputation", f"caused trouble around here",
+                           f"wouldn't turn my back on him"]
+
+            npc.set_opinion(other.npc_id, opinion, rng.choice(reasons),
+                           name=other.name)
         return events
 
 
@@ -989,12 +1643,35 @@ def build_npc_llm_context(npc: NPCExpanded, player=None) -> str:
         )
 
     gender_str = {"M": "Male", "F": "Female"}.get(npc.gender, "Male")
-    return (
+    # Tribe and marital info
+    tribe_str = f"  Tribe: {npc.tribe}\n" if npc.tribe else ""
+    marital_str = ""
+    ms = getattr(npc, 'marital_status', 'single')
+    if ms != "single":
+        spouse = getattr(npc, 'spouse_id', '')
+        marital_str = f"  Marital status: {ms}"
+        if spouse:
+            marital_str += f" (spouse: {spouse})"
+        marital_str += "\n"
+
+    # Wounds
+    wound_str = ""
+    if hasattr(npc, 'wounds') and npc.wounds and \
+            hasattr(npc.wounds, 'wounds') and npc.wounds.wounds:
+        wound_parts = []
+        for w in npc.wounds.wounds[:3]:
+            from src.health_system import PART_DATA
+            p_label = PART_DATA.get(w.part, {}).get("label", w.part)
+            wound_parts.append(f"{w.description} on {p_label}")
+        wound_str = f"  Current wounds: {'; '.join(wound_parts)}\n"
+
+    context = (
         f"NPC IDENTITY:\n"
         f"  Name: {npc.name}\n"
         f"  Age: {npc.age}  Gender: {gender_str}\n"
         f"  Occupation: {npc.occupation}\n"
         f"  Ethnicity: {npc.ethnicity} (from {npc.origin})\n"
+        f"{tribe_str}"
         f"  Personality traits: {traits_str}\n"
         f"  Behavioral quirks: {quirks_str}\n"
         f"  Hidden motivations (inform tone, don't state directly): {motivations_str}\n"
@@ -1002,9 +1679,31 @@ def build_npc_llm_context(npc: NPCExpanded, player=None) -> str:
         f"  Relationship with player: {rel_str}\n"
         f"  Memories of player: {mem_str}\n"
         f"  Background (not yet revealed): {hidden_str}\n"
-        f"  Revealed backstory: {'. '.join(npc.backstory_revealed) or 'nothing yet'}"
+        f"  Revealed backstory: {'. '.join(npc.backstory_revealed) or 'nothing yet'}\n"
+        f"  Current fortune: {npc.fortune}\n"
+        f"{marital_str}"
+        f"{wound_str}"
         f"{player_block}"
     )
+
+    # Add opinions of other NPCs
+    if npc.npc_opinions:
+        opinion_lines = []
+        for oid, od in list(npc.npc_opinions.items())[:5]:
+            op = od["opinion"]
+            label = ("hates" if op < -50 else "dislikes" if op < -15
+                     else "neutral toward" if op < 15
+                     else "likes" if op < 50 else "respects")
+            oname = od.get("name", oid)
+            opinion_lines.append(f"  {label} {oname}: {od['reason']}")
+        if opinion_lines:
+            context += "\nOPINIONS OF OTHERS:\n" + "\n".join(opinion_lines)
+
+    # Add favor/debt context
+    if npc.rel.debts:
+        context += "\nFAVORS/DEBTS:\n  " + "\n  ".join(npc.rel.debts[-3:])
+
+    return context
 
 
 # ============================================================================

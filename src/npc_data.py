@@ -66,6 +66,16 @@ SETTLEMENTS: Dict[str, dict] = {
         "age_min":         18,
         "age_max":         65,
     },
+    "frontier_fort": {
+        "label":           "Frontier Fort",
+        "pop_range":       (20, 80),
+        "named_npc_range": (5, 15),
+        "male_ratio":      0.85,
+        "age_mean":        30,
+        "age_std":         8,
+        "age_min":         16,
+        "age_max":         55,
+    },
 }
 
 
@@ -86,6 +96,36 @@ ORIGIN_WEIGHTS: List[Tuple[str, float]] = [
     ("british",     0.96),
     ("chilean",     0.98),
     ("other",       1.00),
+]
+
+ORIGIN_WEIGHTS_LONG_HUNTER = [
+    # 1780 Appalachian frontier — mostly Scots-Irish and English settlers,
+    # some German, a few Native Americans near settlements
+    ("american",        0.65),   # Scots-Irish and English frontiersmen
+    ("irish",           0.80),   # Irish immigrants (pre-famine, smaller numbers)
+    ("german",          0.90),   # Pennsylvania Dutch, Valley Germans
+    ("british",         0.95),   # English/Scottish loyalists and soldiers
+    ("native_american", 1.00),   # Friendly Cherokee, Delaware scouts
+]
+
+ORIGIN_WEIGHTS_MOUNTAIN_MEN = [
+    ("american",        0.40),
+    ("french_canadian", 0.60),
+    ("british",         0.70),
+    ("mexican",         0.85),
+    ("native_american", 1.00),
+]
+
+# French-Canadian name pools
+FRENCH_CANADIAN_FIRST_NAMES = [
+    "Pierre", "Baptiste", "Jacques", "Toussaint", "Etienne",
+    "Antoine", "François", "Louis", "Michel", "Jean",
+    "André", "René", "Claude", "Henri", "Lucien",
+]
+FRENCH_CANADIAN_LAST_NAMES = [
+    "Laclede", "Charbonneau", "Proulx", "Dumont", "Boucher",
+    "Deschamps", "Gauthier", "Laroque", "Beaulieu", "Fontaine",
+    "Coureur", "Robidoux", "Chouteau", "Sublette", "Provost",
 ]
 
 # Which US state or foreign country they hail from (for backstory)
@@ -278,6 +318,17 @@ PROF_WEIGHTS_M: Dict[str, Dict[str, int]] = {
         "Cook": 8, "Drifter": 5, "Freighter": 5, "Blacksmith": 2,
         "Native Trader": 8, "Native Guide": 5, "Native Hunter": 4,
     },
+    "trapper_camp": {
+        "Mountain Man": 30, "Trapper": 30, "Hunter": 15,
+        "Scout": 10, "Cook": 5, "Drifter": 5,
+        "Voyageur": 3, "Fur Factor": 2,
+    },
+    "frontier_fort": {
+        "Hunter": 20, "Militia Captain": 5, "Soldier": 15,
+        "Trader": 15, "Blacksmith": 8, "Scout": 10,
+        "Trapper": 8, "Cook": 5, "Drifter": 5,
+        "Carpenter": 4, "Preacher": 2, "Farmer": 3,
+    },
     "city": {
         "Merchant": 8, "Farmer": 6, "Rancher": 4, "Blacksmith": 5,
         "Carpenter": 5, "Doctor": 4, "Lawyer": 5, "Banker": 3,
@@ -315,6 +366,10 @@ PROF_WEIGHTS_F: Dict[str, Dict[str, int]] = {
     "trading_post": {
         "Wife": 35, "Cook": 30, "Merchant": 15, "Healer": 10,
         "Laundress": 10,
+    },
+    "frontier_fort": {
+        "Wife": 30, "Cook": 20, "Healer": 15, "Laundress": 15,
+        "Seamstress": 10, "Midwife": 10,
     },
 }
 
@@ -359,6 +414,14 @@ PROF_ATTR_BIAS: Dict[str, Dict[str, int]] = {
     "Newspaper Editor":   {"intelligence": 3, "charisma": 2},
     "Telegraph Operator": {"intelligence": 3, "agility": 2},
     "Express Rider":      {"agility": 3, "constitution": 3},
+    # Long Hunter era
+    "Militia Captain":    {"charisma": 2, "strength": 2, "wisdom": 2},
+    "Soldier":            {"strength": 2, "constitution": 2, "agility": 1},
+    "Trader":             {"charisma": 3, "intelligence": 2},
+    "Long Hunter":        {"agility": 2, "wisdom": 2, "constitution": 2},
+    "Interpreter":        {"charisma": 3, "intelligence": 3},
+    "Ranger":             {"agility": 3, "constitution": 2, "wisdom": 2},
+    "Frontiersman":       {"constitution": 2, "strength": 2, "wisdom": 1},
 }
 
 
@@ -408,6 +471,14 @@ PROF_SKILLS: Dict[str, Dict[str, int]] = {
     "Native Guide":       {"tracking": 6, "survival": 5, "geology": 2},
     "Native Trader":      {"trading": 4, "survival": 3, "tracking": 2},
     "Native Hunter":      {"tracking": 5, "survival": 4, "firearms": 2},
+    # ── Long Hunter era professions ──────────────────────────────────
+    "Militia Captain":    {"firearms": 5, "survival": 3, "law": 2, "tracking": 2},
+    "Soldier":            {"firearms": 4, "survival": 2},
+    "Trader":             {"trading": 5, "survival": 2, "tracking": 1},
+    "Long Hunter":        {"tracking": 5, "survival": 5, "firearms": 4, "butchering": 3},
+    "Interpreter":        {"trading": 3, "survival": 2, "tracking": 2},
+    "Ranger":             {"tracking": 5, "firearms": 4, "survival": 4},
+    "Frontiersman":       {"survival": 4, "firearms": 3, "tracking": 3, "trapping": 2},
 }
 
 PROF_KNOWLEDGE: Dict[str, Dict[str, int]] = {
@@ -436,6 +507,14 @@ PROF_KNOWLEDGE: Dict[str, Dict[str, int]] = {
     "Native Guide":    {"tracking": 5, "survival": 5, "navigation": 4, "herbalism": 3},
     "Native Trader":   {"trading": 3, "survival": 2, "herbalism": 2},
     "Native Hunter":   {"tracking": 4, "survival": 4, "butchering": 3},
+    # Long Hunter era
+    "Militia Captain":    {"firearms": 3, "law": 2, "tracking": 2},
+    "Soldier":            {"firearms": 2, "survival": 1},
+    "Trader":             {"trading": 4, "survival": 2, "navigation": 2},
+    "Long Hunter":        {"tracking": 5, "survival": 5, "butchering": 4, "furriery": 3},
+    "Interpreter":        {"trading": 2, "survival": 2},
+    "Ranger":             {"tracking": 4, "survival": 4, "firearms": 3, "navigation": 3},
+    "Frontiersman":       {"survival": 3, "tracking": 3, "farming": 2, "butchering": 2},
 }
 
 # Personal background knowledge — random extras added during generation

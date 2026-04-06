@@ -23,6 +23,37 @@ if TYPE_CHECKING:
     from src.player import Player
 
 
+# ── Frontier line — the western edge of settled territory by year ──────────
+# World_x coordinates. Lower x = further west. Higher x = further east.
+# Past this line, encounter frequency increases dramatically.
+
+_FRONTIER_LINES = [
+    (1770, 355),   # East of Appalachians
+    (1780, 345),   # Kentucky frontier — Boonesborough barely exists
+    (1800, 310),   # Ohio settled, Mississippi reached
+    (1825, 275),   # Missouri River — Mountain Men territory
+    (1849, 200),   # Oregon Trail blazed, emigrant routes exist
+    (1870, 150),   # Transcontinental railroad
+    (1900, 100),   # West fully settled
+]
+
+
+def _get_frontier_line(year: int) -> int:
+    """Return the world_x coordinate of the frontier for a given year.
+    Interpolates between defined years for smooth progression."""
+    if year <= _FRONTIER_LINES[0][0]:
+        return _FRONTIER_LINES[0][1]
+    if year >= _FRONTIER_LINES[-1][0]:
+        return _FRONTIER_LINES[-1][1]
+    for i in range(len(_FRONTIER_LINES) - 1):
+        y0, x0 = _FRONTIER_LINES[i]
+        y1, x1 = _FRONTIER_LINES[i + 1]
+        if y0 <= year <= y1:
+            frac = (year - y0) / max(y1 - y0, 1)
+            return int(x0 + (x1 - x0) * frac)
+    return 275  # fallback
+
+
 # ============================================================================
 #  TRIP ESTIMATE
 # ============================================================================
@@ -51,7 +82,128 @@ class TravelStyle:
 
 
 # ============================================================================
-#  CALCULATE TRIP
+#  RIVER TRAVEL
+# ============================================================================
+
+def find_river_path(world_map: "WorldMap", from_wx: int, from_wy: int,
+                    to_wx: int, to_wy: int) -> Optional[List[Tuple[int, int]]]:
+    """Find a path that follows RIVER terrain tiles from origin toward destination.
+    Returns list of (wx, wy) river tiles, or None if no river path exists.
+    Uses BFS along adjacent RIVER tiles."""
+    from src.world_map import Terrain
+
+    # Player must start near a river
+    start_river = None
+    for dy in range(-3, 4):
+        for dx in range(-3, 4):
+            nx, ny = from_wx + dx, from_wy + dy
+            if world_map.in_bounds(nx, ny) and \
+                    int(world_map.tiles[ny][nx]) == Terrain.RIVER:
+                start_river = (nx, ny)
+                break
+        if start_river:
+            break
+    if not start_river:
+        return None
+
+    # BFS along river tiles toward destination
+    from collections import deque
+    visited = {start_river}
+    queue = deque([(start_river, [start_river])])
+    best_path = None
+    best_dist = abs(to_wx - start_river[0]) + abs(to_wy - start_river[1])
+
+    while queue:
+        (cx, cy), path = queue.popleft()
+        dist = abs(to_wx - cx) + abs(to_wy - cy)
+
+        # Close enough to destination (within 5 tiles of a river)
+        if dist <= 5:
+            return path
+
+        # Track best so far
+        if dist < best_dist:
+            best_dist = dist
+            best_path = path
+
+        # Explore adjacent river tiles
+        for dy in range(-1, 2):
+            for dx in range(-1, 2):
+                if dx == 0 and dy == 0:
+                    continue
+                nx, ny = cx + dx, cy + dy
+                if (nx, ny) in visited:
+                    continue
+                if not world_map.in_bounds(nx, ny):
+                    continue
+                if int(world_map.tiles[ny][nx]) == Terrain.RIVER:
+                    visited.add((nx, ny))
+                    queue.append(((nx, ny), path + [(nx, ny)]))
+
+        # Safety limit
+        if len(visited) > 2000:
+            break
+
+    # Return best partial path if we got close
+    if best_path and best_dist < abs(to_wx - from_wx) + abs(to_wy - from_wy):
+        return best_path
+    return None
+
+
+def calculate_river_trip(player: "Player", world_map: "WorldMap",
+                         to_wx: int, to_wy: int,
+                         vehicle_type: str = "birchbark_canoe",
+                         ) -> Optional[TripEstimate]:
+    """Calculate a river trip. Returns None if no river path exists."""
+    from src.vehicles import VEHICLE_TYPES
+
+    vtype = VEHICLE_TYPES.get(vehicle_type)
+    if not vtype or not vtype.water_vehicle:
+        return None
+
+    river_path = find_river_path(world_map, player.world_x, player.world_y,
+                                 to_wx, to_wy)
+    if not river_path:
+        return None
+
+    # Determine direction (downstream = toward lower elevation)
+    start_elev = world_map.get_elevation(river_path[0][0], river_path[0][1])
+    end_elev = world_map.get_elevation(river_path[-1][0], river_path[-1][1])
+    going_downstream = end_elev <= start_elev
+
+    if vtype.one_way and not going_downstream:
+        return None  # flatboats can't go upstream
+
+    speed_mult = vtype.downstream_speed if going_downstream else vtype.upstream_speed
+
+    # Time: base 30 min per river tile, modified by speed
+    base_minutes_per_tile = 30
+    total_minutes = int(len(river_path) * base_minutes_per_tile * speed_mult)
+    total_miles = len(river_path) * 5.0
+
+    direction = "downstream" if going_downstream else "upstream"
+    warnings = []
+    if not going_downstream and speed_mult > 1.5:
+        warnings.append(f"Going upstream — slow, hard work. ({speed_mult:.1f}x time)")
+    if vtype.one_way:
+        warnings.append("One-way trip! Flatboat will be broken up at destination.")
+
+    meals_needed = (total_minutes / 60.0) / 10.0
+
+    return TripEstimate(
+        total_minutes=total_minutes,
+        total_miles=total_miles,
+        meals_needed=meals_needed,
+        water_needed=False,  # you're ON the water
+        path=river_path,
+        terrain_summary=f"river ({direction})",
+        has_desert=False,
+        warnings=warnings,
+    )
+
+
+# ============================================================================
+#  CALCULATE TRIP (overland)
 # ============================================================================
 
 def calculate_trip(player: "Player", world_map: "WorldMap",
@@ -136,6 +288,27 @@ def calculate_trip(player: "Player", world_map: "WorldMap",
         warnings.append(f"Not enough food! Need ~{meals_needed:.0f} meals, "
                         f"have ~{food_nutrition / 20:.0f}")
 
+    # Frontier warnings — distance past settled territory
+    # Infer year from world_map if possible
+    year = getattr(world_map, '_game_year', 1849)
+    frontier_x = _get_frontier_line(year)
+    # Check how far west the path goes past the frontier
+    tiles_past = sum(1 for wx, _ in path if wx < frontier_x)
+    if tiles_past > 0:
+        max_past = max(frontier_x - wx for wx, _ in path if wx < frontier_x)
+        miles_past = max_past * 5
+        if max_past > 100:
+            warnings.append(
+                f"WARNING: No known settlements for {miles_past} miles. "
+                f"Extremely dangerous territory. Encounters likely.")
+        elif max_past > 50:
+            warnings.append(
+                f"Deep wilderness ahead — {miles_past} miles past the frontier. "
+                f"High encounter risk.")
+        elif max_past > 10:
+            warnings.append(
+                f"Route crosses {tiles_past} tiles of unsettled territory.")
+
     return TripEstimate(
         total_minutes=total_minutes,
         total_miles=total_miles,
@@ -212,14 +385,29 @@ def execute_trip(engine: "Engine", estimate: TripEstimate,
     for disc_msg in discoveries:
         engine.add_message(disc_msg, "advisory")
 
-    # Roll for encounters (max 3)
+    if not estimate.path:
+        return "arrived", (player.world_x, player.world_y)
+
+    # Roll for encounters — frequency scales with distance past the frontier
     rng = random.Random()
-    encounter_count = min(3, len(estimate.path) // 10 + 1)
+    year = getattr(engine.time, 'year', 1849) if hasattr(engine, 'time') else 1849
+    frontier_x = _get_frontier_line(year)
+
     encounter_tile = None
-    for _ in range(encounter_count):
-        if rng.random() < 0.15:  # 15% per roll
-            idx = rng.randint(0, len(estimate.path) - 1)
-            encounter_tile = estimate.path[idx]
+    for idx, (wx, wy) in enumerate(estimate.path):
+        # How far past the frontier is this tile?
+        dist_past = max(0, frontier_x - wx)  # frontier_x is eastern, lower wx = further west
+        if dist_past <= 0:
+            # Within settled area — normal low chance
+            chance = 0.02  # 2% per tile
+        elif dist_past < 50:
+            chance = 0.08  # 8% — frontier territory
+        elif dist_past < 100:
+            chance = 0.15  # 15% — deep wilderness
+        else:
+            chance = 0.35  # 35% — far beyond frontier, near-constant
+        if rng.random() < chance:
+            encounter_tile = (wx, wy)
             break
 
     if encounter_tile:
@@ -356,22 +544,52 @@ TRANSPORT_ROUTES: List[TransportRoute] = [
                    "stagecoach", 10.0, 8, era_start=1849),
     TransportRoute("stage_plac_sac", "Placerville", "Sacramento",
                    "stagecoach", 10.0, 8, era_start=1849),
-    TransportRoute("stage_sac_aub", "Sacramento", "Auburn",
+    TransportRoute("stage_sac_aub", "Sacramento", "Auburn CA",
                    "stagecoach", 8.0, 6, era_start=1849),
-    TransportRoute("stage_aub_sac", "Auburn", "Sacramento",
+    TransportRoute("stage_aub_sac", "Auburn CA", "Sacramento",
                    "stagecoach", 8.0, 6, era_start=1849),
-    TransportRoute("stage_stock_son", "Stockton", "Sonora",
+    TransportRoute("stage_stock_son", "Stockton", "Sonora CA",
                    "stagecoach", 12.0, 10, era_start=1850),
-    TransportRoute("stage_son_stock", "Sonora", "Stockton",
+    TransportRoute("stage_son_stock", "Sonora CA", "Stockton",
                    "stagecoach", 12.0, 10, era_start=1850),
     TransportRoute("stage_sac_mary", "Sacramento", "Marysville",
                    "stagecoach", 15.0, 12, era_start=1850),
     TransportRoute("stage_mary_sac", "Marysville", "Sacramento",
                    "stagecoach", 15.0, 12, era_start=1850),
-    TransportRoute("stage_sf_sj", "San Francisco", "San Jose",
+    TransportRoute("stage_sf_sj", "San Francisco", "San Jose CA",
                    "stagecoach", 8.0, 6, era_start=1849),
-    TransportRoute("stage_sj_sf", "San Jose", "San Francisco",
+    TransportRoute("stage_sj_sf", "San Jose CA", "San Francisco",
                    "stagecoach", 8.0, 6, era_start=1849),
+
+    # ── Mississippi River steamboats (1811+) ──────────────────────────
+    TransportRoute("steam_no_nat", "New Orleans", "Natchez",
+                   "steamboat", 15.0, 18, era_start=1811, luggage_limit_lb=200),
+    TransportRoute("steam_nat_no", "Natchez", "New Orleans",
+                   "steamboat", 10.0, 12, era_start=1811, luggage_limit_lb=200),
+    TransportRoute("steam_nat_stl", "Natchez", "St. Louis",
+                   "steamboat", 30.0, 48, era_start=1817, luggage_limit_lb=200),
+    TransportRoute("steam_stl_nat", "St. Louis", "Natchez",
+                   "steamboat", 20.0, 30, era_start=1817, luggage_limit_lb=200),
+    TransportRoute("steam_no_stl", "New Orleans", "St. Louis",
+                   "steamboat", 40.0, 72, era_start=1817, luggage_limit_lb=200),
+    TransportRoute("steam_stl_no", "St. Louis", "New Orleans",
+                   "steamboat", 25.0, 36, era_start=1817, luggage_limit_lb=200),
+
+    # ── Missouri River steamboats (1819+) ─────────────────────────────
+    TransportRoute("steam_stl_ind", "St. Louis", "Independence",
+                   "steamboat", 15.0, 24, era_start=1819, luggage_limit_lb=150),
+    TransportRoute("steam_ind_stl", "Independence", "St. Louis",
+                   "steamboat", 10.0, 18, era_start=1819, luggage_limit_lb=150),
+
+    # ── Ohio River steamboats (1811+) ─────────────────────────────────
+    TransportRoute("steam_pit_cin", "Fort Pitt", "Cincinnati",
+                   "steamboat", 12.0, 18, era_start=1811, luggage_limit_lb=150),
+    TransportRoute("steam_cin_pit", "Cincinnati", "Fort Pitt",
+                   "steamboat", 18.0, 30, era_start=1811, luggage_limit_lb=150),
+    TransportRoute("steam_cin_lou", "Cincinnati", "Louisville",
+                   "steamboat", 8.0, 10, era_start=1811, luggage_limit_lb=150),
+    TransportRoute("steam_lou_cin", "Louisville", "Cincinnati",
+                   "steamboat", 10.0, 14, era_start=1811, luggage_limit_lb=150),
 ]
 
 
@@ -425,16 +643,10 @@ def take_transport(engine: "Engine", route: TransportRoute) -> str:
     s.warmth = 75
 
     method_name = "Steamboat" if route.method == "steamboat" else "Stagecoach"
-    return (f"{method_name} to {route.destination} — ${route.fare:.0f}, "
-            f"{route.travel_hours} hours. You arrive tired but intact.")
-    engine.state = "local_map"
-    engine.map_level_index = 0
-
-    loc = engine.world.get_location_at(wx, wy)
-    if loc:
-        engine.add_message(f"You arrive at {loc.name}.", "normal")
-    else:
-        engine.add_message("You arrive at your destination.", "normal")
+    msg = (f"{method_name} to {route.destination} — ${route.fare:.0f}, "
+           f"{route.travel_hours} hours. You arrive tired but intact.")
+    engine.add_message(msg, "normal")
+    return msg
 
 
 # ============================================================================

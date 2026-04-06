@@ -58,7 +58,7 @@ class FeaturePlacer:
             elif roll < 0.65:
                 # Bedrock exposure with cracks
                 tile.terrain = LocalTerrain.BEDROCK
-                tile.gold_grade = 0.70 + self.rng.random() * 0.5
+                tile.gold_grade = min(1.0, 0.70 + self.rng.random() * 0.3)
             elif roll < 0.85:
                 # Black sand deposit
                 tile.terrain = LocalTerrain.GRAVEL_BAR

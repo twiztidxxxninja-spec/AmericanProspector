@@ -12,6 +12,7 @@ from typing import List, Optional
 
 from src.resource_system import ResourceType, RESOURCE_DB, ResourceDeposit
 from src.geologic_gold_placer import GeologicContext
+from src.local_map import LocalTerrain
 
 
 @dataclass

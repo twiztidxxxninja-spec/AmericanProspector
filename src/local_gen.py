@@ -177,7 +177,7 @@ class LocalGenerator:
         wy = local_map.world_y
         self._abs_x = (wx * AREAS_PER_WORLD + ax) * PATCH_SIZE
         self._abs_y = (wy * AREAS_PER_WORLD + ay) * PATCH_SIZE
-        # Noise seed must be consistent across all patches in the same world tile
+        # Noise seed consistent across all patches in same world tile
         # so terrain flows continuously across patch boundaries
         self.seed = (wx * 10007 + wy * 1000003) & 0x7FFFFFFF
 
@@ -201,16 +201,24 @@ class LocalGenerator:
             self._gen_alaska(gold_bias)
         elif "Rocky" in rn or "Montana" in rn or "Idaho" in rn:
             self._gen_mountain()
+        elif "Black Hills" in rn:
+            self._gen_mountain()
+        elif "Nevada" in rn or "Great Basin" in rn or "Basin" in rn:
+            self._gen_desert()
         elif "Great Plains" in rn or "Prairie" in rn:
             self._gen_plains()
         elif world_terrain == Terrain.MOUNTAINS:
             self._gen_mountain()
+        elif world_terrain == Terrain.HILLS:
+            self._gen_mountain()  # hills get mountain-lite, not flat grass
         elif world_terrain in (Terrain.DESERT, Terrain.SCRUB):
             self._gen_desert()
         elif world_terrain == Terrain.SWAMP:
             self._gen_swamp()
         elif world_terrain in (Terrain.FOREST, Terrain.CONIFER):
             self._gen_eastern_forest()
+        elif world_terrain == Terrain.TUNDRA:
+            self._gen_mountain()  # tundra = high treeless terrain
         else:
             self._gen_plains()
 
@@ -219,6 +227,12 @@ class LocalGenerator:
 
         # Generate elevation after terrain
         self._generate_elevation(world_terrain)
+
+        # Set world-level elevation from world map
+        wm = self.lm.world_map
+        if wm and hasattr(wm, 'get_elevation'):
+            self.lm.world_elevation_ft = wm.get_elevation(
+                self.lm.world_x, self.lm.world_y)
 
     # ── Elevation generation ──────────────────────────────────────────
 
@@ -231,19 +245,24 @@ class LocalGenerator:
         from src.world_map import Terrain
 
         # Z-range by world terrain type
+        # LOCAL elevation ranges per terrain type.
+        # These are the z-level variations WITHIN a single 384x384 patch.
+        # The big elevation changes (mountain ranges, valleys) come from
+        # world-level elevation that shifts the baseline between patches.
+        # Local relief is creek banks, small hills, gullies — not mountains.
         z_params = {
-            Terrain.MOUNTAINS: (-1, 16),   # valleys at -1, peaks at +15
-            Terrain.HILLS:     (-1, 9),
-            Terrain.FOREST:    (0, 5),
-            Terrain.CONIFER:   (0, 6),
-            Terrain.PLAINS:    (0, 2),
-            Terrain.PRAIRIE:   (0, 2),
-            Terrain.DESERT:    (0, 4),
-            Terrain.SCRUB:     (0, 3),
-            Terrain.SWAMP:     (-2, 1),    # mostly flat, slightly below sea level
-            Terrain.COAST:     (-1, 2),
-            Terrain.TUNDRA:    (0, 3),
-            Terrain.RIVER:     (-2, 3),
+            Terrain.MOUNTAINS: (-2, 12),   # 42 ft local relief — ridges and gullies
+            Terrain.HILLS:     (-1, 8),    # 27 ft — rolling ground
+            Terrain.FOREST:    (0, 4),     # 12 ft — gentle woodland
+            Terrain.CONIFER:   (-1, 6),    # 21 ft — forest with ravines
+            Terrain.PLAINS:    (0, 2),     # 6 ft — nearly flat
+            Terrain.PRAIRIE:   (0, 2),     # 6 ft — flat grassland
+            Terrain.DESERT:    (-1, 6),    # 21 ft — arroyos, washes
+            Terrain.SCRUB:     (0, 4),     # 12 ft — scrubby foothills
+            Terrain.SWAMP:     (-2, 1),    # 9 ft — mostly flat
+            Terrain.COAST:     (-1, 3),    # 12 ft — bluffs and beach
+            Terrain.TUNDRA:    (0, 4),     # 12 ft — frozen rolling terrain
+            Terrain.RIVER:     (-3, 4),    # 21 ft — valley with banks
         }
         z_min, z_max = z_params.get(world_terrain, (0, 3))
         z_range = z_max - z_min

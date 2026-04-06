@@ -43,6 +43,16 @@ WILDLIFE_RENDER = {
     WildlifeType.BALD_EAGLE:          ("^", (200, 200, 255)),
     WildlifeType.CALIFORNIA_CONDOR:   ("^", ( 50,  50,  50)),
     WildlifeType.WILD_TURKEY:         ("t", (100,  80,  40)),
+    # Eastern / additional
+    WildlifeType.WHITETAIL_DEER:      ("d", (170, 130,  70)),
+    WildlifeType.COTTONTAIL_RABBIT:   ("r", (160, 140, 110)),
+    WildlifeType.WILD_HORSE:          ("H", (140, 110,  70)),
+    WildlifeType.PRAIRIE_DOG:         ("s", (180, 150, 100)),
+    WildlifeType.MOUNTAIN_GOAT:       ("g", (220, 220, 220)),
+    WildlifeType.WILD_BOAR:           ("p", (100,  70,  40)),
+    WildlifeType.TIMBER_RATTLESNAKE:  ("~", ( 90, 100,  50)),
+    WildlifeType.PASSENGER_PIGEON:    ("^", (140, 120, 100)),
+    WildlifeType.SANDHILL_CRANE:      ("^", (160, 160, 160)),
 }
 
 _DEFAULT_RENDER = ("?", (180, 180, 180))
@@ -120,6 +130,17 @@ _ATK = {
             (DmgType.BLUNT, "", "charges",  "stomps",  "crushes"),
         ], "weights": [50, 50],
     },
+    WildlifeType.WILD_BOAR: {
+        "attacks": [
+            (DmgType.PIERCE, "", "jabs tusks at", "gores",  "rips into"),
+            (DmgType.BLUNT,  "", "charges",       "rams",   "tramples"),
+        ], "weights": [60, 40],
+    },
+    WildlifeType.TIMBER_RATTLESNAKE: {
+        "attacks": [
+            (DmgType.BITE, "snake_bite", "strikes at", "bites", "sinks fangs into"),
+        ], "weights": [100],
+    },
 }
 _DEFAULT_ATK = {
     "attacks": [(DmgType.BITE, "", "nips at", "bites", "attacks")],
@@ -162,6 +183,16 @@ SPECIES_BODY_PLAN = {
     WildlifeType.MUSKRAT:          "small_quadruped",
     WildlifeType.OPOSSUM:          "small_quadruped",
     WildlifeType.LYNX:             "quadruped",
+    # Eastern / additional
+    WildlifeType.WHITETAIL_DEER:   "quadruped",
+    WildlifeType.COTTONTAIL_RABBIT:"small_quadruped",
+    WildlifeType.WILD_HORSE:       "quadruped",
+    WildlifeType.PRAIRIE_DOG:      "small_quadruped",
+    WildlifeType.MOUNTAIN_GOAT:    "quadruped",
+    WildlifeType.WILD_BOAR:        "quadruped",
+    WildlifeType.TIMBER_RATTLESNAKE: "snake",
+    WildlifeType.PASSENGER_PIGEON: "bird",
+    WildlifeType.SANDHILL_CRANE:   "bird",
 }
 
 
@@ -255,6 +286,135 @@ def _can_move_to(lmap: LocalMap, x: int, y: int) -> bool:
 
 # ── Region → typical species ──────────────────────────────────────────────
 
+def _era_wildlife_mult(species_id: str, year: int) -> float:
+    """Species-specific historical population curves.
+    Beaver peaked 1810s, crashed by 1840. Bison crashed 1870s.
+    Each species has its own depletion timeline."""
+
+    # Beaver — peak of fur trade 1810-1825, heavily trapped out by 1840
+    if species_id == "beaver":
+        if year < 1810: return 2.0   # pristine, pre-trade
+        if year < 1825: return 1.8   # peak abundance, rendezvous era
+        if year < 1835: return 1.2   # heavy trapping, declining
+        if year < 1845: return 0.6   # severely depleted
+        if year < 1860: return 0.4   # near-extirpated in most areas
+        return 0.2                    # remnant populations only
+
+    # River otter, mink, muskrat — follow beaver but lag 10 years
+    if species_id in ("river_otter", "mink", "muskrat"):
+        if year < 1820: return 1.8
+        if year < 1835: return 1.5
+        if year < 1845: return 1.0
+        if year < 1860: return 0.6
+        return 0.4
+
+    # Pine marten, fisher — deep forest, trapped later
+    if species_id in ("pine_marten", "fisher"):
+        if year < 1830: return 1.6
+        if year < 1845: return 1.2
+        if year < 1860: return 0.8
+        return 0.5
+
+    # Wolverine — always rare, slow decline
+    if species_id == "wolverine":
+        if year < 1840: return 1.3
+        if year < 1860: return 1.0
+        return 0.7
+
+    # Lynx, bobcat — moderate decline
+    if species_id in ("lynx", "bobcat"):
+        if year < 1835: return 1.4
+        if year < 1850: return 1.0
+        if year < 1870: return 0.7
+        return 0.5
+
+    # Red/gray fox — resilient, slight decline
+    if species_id in ("red_fox", "gray_fox"):
+        if year < 1840: return 1.3
+        if year < 1860: return 1.0
+        return 0.8
+
+    # Bison — abundant until hide hunters, crash in 1870s
+    if species_id in ("buffalo", "bison"):
+        if year < 1840: return 2.0   # vast herds
+        if year < 1860: return 1.5   # declining from settlement
+        if year < 1870: return 0.8   # serious pressure
+        if year < 1880: return 0.2   # mass slaughter
+        return 0.05                   # near extinction
+
+    # Elk — pushed out of plains by settlement
+    if species_id == "elk":
+        if year < 1840: return 1.5
+        if year < 1860: return 1.0
+        return 0.7
+
+    # Gray wolf — poisoned/hunted alongside bison decline
+    if species_id == "gray_wolf":
+        if year < 1850: return 1.5
+        if year < 1870: return 1.0
+        if year < 1880: return 0.5
+        return 0.3
+
+    # Grizzly bear — slow retreat westward
+    if species_id == "grizzly_bear":
+        if year < 1840: return 1.4
+        if year < 1860: return 1.0
+        if year < 1880: return 0.6
+        return 0.3
+
+    # ── Eastern big game — abundant pre-1800, overhunted after ────────
+
+    # Deer (all types) — massive herds pre-settlement
+    if species_id in ("mule_deer", "black_tailed_deer", "whitetail_deer"):
+        if year < 1780: return 2.5   # virgin wilderness, enormous herds
+        if year < 1810: return 2.0   # still abundant
+        if year < 1840: return 1.5   # declining from settlement
+        if year < 1870: return 1.0
+        return 0.8
+
+    # Elk — eastern herds abundant pre-1800, gone from east by 1850
+    if species_id == "elk":
+        if year < 1790: return 2.0
+        if year < 1820: return 1.5
+        if year < 1850: return 1.0
+        return 0.7
+
+    # Passenger pigeon — billions of birds, declining from 1800, extinct 1914
+    if species_id == "passenger_pigeon":
+        if year < 1800: return 3.0   # flocks darkening the sky
+        if year < 1850: return 2.0
+        if year < 1880: return 0.8
+        if year < 1900: return 0.2
+        return 0.0                    # extinct
+
+    # Wild horse — feral Spanish mustangs, expanding across plains
+    if species_id == "wild_horse":
+        if year < 1800: return 0.8   # still building herds
+        if year < 1850: return 1.5   # peak mustang population
+        if year < 1900: return 1.0
+        return 0.5                    # rounded up and removed
+
+    # Wild boar — feral hogs spreading from Spanish settlements
+    if species_id == "wild_boar":
+        if year < 1800: return 0.5   # limited to Gulf Coast
+        if year < 1850: return 0.8   # spreading
+        return 1.2                    # invasive, ever-increasing
+
+    # Black bear — resilient but declining with deforestation
+    if species_id == "black_bear":
+        if year < 1800: return 1.8
+        if year < 1850: return 1.3
+        return 1.0
+
+    # Wild turkey — abundant in eastern hardwoods, hunted hard
+    if species_id == "wild_turkey":
+        if year < 1800: return 2.0
+        if year < 1860: return 1.2
+        return 0.8
+
+    return 1.0
+
+
 def _species_for_region(region: str) -> List[WildlifeType]:
     """Return a list of WildlifeType values plausible for the region."""
     region_l = region.lower()
@@ -272,6 +432,94 @@ def _species_for_region(region: str) -> List[WildlifeType]:
     return candidates
 
 
+# ── Habitat-terrain matching ─────────────────────────────────────────────
+# Maps species habitats to LocalTerrain types they need nearby to spawn.
+# "aquatic" species need water within 5 tiles. "forest" need tree tiles.
+# Species without entries spawn anywhere passable.
+
+_HABITAT_REQUIRE_WATER = frozenset([
+    "beaver", "river_otter", "mink", "muskrat",
+])
+
+_HABITAT_PREFER_WATER = frozenset([
+    "raccoon", "moose",  # forage near water but don't require it
+])
+
+_HABITAT_REQUIRE_FOREST = frozenset([
+    "pine_marten", "fisher",
+])
+
+_HABITAT_REQUIRE_DENSE = frozenset([
+    "wolverine", "lynx",  # remote, dense habitat
+])
+
+_HABITAT_PREFER_OPEN = frozenset([
+    "pronghorn", "buffalo", "jackrabbit", "ground_squirrel", "badger",
+])
+
+_TREE_TERRAINS = frozenset([
+    LocalTerrain.FOREST, LocalTerrain.PINE, LocalTerrain.OAK,
+    LocalTerrain.ASPEN, LocalTerrain.CEDAR, LocalTerrain.MAPLE,
+    LocalTerrain.CHESTNUT, LocalTerrain.HICKORY, LocalTerrain.CYPRESS,
+    LocalTerrain.MAGNOLIA, LocalTerrain.JUNIPER,
+])
+
+_WATER_TERRAINS = frozenset([
+    LocalTerrain.WATER, LocalTerrain.DEEP_WATER,
+    LocalTerrain.BEAVER_POND, LocalTerrain.BEAVER_DAM,
+])
+
+_OPEN_TERRAINS = frozenset([
+    LocalTerrain.GRASS, LocalTerrain.GROUND, LocalTerrain.SAND,
+    LocalTerrain.TUNDRA,
+])
+
+
+def _has_terrain_nearby(lmap: LocalMap, x: int, y: int,
+                        terrain_set: frozenset, radius: int = 5) -> bool:
+    """Check if any tile in terrain_set exists within radius."""
+    for dy in range(-radius, radius + 1):
+        for dx in range(-radius, radius + 1):
+            nx, ny = x + dx, y + dy
+            if lmap.in_bounds(nx, ny):
+                if lmap.tiles[ny][nx].terrain in terrain_set:
+                    return True
+    return False
+
+
+def _valid_spawn_pos(lmap: LocalMap, x: int, y: int, species_id: str) -> bool:
+    """Check if position is valid for this species' habitat requirements."""
+    if not _can_move_to(lmap, x, y):
+        return False
+
+    if species_id in _HABITAT_REQUIRE_WATER:
+        return _has_terrain_nearby(lmap, x, y, _WATER_TERRAINS, radius=5)
+
+    if species_id in _HABITAT_PREFER_WATER:
+        # 70% chance of requiring water nearby, 30% anywhere
+        return True  # checked during weighted selection instead
+
+    if species_id in _HABITAT_REQUIRE_FOREST:
+        return _has_terrain_nearby(lmap, x, y, _TREE_TERRAINS, radius=3)
+
+    if species_id in _HABITAT_REQUIRE_DENSE:
+        # Need multiple tree tiles nearby (dense forest)
+        count = 0
+        for dy in range(-3, 4):
+            for dx in range(-3, 4):
+                nx, ny = x + dx, y + dy
+                if lmap.in_bounds(nx, ny) and lmap.tiles[ny][nx].terrain in _TREE_TERRAINS:
+                    count += 1
+                    if count >= 4:
+                        return True
+        return False
+
+    if species_id in _HABITAT_PREFER_OPEN:
+        return _has_terrain_nearby(lmap, x, y, _OPEN_TERRAINS, radius=3)
+
+    return True  # no special requirement
+
+
 class WildlifeManager:
     def __init__(self, seed: int = 42):
         self.seed = seed
@@ -283,13 +531,73 @@ class WildlifeManager:
     # ── Spawning ─────────────────────────────────────────────────────────
 
     def spawn_for_local(self, lmap: LocalMap, world_x: int, world_y: int,
-                        area_x: int = 7, area_y: int = 7):
+                        area_x: int = 7, area_y: int = 7, year: int = 1849,
+                        season: str = "summer"):
         key = (world_x, world_y, area_x, area_y)
         if key in self.active:
             return
 
         self.active[key] = []
         candidates = _species_for_region(lmap._region_name)
+        if not candidates:
+            return
+
+        # Apply era multipliers (species-specific historical curves)
+        candidates = [(wt, w * _era_wildlife_mult(wt.value, year))
+                      for wt, w in candidates]
+
+        # Seasonal migration — herds move with the seasons
+        # Buffalo/elk go to high ground in summer, low valleys in winter
+        # Latitude (world_y) affects this: southern tiles warmer
+        elev = getattr(lmap, 'world_elevation_ft', 0)
+        _season_mods = []
+        for wt, w in candidates:
+            sid = wt.value if hasattr(wt, 'value') else str(wt)
+            mult = 1.0
+            if sid in ("buffalo", "elk", "pronghorn"):
+                if season == "winter" and elev > 5000:
+                    mult = 0.3  # herds move to lower ground
+                elif season == "summer" and elev > 5000:
+                    mult = 1.5  # summer high pastures
+                elif season == "winter" and elev < 3000:
+                    mult = 1.5  # winter lowland concentration
+            elif sid == "whitetail_deer":
+                if season == "winter":
+                    mult = 0.7  # yard up, fewer visible
+                elif season == "fall":
+                    mult = 1.3  # rut, more active/visible
+            _season_mods.append((wt, w * mult))
+        candidates = _season_mods
+
+        # Boost aquatic species if map has significant water
+        water_count = 0
+        sample_step = 8  # sample every 8th tile for speed
+        for sy in range(0, lmap.height, sample_step):
+            for sx in range(0, lmap.width, sample_step):
+                if lmap.tiles[sy][sx].terrain in _WATER_TERRAINS:
+                    water_count += 1
+        water_rich = water_count > 5  # meaningful water presence
+
+        if water_rich:
+            # Boost aquatic furbearers on water-rich maps
+            boosted = []
+            for wt, w in candidates:
+                sid = wt.value if hasattr(wt, 'value') else str(wt)
+                if sid in _HABITAT_REQUIRE_WATER:
+                    boosted.append((wt, w * 2.0))
+                elif sid in _HABITAT_PREFER_WATER:
+                    boosted.append((wt, w * 1.5))
+                else:
+                    boosted.append((wt, w))
+            candidates = boosted
+        else:
+            # Suppress aquatic species on dry maps
+            candidates = [(wt, w * 0.1 if (hasattr(wt, 'value') and
+                           wt.value in _HABITAT_REQUIRE_WATER) else w)
+                          for wt, w in candidates]
+
+        # Filter out zero-weight candidates
+        candidates = [(wt, w) for wt, w in candidates if w > 0.001]
         if not candidates:
             return
 
@@ -300,11 +608,12 @@ class WildlifeManager:
         for _ in range(count):
             wt = self.rng.choices(types, weights=weights, k=1)[0]
             sp = WILDLIFE_DB[wt]
+            sid = wt.value if hasattr(wt, 'value') else str(wt)
 
             for attempt in range(50):
                 x = self.rng.randint(15, lmap.width  - 15)
                 y = self.rng.randint(15, lmap.height - 15)
-                if _can_move_to(lmap, x, y):
+                if _valid_spawn_pos(lmap, x, y, sid):
                     animal = WildlifeInstance(wt, sp, x, y)
                     animal.local_z = lmap.ground_z(x, y)
                     self.active[key].append(animal)
@@ -459,7 +768,7 @@ class WildlifeManager:
         # Despawn once far enough away
         if max(abs(animal.local_x - player.local_x),
                abs(animal.local_y - player.local_y)) > 30:
-            animal.state = "dead"   # off-map, treat as gone
+            animal.state = "butchered"   # off-map, treat as gone
 
     def _move_toward(self, animal: WildlifeInstance, player: "Player",
                      lmap: LocalMap):

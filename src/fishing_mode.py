@@ -217,8 +217,7 @@ def enter_fishing_mode(engine: "Engine", console, ctx) -> None:
         console.print(X + 2, y, f"Location: {region}", fg=GREY, bg=BG)
         y += 1
         console.print(X + 2, y, f"Season: {season.capitalize()}", fg=GREY, bg=BG)
-        night_str = " (night)" if period == "night" else ""
-        console.print(X + 30, y, f"Time: {period}{night_str}", fg=GREY, bg=BG)
+        console.print(X + 30, y, f"Time: {period}", fg=GREY, bg=BG)
         y += 1
 
         # Spot quality bar
@@ -297,6 +296,8 @@ def enter_fishing_mode(engine: "Engine", console, ctx) -> None:
                 elif sym in (K.N2, K.KP_2): method_idx = 1
                 elif sym in (K.N3, K.KP_3): method_idx = 2
                 elif sym in (K.N4, K.KP_4): method_idx = 3
+                elif sym in (K.N5, K.KP_5): method_idx = 4
+                elif sym in (K.N6, K.KP_6): method_idx = 5
 
                 if method_idx is not None and method_idx < len(available):
                     method_key = available[method_idx]
@@ -389,6 +390,10 @@ def enter_fishing_mode(engine: "Engine", console, ctx) -> None:
 
                     # Spot quality
                     catch_chance *= spot_quality
+
+                    # Canoe bonus — fishing from a boat is better
+                    if getattr(player, '_in_canoe', False):
+                        catch_chance *= 1.5
 
                     # Night modifier
                     if period == "night":

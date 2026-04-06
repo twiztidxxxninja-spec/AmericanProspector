@@ -263,7 +263,7 @@ def _find_danger_tile(player: "Player", world_map: "WorldMap",
 # ── Text builders ──────────────────────────────────────────────────────────────
 
 def _gold_rumor_text(dx: int, dy: int, dist: int,
-                     terrain: int, place: str, spec: str) -> str:
+                     terrain: int, place: str, spec: str, rng=None) -> str:
     direction  = _dir(dx, dy)
     dist_txt   = _dist_text(dist)
     terr_txt   = _terrain_phrase(terrain)
@@ -291,12 +291,13 @@ def _gold_rumor_text(dx: int, dy: int, dist: int,
             f"{dist_txt} {direction} — {place}. The color runs fine but there's a lot of it. "
             f"You'll need to work a bar for a week minimum, but it pays.",
         ]
-    return random.choice(options)
+    _rng = rng or random
+    return _rng.choice(options)
 
 
 def _location_rumor_text(dx: int, dy: int, dist: int,
                          terrain: int, place: str, spec: str,
-                         loc_name: str = "") -> str:
+                         loc_name: str = "", rng=None) -> str:
     direction = _dir(dx, dy)
     dist_txt  = _dist_text(dist)
     terr_txt  = _terrain_phrase(terrain)
@@ -321,7 +322,8 @@ def _location_rumor_text(dx: int, dy: int, dist: int,
             f"Follow the trail {direction}, {dist_txt} — you'll hit {name_str}. "
             f"Tell them I sent you.",
         ]
-    return random.choice(options)
+    _rng = rng or random
+    return _rng.choice(options)
 
 
 def _water_rumor_text(dx: int, dy: int, dist: int, spec: str, place: str) -> str:
@@ -636,9 +638,9 @@ def generate_rumor(player: "Player", npc: "NPC",
     if category in EVENT_CATEGORIES:
         text = _event_rumor_text(category, dx, dy, dist, terrain, place, spec, rng)
     elif category == "gold":
-        text = _gold_rumor_text(dx, dy, dist, terrain, place, spec)
+        text = _gold_rumor_text(dx, dy, dist, terrain, place, spec, rng)
     elif category == "location":
-        text = _location_rumor_text(dx, dy, dist, terrain, place, spec, loc_name)
+        text = _location_rumor_text(dx, dy, dist, terrain, place, spec, loc_name, rng)
     elif category == "water":
         text = _water_rumor_text(dx, dy, dist, spec, place)
     else:

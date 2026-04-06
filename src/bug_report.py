@@ -44,7 +44,7 @@ def _collect_state(engine: "Engine") -> dict:
     # Wounds
     wounds = []
     if hasattr(p, 'wounds'):
-        for w in p.wounds.active_wounds:
+        for w in p.wounds.wounds:
             wounds.append(f"{w.description} on {w.part}")
 
     # Current map info

@@ -49,35 +49,62 @@ def enter_trapping_mode(engine: "Engine", console, ctx) -> None:
 
     # Animal sign detection based on tracking + trapping skill
     def _detect_signs():
-        """Find animal signs near player based on skill."""
+        """Find animal signs near real animals on the map."""
         signs = []
         skill = player.skills.get("tracking", 0) + player.skills.get("trapping", 0)
         if skill < 2:
             return signs
         px, py = player.local_x, player.local_y
-        radius = min(15, 5 + skill)
-        for dy in range(-radius, radius + 1):
-            for dx in range(-radius, radius + 1):
-                nx, ny = px + dx, py + dy
-                if not lmap.in_bounds(nx, ny):
+        detect_range = min(25, 8 + skill * 2)
+
+        animals = engine.wildlife_mgr.get_animals(
+            player.world_x, player.world_y,
+            player.area_x, player.area_y)
+
+        # Use a seeded rng so signs don't flicker between frames
+        sign_rng = random.Random(lmap.seed + engine.time.total_minutes // 60)
+
+        _AQUATIC = {"beaver", "river_otter", "mink"}
+
+        for animal in animals:
+            if not animal.alive:
+                continue
+            ax, ay = animal.local_x, animal.local_y
+            dist = max(abs(ax - px), abs(ay - py))
+            if dist > detect_range:
+                continue
+
+            sid = animal.species.id if hasattr(animal.species, 'id') else ""
+
+            # Place 2-4 sign tiles between player and animal (trail)
+            steps = max(2, min(4, dist // 3))
+            for i in range(1, steps + 1):
+                frac = i / (steps + 1)
+                sx = int(px + (ax - px) * frac) + sign_rng.randint(-1, 1)
+                sy = int(py + (ay - py) * frac) + sign_rng.randint(-1, 1)
+                if not lmap.in_bounds(sx, sy):
                     continue
-                # Use position hash to deterministically place signs
-                h = (nx * 7919 + ny * 6271 + lmap.seed) & 0xFFFF
-                # Signs near water = aquatic animals
-                t = lmap.tiles[ny][nx].terrain
-                near_water = t == LocalTerrain.WATER
-                if h % 100 < skill * 2:  # more skill = more signs visible
-                    if near_water:
-                        sign_type = "tracks (water)"
-                    elif t in (LocalTerrain.MUD, LocalTerrain.SAND):
-                        sign_type = "tracks"
-                    elif t == LocalTerrain.BRUSH:
-                        sign_type = "den"
-                    elif t in (LocalTerrain.GRASS, LocalTerrain.GROUND):
-                        sign_type = "scat"
+                t = lmap.tiles[sy][sx].terrain
+
+                if sid in _AQUATIC or t == LocalTerrain.WATER:
+                    signs.append((sx, sy, "tracks (water)"))
+                elif t in (LocalTerrain.MUD, LocalTerrain.SAND,
+                           LocalTerrain.GROUND, LocalTerrain.GRASS):
+                    signs.append((sx, sy, "tracks"))
+                elif t == LocalTerrain.BRUSH:
+                    signs.append((sx, sy, "den"))
+
+            # Sign at animal's actual position (scat/den)
+            if dist <= detect_range // 2:
+                if lmap.in_bounds(ax, ay):
+                    t = lmap.tiles[ay][ax].terrain
+                    if t == LocalTerrain.BRUSH:
+                        signs.append((ax, ay, "den"))
+                    elif t == LocalTerrain.WATER:
+                        signs.append((ax, ay, "tracks (water)"))
                     else:
-                        continue
-                    signs.append((nx, ny, sign_type))
+                        signs.append((ax, ay, "scat"))
+
         return signs
 
     add_msg("Trapping mode. [S]et [C]heck [R]eset [P]ickup [F]craft [TAB]cycle")
@@ -377,7 +404,10 @@ def enter_trapping_mode(engine: "Engine", console, ctx) -> None:
                                 player.inventory.remove(bi)
                     skill = player.skills.get("trapping", 0)
                     sq = max(0, min(10, skill + rng.randint(-2, 2)))
-                    player.inventory.remove(trap_item)
+                    if trap_item.stackable and trap_item.quantity > 1:
+                        trap_item.quantity -= 1
+                    else:
+                        player.inventory.remove(trap_item)
                     engine.trap_mgr.place_trap(
                         trap_item.id, tx, ty,
                         player.world_x, player.world_y,
@@ -476,12 +506,16 @@ def enter_trapping_mode(engine: "Engine", console, ctx) -> None:
                 if sym in moves:
                     dx, dy = moves[sym]
                     nx, ny = px + dx, py + dy
+                    if engine.check_edge_transition(nx, ny):
+                        return  # crossed into next patch — exit trapping mode
                     if lmap.in_bounds(nx, ny) and lmap.is_passable(nx, ny):
-                        player.move(dx, dy)
                         cur_z = player.local_z
                         target_z = int(lmap.surface_z[ny][nx])
-                        if abs(target_z - cur_z) < 2:
-                            player.local_z = target_z
+                        if abs(target_z - cur_z) >= 2:
+                            break  # cliff — can't move there
+                        player.move(dx, dy)
+                        player.local_z = target_z
                         engine.time.advance_seconds(3)
                         engine.recompute_fov()
+                        lmap = engine.current_local  # refresh after move
                     break

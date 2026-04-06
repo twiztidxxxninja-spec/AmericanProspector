@@ -56,13 +56,51 @@ ATTR_DESC = {
 
 ERAS = [
     {
+        "id":      "long_hunter",
+        "name":    "1780 — Long Hunters",
+        "year":    1780,
+        "month":   4,
+        "region":  "Appalachian Frontier",
+        "world_x": 340, "world_y": 195,
+        "cash":    8.0,
+        "desc": [
+            "The year is 1780. The Revolution rages on the coast,",
+            "but here on the frontier, the war is different.",
+            "Shawnee and Cherokee defend their hunting grounds.",
+            "You are a long hunter — months alone in the",
+            "wilderness, living off your rifle and your knife.",
+            "Deer hides are money. A good buck is worth a dollar.",
+            "The country west of here has never been mapped.",
+            "What's out there is yours to find — if you survive.",
+        ],
+    },
+    {
+        "id":      "mountain_men",
+        "name":    "1825 — Mountain Men",
+        "year":    1825,
+        "month":   4,
+        "region":  "Missouri Frontier",
+        "world_x": 275, "world_y": 150,
+        "cash":    30.0,
+        "desc": [
+            "The beaver trade is booming. St. Louis sends",
+            "men into the Rockies to trap the streams that",
+            "feed a European appetite for felt hats.",
+            "",
+            "No towns. No law. No map past the Missouri.",
+            "The annual Rendezvous is your only link to",
+            "civilization. Everything you need, you carry",
+            "or you make. The mountains don't forgive.",
+        ],
+    },
+    {
         "id":      "gold_rush",
         "name":    "1849 — California Gold Rush",
         "year":    1849,
         "month":   4,
         "region":  "Northern California",
-        "world_x": 95, "world_y": 165,   # Sacramento
-        "cash":    50.0,
+        "world_x": 97, "world_y": 163,   # Near Sacramento (wilderness creek)
+        "cash":    150.0,
         "desc": [
             "The hills are crawling with men and rumors.",
             "No regulations. No law west of Missouri.",
@@ -177,10 +215,118 @@ ERAS = [
 # ── Background data ───────────────────────────────────────────────────────────
 
 BACKGROUNDS = [
+    # ── Long Hunter backgrounds ──────────────────────────────────────
+    {
+        "id":    "long_hunter",
+        "name":  "Long Hunter",
+        "era_min": None,
+        "eras": ["long_hunter"],
+        "desc": [
+            "You hunt alone. Months in the canebrakes and",
+            "hollows, living off the land. You carry your",
+            "rifle, your knife, and enough powder to last.",
+            "The hides pay for everything else.",
+        ],
+        "bonuses": {"survival": 3, "tracking": 2, "firearms": 1},
+        "cash_mult": 1.0,
+        "gear_note": "Start with: flintlock long rifle, knife, axe, light provisions.",
+    },
+    {
+        "id":    "frontier_scout",
+        "name":  "Frontier Scout",
+        "era_min": None,
+        "eras": ["long_hunter"],
+        "desc": [
+            "You've scouted for the militia and guided",
+            "settlers through the gaps. You know the trails,",
+            "the fords, and the signs that mean trouble.",
+            "The Shawnee know your face. That cuts both ways.",
+        ],
+        "bonuses": {"tracking": 3, "survival": 2, "firearms": 1},
+        "cash_mult": 0.8,
+        "gear_note": "Start with: flintlock rifle, compass, knife, light provisions.",
+    },
+    {
+        "id":    "settlers_son",
+        "name":  "Settler's Son",
+        "era_min": None,
+        "eras": ["long_hunter"],
+        "desc": [
+            "Raised on a hardscrabble farm at the edge of",
+            "civilization. Your father cleared the land. You",
+            "grew up with an axe in one hand and a rifle in",
+            "the other. Time to see what's over the ridge.",
+        ],
+        "bonuses": {"survival": 2, "farming": 1, "firearms": 1},
+        "cash_mult": 1.2,
+        "gear_note": "Start with: flintlock rifle, extra food, hand tools.",
+    },
+    {
+        "id":    "deserter",
+        "name":  "Deserter",
+        "era_min": None,
+        "eras": ["long_hunter"],
+        "desc": [
+            "You left the Continental Army. The officers",
+            "won't follow you into the backcountry. Probably.",
+            "You know how to shoot, how to march, and how",
+            "to disappear. The frontier asks no questions.",
+        ],
+        "bonuses": {"firearms": 3, "survival": 1},
+        "cash_mult": 0.5,
+        "gear_note": "Start with: military musket, bayonet, extra powder.",
+    },
+    # ── Mountain Men backgrounds ─────────────────────────────────────
+    {
+        "id":    "mountain_man",
+        "name":  "Mountain Man",
+        "era_min": None,
+        "eras": ["mountain_men"],
+        "desc": [
+            "You came west to trap beaver and live free.",
+            "The mountains are your home now. You know the",
+            "streams, the sign, the seasons. You carry",
+            "everything you own on your back and your horse.",
+        ],
+        "bonuses": {"trapping": 3, "survival": 2, "tracking": 2},
+        "cash_mult": 0.8,
+        "gear_note": "Start with: flintlock rifle, traps, skinning knife, horse.",
+    },
+    {
+        "id":    "voyageur",
+        "name":  "Voyageur",
+        "era_min": None,
+        "eras": ["mountain_men"],
+        "desc": [
+            "French-Canadian by birth, you paddle the rivers",
+            "and portage the heights. You know the trade",
+            "routes, the tribal politics, the value of every",
+            "pelt from St. Louis to the Three Forks.",
+        ],
+        "bonuses": {"trading": 3, "survival": 1, "tracking": 1},
+        "cash_mult": 1.3,
+        "gear_note": "Start with: flintlock rifle, trade goods, extra blankets.",
+    },
+    {
+        "id":    "company_man",
+        "name":  "Company Man",
+        "era_min": None,
+        "eras": ["mountain_men"],
+        "desc": [
+            "You work for the fur company. They outfit you,",
+            "you bring back pelts. The contract is strict",
+            "but the company provides. You know business,",
+            "you know the books, and you know the wilderness.",
+        ],
+        "bonuses": {"trading": 2, "firearms": 1, "law": 1},
+        "cash_mult": 1.5,
+        "gear_note": "Start with: company contract, trade goods, flintlock, ledger.",
+    },
     {
         "id":    "forty_niner",
         "name":  "Forty-Niner",
         "era_min": None,
+        "eras": ["gold_rush", "industrial", "petroleum", "depression", "atomic", "regulated"],
         "desc": [
             "You followed the rumor west with a pan and",
             "a mule. You have worked every creek between",
@@ -310,11 +456,13 @@ BACKGROUNDS = [
 ]
 
 # Era unlock order (for checking era_min)
-ERA_ORDER = ["gold_rush", "industrial", "petroleum",
-             "depression", "atomic", "regulated"]
+ERA_ORDER = ["long_hunter", "mountain_men", "gold_rush", "industrial",
+             "petroleum", "depression", "atomic", "regulated"]
 
 
 def _bg_available(bg: dict, era: dict) -> bool:
+    if "eras" in bg:
+        return era["id"] in bg["eras"]
     if bg["era_min"] is None:
         return True
     era_idx    = ERA_ORDER.index(era["id"])
@@ -386,7 +534,7 @@ def _screen_name(con: tcod.console.Console, ctx) -> Optional[str]:
     try:
         while True:
             _clear(con)
-            _title_bar(con, "A Hard Prospecting Simulator  ·  1849 – 2000")
+            _title_bar(con, "A Hard Frontier Simulator  ·  1825 – 2000")
 
             # Flavor text
             for i, line in enumerate(LINES):
@@ -450,7 +598,7 @@ def _screen_era(con: tcod.console.Console, ctx) -> Optional[dict]:
         _box(con, 0, 2, LW, SCREEN_HEIGHT - 4)
         for i, era in enumerate(ERAS):
             is_sel = i == selected
-            playable = (era["id"] == "gold_rush")
+            playable = (era["id"] in ("long_hunter", "gold_rush", "mountain_men"))
             if not playable:
                 # Grey out unavailable eras
                 fg = DGREY
@@ -506,7 +654,7 @@ def _screen_era(con: tcod.console.Console, ctx) -> Optional[dict]:
                 elif sym in (K.DOWN, K.KP_2):
                     selected = (selected + 1) % len(ERAS)
                 elif sym in (K.RETURN, K.KP_ENTER):
-                    if ERAS[selected]["id"] == "gold_rush":
+                    if ERAS[selected]["id"] in ("long_hunter", "gold_rush", "mountain_men"):
                         return ERAS[selected]
                     # Can't select locked eras
 
@@ -538,7 +686,8 @@ def _screen_background(con: tcod.console.Console, ctx,
                 f"+{v} {k[:6]}" for k, v in bg["bonuses"].items()
                 if k in ("placer","survival","firearms","assaying","geology",
                          "trading","farming","engineering","oilSensing","literacy",
-                         "firstAid","tracking","chemistry","charisma","law")
+                         "firstAid","tracking","chemistry","charisma","law",
+                         "trapping")
             )
             con.print(4, 6 + i * 3, bonuses[:LW - 6], fg=AMBER, bg=bg_col)
 
@@ -827,6 +976,10 @@ def _screen_skills(con: tcod.console.Console, ctx,
                     final = {}
                     for s in SKILL_ORDER:
                         final[s] = skills[s] + bg_bonuses.get(s, 0)
+                    # Pass through attribute bonuses (e.g., charisma)
+                    for k, v in bg_bonuses.items():
+                        if k not in SKILL_ORDER:
+                            final[k] = v  # attribute bonus, not a skill
                     return final
 
 
@@ -847,7 +1000,8 @@ def _screen_confirm(con: tcod.console.Console, ctx,
 
     while True:
         _clear(con)
-        _title_bar(con, "Ready to Prospect?")
+        confirm_text = "Ready to Trap?" if era["id"] == "mountain_men" else "Ready to Prospect?"
+        _title_bar(con, confirm_text)
 
         _box(con, X, Y, W, H, "Character Summary")
 

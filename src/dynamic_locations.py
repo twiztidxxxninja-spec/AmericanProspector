@@ -213,11 +213,94 @@ class DynamicLocationDB:
             loc.discovered = True
             loc.seasons_idle = 0
 
+    def record_activity(self, wx: int, wy: int):
+        """Record player/NPC activity near this location — resets idle counter."""
+        for loc_id in self._by_pos.get((wx, wy), []):
+            loc = self._by_id.get(loc_id)
+            if loc:
+                loc.seasons_idle = 0
+
+    def boost_growth(self, wx: int, wy: int, gold_found: float,
+                     year: int) -> Optional[str]:
+        """Boost a settlement near a gold find. Returns message or None.
+        Called when player finds significant gold — attracts population."""
+        # Find nearest active settlement within 10 tiles
+        best_loc = None
+        best_dist = 99
+        for loc in self._by_id.values():
+            if loc.stage in (LifecycleStage.ABANDONED, LifecycleStage.RUINS,
+                             LifecycleStage.OVERGROWN):
+                continue
+            d = abs(loc.world_x - wx) + abs(loc.world_y - wy)
+            if d < best_dist and d <= 10:
+                best_dist = d
+                best_loc = loc
+
+        if best_loc and gold_found > 0.01:
+            # Population boost proportional to gold amount
+            boost = int(gold_found * 50)  # 0.1 oz = 5 people
+            best_loc.population += boost
+            best_loc.seasons_idle = 0
+            # Check for upgrade
+            msg = None
+            if best_loc.population > 200 and best_loc.loc_type == "mining_camp":
+                best_loc.loc_type = "boomtown"
+                msg = (f"Word of gold at {best_loc.name} has spread. "
+                       f"The camp is turning into a boomtown. "
+                       f"Population: {best_loc.population}.")
+            elif best_loc.population > 50 and \
+                    best_loc.loc_type == "prospector_camp":
+                best_loc.loc_type = "mining_camp"
+                msg = (f"More miners arriving at {best_loc.name}. "
+                       f"It's becoming a proper camp.")
+            return msg
+
+        # No settlement nearby — spawn a new prospector camp
+        if gold_found > 0.05:
+            camp_name = f"New Diggings ({wx},{wy})"
+            self.add(DynamicLocation(
+                id=f"gold_camp_{wx}_{wy}_{year}",
+                name=camp_name,
+                loc_type="prospector_camp",
+                world_x=wx, world_y=wy,
+                population=random.randint(2, 8),
+                stage=LifecycleStage.ACTIVE,
+                era_founded=year,
+                resource_type="placer_gold",
+                notes="A new digging started by prospectors.",
+                discovered=True,
+            ))
+            return (f"Word of your gold find has gotten out. "
+                    f"A few prospectors have set up camp nearby.")
+        return None
+
     def age_one_season(self, current_year: int) -> List[DynamicLocation]:
         """
         Advance all locations by one season (90 game-days).
         Returns list of locations that degraded this season.
         """
+        # Native camp seasonal relocation — tribes moved camps
+        # Summer: scattered hunting camps. Winter: consolidated villages.
+        for loc in list(self._by_id.values()):
+            if loc.loc_type == "native_camp" and loc.stage == LifecycleStage.ACTIVE:
+                # Move camp by 1-3 tiles each season (following game)
+                dx = random.randint(-2, 2)
+                dy = random.randint(-2, 2)
+                from src.constants import WORLD_WIDTH, WORLD_HEIGHT
+                new_x = max(0, min(WORLD_WIDTH - 1, loc.world_x + dx))
+                new_y = max(0, min(WORLD_HEIGHT - 1, loc.world_y + dy))
+                # Update spatial index
+                old_pos = (loc.world_x, loc.world_y)
+                new_pos = (new_x, new_y)
+                if old_pos in self._by_pos:
+                    self._by_pos[old_pos] = [
+                        i for i in self._by_pos[old_pos] if i != loc.id]
+                loc.world_x = new_x
+                loc.world_y = new_y
+                if new_pos not in self._by_pos:
+                    self._by_pos[new_pos] = []
+                self._by_pos[new_pos].append(loc.id)
+
         degraded = []
         for loc in list(self._by_id.values()):
             loc.seasons_idle += 1
@@ -273,7 +356,7 @@ class DynamicLocationDB:
             else:
                 loc = _make_prospector_camp(self._new_id, wx, wy, year, rng)
 
-            return self._register(loc)
+            return self.add(loc)
         return None
 
     def from_travel_event(self, wx: int, wy: int,
@@ -296,17 +379,18 @@ class DynamicLocationDB:
         if world_terrain in (Terrain.MOUNTAINS, Terrain.HILLS):
             if roll < 0.04:
                 loc = _make_prospector_camp(self._new_id, wx, wy, year, rng)
-                return self._register(loc)
+                return self.add(loc)
             if roll < 0.08 and year >= 1849:
                 loc = _make_abandoned_camp(self._new_id, wx, wy, year, rng)
-                return self._register(loc)
+                return self.add(loc)
         elif world_terrain in (Terrain.PLAINS, Terrain.PRAIRIE):
-            if roll < 0.03 and year < 1880:
+            native_prob = 0.15 if year < 1850 else 0.03
+            if roll < native_prob and year < 1880:
                 loc = _make_native_camp(self._new_id, wx, wy, year, rng)
-                return self._register(loc)
-            if roll < 0.05:
+                return self.add(loc)
+            elif roll < native_prob + 0.02:
                 loc = _make_waystation(self._new_id, wx, wy, year, rng)
-                return self._register(loc)
+                return self.add(loc)
         return None
 
     def add_player_camp(self, wx: int, wy: int,
@@ -420,6 +504,15 @@ def _make_native_camp(id_fn, wx: int, wy: int, year: int,
     # Era-appropriate tribes by approximate world-map region (rough)
     # In practice the engine should cross-reference region_name
     tribes_by_era = {
+        1760: ["Shawnee", "Cherokee", "Chickasaw", "Creek", "Delaware",
+               "Iroquois", "Miami", "Mingo", "Wyandot", "Ottawa",
+               "Potawatomi", "Choctaw", "Catawba",
+               "Blackfeet", "Crow", "Shoshone", "Flathead", "Nez Perce",
+               "Ute", "Arapaho", "Cheyenne", "Lakota Sioux"],
+        1800: ["Blackfeet", "Crow", "Shoshone", "Flathead", "Nez Perce",
+               "Ute", "Arapaho", "Gros Ventre", "Bannock", "Cheyenne",
+               "Lakota Sioux", "Pawnee", "Mandan", "Hidatsa", "Osage",
+               "Shawnee", "Cherokee", "Chickasaw", "Creek", "Delaware"],
         1849: ["Miwok", "Maidu", "Paiute", "Shoshone", "Crow",
                "Cheyenne", "Sioux", "Nez Perce", "Yakama", "Chinook"],
         1870: ["Crow", "Lakota Sioux", "Northern Cheyenne", "Arapaho",

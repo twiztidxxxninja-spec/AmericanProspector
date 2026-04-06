@@ -266,8 +266,8 @@ def _handle_write(sym, state: MenuState, ctx: dict) -> bool:
 #  AAR (AFTER ACTION REPORT)
 # ============================================================================
 
-def _draw_aar(state, con, x, y, w, h, **kw):
-    journal = kw.get("journal")
+def _draw_aar(con, x, y, w, h, state, ctx):
+    journal = ctx.get("journal")
     if not journal or not journal.combat_log:
         con.print(x + 2, y + 2, "No combat encounters recorded.", fg=GREY)
         return
@@ -300,11 +300,10 @@ def _draw_aar(state, con, x, y, w, h, **kw):
         con.print(x + 2, y + 3 + i, line[:w - 4], fg=fg)
 
 
-def _handle_aar(state, event, **kw):
-    journal = kw.get("journal")
+def _handle_aar(sym, state, ctx):
+    journal = ctx.get("journal")
     if not journal or not journal.combat_log:
         return False
-    sym = event.sym
     K = tcod.event.KeySym
     idx = getattr(state, '_aar_idx', len(journal.combat_log) - 1)
 

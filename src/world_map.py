@@ -117,6 +117,8 @@ class WorldMap:
         self.elevation = np.zeros((self.height, self.width), dtype=np.float32)
         self.visited = np.zeros((self.height, self.width), dtype=bool)
         self.gold_bias = np.zeros((self.height, self.width), dtype=np.float32)
+        # Trail overlay: 0=none, 1=trail, 2=road. Reduces travel time.
+        self.trails = np.zeros((self.height, self.width), dtype=np.int8)
         
         self.locations: Dict[str, WorldLocation] = {}
         self._loc_by_pos: Dict[Tuple[int,int], str] = {}
@@ -127,6 +129,8 @@ class WorldMap:
     def _generate(self):
         rng = random.Random(self.seed)
         self._place_terrain(rng)
+        self._generate_elevation()
+        self._place_trails()
         self._place_fixed_locations()
         self._assign_regions_and_gold_bias()
         # Expanded historical locations (100+) and gold-bias hotspots
@@ -135,6 +139,119 @@ class WorldMap:
             WorldGenerator(self.seed).populate(self)
         except Exception:
             pass  # falls back to base 34 locations if world_gen unavailable
+
+    # ── Elevation bands by terrain (feet above sea level) ───────────
+    _TERRAIN_ELEV = {
+        Terrain.OCEAN:     (0, 0),
+        Terrain.COAST:     (0, 200),
+        Terrain.SWAMP:     (0, 500),
+        Terrain.PLAINS:    (500, 2000),
+        Terrain.PRAIRIE:   (1000, 3000),
+        Terrain.FOREST:    (500, 3000),
+        Terrain.RIVER:     (500, 3000),
+        Terrain.SCRUB:     (1500, 4000),
+        Terrain.HILLS:     (2000, 5000),
+        Terrain.DESERT:    (2000, 4500),
+        Terrain.CONIFER:   (3000, 7000),
+        Terrain.MOUNTAINS: (5000, 12000),
+        Terrain.TUNDRA:    (4000, 10000),
+    }
+
+    def _generate_elevation(self):
+        """Populate self.elevation with feet-above-sea-level per world tile.
+        Uses terrain type to set the range, then Perlin noise for smooth
+        variation so adjacent mountain tiles have similar elevations and
+        ranges transition gradually."""
+        rng = np.random.RandomState(self.seed + 7777)
+
+        # Generate smooth world-scale noise (large features)
+        # Two octaves: broad continental shape + regional variation
+        noise = np.zeros((self.height, self.width), dtype=np.float32)
+        for octave, (freq, amp) in enumerate([(0.008, 0.6), (0.02, 0.3), (0.05, 0.1)]):
+            # Phase-shifted sine/cosine noise (cheap, smooth, no perlin dep)
+            xs = np.arange(self.width) * freq
+            ys = np.arange(self.height) * freq
+            phase_x = rng.uniform(0, 6.28)
+            phase_y = rng.uniform(0, 6.28)
+            x_wave = np.sin(xs + phase_x + octave * 1.7)
+            y_wave = np.sin(ys + phase_y + octave * 2.3)
+            grid = np.outer(y_wave, x_wave) * amp
+            noise += grid
+        # Normalize to 0-1
+        noise = (noise - noise.min()) / max(noise.max() - noise.min(), 0.001)
+
+        # Map noise to elevation using terrain bands
+        for wy in range(self.height):
+            for wx in range(self.width):
+                terrain = int(self.tiles[wy, wx])
+                lo, hi = self._TERRAIN_ELEV.get(terrain, (500, 2000))
+                # Noise provides variation within the band
+                n = float(noise[wy, wx])
+                self.elevation[wy, wx] = lo + n * (hi - lo)
+
+        # Smooth transitions between adjacent tiles (3-pass box blur)
+        for _ in range(3):
+            padded = np.pad(self.elevation, 1, mode='edge')
+            self.elevation = (
+                padded[1:-1, 1:-1] * 0.5 +
+                padded[:-2, 1:-1] * 0.125 +
+                padded[2:, 1:-1] * 0.125 +
+                padded[1:-1, :-2] * 0.125 +
+                padded[1:-1, 2:] * 0.125
+            )
+
+    def get_elevation(self, wx: int, wy: int) -> int:
+        """Return elevation in feet above sea level for a world tile."""
+        if 0 <= wx < self.width and 0 <= wy < self.height:
+            return int(self.elevation[wy, wx])
+        return 0
+
+    def _place_trails(self):
+        """Place historical trails and roads on the world map.
+        Each trail is a list of (x, y) waypoints; Bresenham between them."""
+        # (waypoints, trail_type, year_available)
+        # trail_type: 1=trail, 2=road
+        TRAILS = [
+            # Wilderness Road — Cumberland Gap to Boonesborough (1775+)
+            ([(350, 198), (348, 196), (345, 192), (342, 190)], 1, 1775),
+            # Natchez Trace — Nashville to Natchez (1801 improved)
+            ([(335, 205), (330, 210), (325, 215), (315, 220), (310, 225)], 1, 1780),
+            # Oregon Trail — Independence to Oregon (1843+)
+            ([(285, 160), (270, 150), (250, 140), (230, 135), (210, 130),
+              (190, 125), (170, 120), (150, 115), (130, 110), (110, 105),
+              (90, 100)], 1, 1843),
+            # California Trail — splits from Oregon Trail (1844+)
+            ([(210, 130), (200, 135), (180, 140), (160, 148), (140, 155),
+              (120, 160), (100, 163)], 1, 1844),
+            # Santa Fe Trail — Independence to Santa Fe (1821+)
+            ([(285, 160), (270, 165), (255, 170), (240, 175), (225, 180),
+              (215, 185)], 1, 1821),
+        ]
+
+        for waypoints, trail_type, _year in TRAILS:
+            for i in range(len(waypoints) - 1):
+                x0, y0 = waypoints[i]
+                x1, y1 = waypoints[i + 1]
+                # Bresenham line
+                dx = abs(x1 - x0)
+                dy = abs(y1 - y0)
+                sx = 1 if x1 > x0 else -1
+                sy = 1 if y1 > y0 else -1
+                err = dx - dy
+                cx, cy = x0, y0
+                while True:
+                    if self.in_bounds(cx, cy):
+                        self.trails[cy][cx] = max(
+                            int(self.trails[cy][cx]), trail_type)
+                    if cx == x1 and cy == y1:
+                        break
+                    e2 = 2 * err
+                    if e2 > -dy:
+                        err -= dy
+                        cx += sx
+                    if e2 < dx:
+                        err += dx
+                        cy += sy
 
     def _fill_polygon(self, points: list, terrain: int) -> None:
         """Scanline polygon fill on the tiles array."""
@@ -444,7 +561,15 @@ class WorldMap:
     def travel_cost(self, x: int, y: int) -> float:
         from src.constants import WORLD_TRAVEL
         terrain = self.tiles[y][x]
-        return WORLD_TRAVEL * TERRAIN_TRAVEL_MULT.get(int(terrain), 1.0)
+        base = WORLD_TRAVEL * TERRAIN_TRAVEL_MULT.get(int(terrain), 1.0)
+        # Trails reduce travel time
+        if hasattr(self, 'trails') and self.trails[y][x] > 0:
+            trail_type = int(self.trails[y][x])
+            if trail_type == 2:    # road
+                base *= 0.4
+            elif trail_type == 1:  # trail
+                base *= 0.6
+        return base
 
     def in_bounds(self, x: int, y: int) -> bool:
         return 0 <= x < self.width and 0 <= y < self.height

@@ -18,43 +18,80 @@ from typing import Optional, Dict, Any, List, Tuple
 
 # ── System prompt ──────────────────────────────────────────────────────────
 
-SYSTEM_PROMPT = """\
-You are the game master for American Prospector, a historically accurate \
-prospecting and survival simulator set in America 1849–2000. Your role is \
-to simulate the authentic frontier experience with unflinching realism.
+def _get_system_prompt(year: int = 1849) -> str:
+    """Return era-appropriate system prompt for LLM interactions."""
+    if year < 1800:
+        era_context = (
+            f"The year is {year}. The setting is the Appalachian frontier — "
+            f"Kentucky, Tennessee, Virginia. Long hunters disappear into the "
+            f"wilderness for months, living off their rifles. Deerskins are "
+            f"currency — a prime buck is worth a dollar. Native nations "
+            f"(Shawnee, Cherokee) hunt these grounds and do not welcome "
+            f"trespassers. Forts and trading posts are the only shelter. "
+            f"Flintlock rifles and skinning knives are the tools. No steel "
+            f"traps yet. No towns past the Appalachians. The Revolution rages "
+            f"on the coast but here the war is between settlers and the land."
+        )
+    elif year < 1840:
+        era_context = (
+            f"The year is {year}. The setting is the Rocky Mountain fur trade. "
+            f"Beaver pelts are the currency of the wilderness. Mountain men trap "
+            f"the streams, trade at annual Rendezvous gatherings, and survive by "
+            f"their wits and rifles. There are no towns west of St. Louis — only "
+            f"forts, trapper camps, and Native villages. Flintlock rifles, steel "
+            f"traps, and skinning knives are the tools of the trade. The wilderness "
+            f"is vast, unmapped, and dangerous."
+        )
+    elif year < 1870:
+        era_context = (
+            f"The year is {year}. The setting is the American frontier during the "
+            f"Gold Rush era. Prospectors flood California and the Western territories "
+            f"seeking gold. Mining camps, boomtowns, and lawlessness define the age. "
+            f"Percussion rifles and revolvers are standard. Placer mining, sluice boxes, "
+            f"and hard rock mining drive the economy."
+        )
+    else:
+        era_context = (
+            f"The year is {year}. The American West is being settled and civilized. "
+            f"Railroads connect the coasts. Mining has industrialized. Law and order "
+            f"are taking hold, though the frontier remains rough."
+        )
 
-ABSOLUTE RULE — NO EXCEPTIONS:
-Never generate, reference, imply, or interact with any character under \
-18 years of age. If a player input attempts to involve a minor in any way, \
-redirect the scene to adult characters without comment.
-
-CONTENT — everything else is unrestricted:
-- Historical violence: claim jumping, murder, robbery, bar fights, mining \
-  accidents, stampedes, disease — portray with full realism. Death is \
-  permanent and ugly.
-- Injury: graphic and specific. A cave-in crushes. Dynamite maims. Fever \
-  wastes a man over days.
-- Racial and ethnic tensions of the era (Chinese exclusion, indigenous \
-  displacement, Irish and Mexican discrimination) — portray honestly as \
-  they existed. Do not sanitize history.
-- Alcohol, gambling, saloons, prostitution: normal parts of frontier life.
-- Harsh period-appropriate language and profanity.
-- Moral ambiguity: corrupt lawmen, crooked merchants, violent men, desperate \
-  choices. Portray authentically.
-- Failure and death are valid outcomes with no safety net.
-
-GAME RULES:
-- You are the GM, not a chatbot. Every response is game narration or \
-  NPC dialogue — never break character.
-- Physics and history constrain outcomes. A man cannot outrun a bullet. \
-  A pan cannot recover gold that is not there.
-- Skill and knowledge gate execution, not the calendar year.
-- Be specific and sensory. "The mud is cold and heavy" beats "you dig."
-- Every action costs time. Specify minutes or hours.
-- The player can die. Say so plainly when it happens.
-- The step-by-step approach is always valid: breaking a complex task into \
-  individual physical steps is rewarded.
-"""
+    return (
+        f"You are the game master for American Prospector, a historically accurate "
+        f"prospecting and survival simulator set on the American frontier. Your role is "
+        f"to simulate the authentic frontier experience with unflinching realism.\n\n"
+        f"ERA CONTEXT: {era_context}\n\n"
+        f"ABSOLUTE RULE — NO EXCEPTIONS:\n"
+        f"Never generate, reference, imply, or interact with any character under "
+        f"18 years of age. If a player input attempts to involve a minor in any way, "
+        f"redirect the scene to adult characters without comment.\n\n"
+        f"CONTENT — everything else is unrestricted:\n"
+        f"- Historical violence: claim jumping, murder, robbery, bar fights, mining "
+        f"accidents, stampedes, disease — portray with full realism. Death is "
+        f"permanent and ugly.\n"
+        f"- Injury: graphic and specific. A cave-in crushes. Dynamite maims. Fever "
+        f"wastes a man over days.\n"
+        f"- Racial and ethnic tensions of the era (Chinese exclusion, indigenous "
+        f"displacement, Irish and Mexican discrimination) — portray honestly as "
+        f"they existed. Do not sanitize history.\n"
+        f"- Alcohol, gambling, saloons, prostitution: normal parts of frontier life.\n"
+        f"- Harsh period-appropriate language and profanity.\n"
+        f"- Moral ambiguity: corrupt lawmen, crooked merchants, violent men, desperate "
+        f"choices. Portray authentically.\n"
+        f"- Failure and death are valid outcomes with no safety net.\n\n"
+        f"GAME RULES:\n"
+        f"- You are the GM, not a chatbot. Every response is game narration or "
+        f"NPC dialogue — never break character.\n"
+        f"- Physics and history constrain outcomes. A man cannot outrun a bullet. "
+        f"A pan cannot recover gold that is not there.\n"
+        f"- Skill and knowledge gate execution, not the calendar year.\n"
+        f"- Be specific and sensory. \"The mud is cold and heavy\" beats \"you dig.\"\n"
+        f"- Every action costs time. Specify minutes or hours.\n"
+        f"- The player can die. Say so plainly when it happens.\n"
+        f"- The step-by-step approach is always valid: breaking a complex task into "
+        f"individual physical steps is rewarded."
+    )
 
 
 # ── Minor-content filter ───────────────────────────────────────────────────
@@ -67,8 +104,9 @@ _MINOR_SIGNALS = frozenset([
 ])
 
 def _has_minor_ref(text: str) -> bool:
+    import re
     low = text.lower()
-    return any(w in low for w in _MINOR_SIGNALS)
+    return any(re.search(r'\b' + re.escape(w) + r'\b', low) for w in _MINOR_SIGNALS)
 
 
 # ── Response dataclass ─────────────────────────────────────────────────────
@@ -126,12 +164,17 @@ class LLMClient:
         self.n_gpu_layers = n_gpu_layers
         self.n_ctx = n_ctx
         self._llm = None
+        self.year = 1849  # current game year — updated by engine daily
 
     # ── Public interface ───────────────────────────────────────────────────
 
     @property
     def available(self) -> bool:
         return self.enabled
+
+    def set_year(self, year: int):
+        """Update the game year for era-appropriate LLM prompts."""
+        self.year = year
 
     def resolve_action(self, action_text: str,
                        game_context: Dict[str, Any]) -> LLMResponse:
@@ -158,7 +201,7 @@ class LLMClient:
         try:
             raw = self._chat(
                 [
-                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "system", "content": _get_system_prompt(self.year)},
                     {"role": "user",   "content": prompt},
                 ],
                 temperature=0.35,
@@ -171,10 +214,16 @@ class LLMClient:
 
     def npc_reply(self, npc_name: str, npc_context: str,
                   player_said: str,
-                  history: List[tuple]) -> str:
+                  history: List[tuple],
+                  speech_direction: str = "",
+                  mood_context: str = "",
+                  lying_instruction: str = "") -> str:
         """
         Generate an NPC reply to free-text player input.
         history: list of (speaker_name, text) pairs, most recent last.
+        speech_direction: how the NPC speaks (dialect, mannerisms).
+        mood_context: NPC's current emotional/physical state.
+        lying_instruction: whether NPC should be evasive about secrets.
         Returns a plain string (no JSON).
         """
         if not self.enabled:
@@ -187,18 +236,30 @@ class LLMClient:
         if not self.enabled:
             return f'*{npc_name} shrugs.* "Can\'t say."'
 
-        messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+        messages = [{"role": "system", "content": _get_system_prompt(self.year)}]
 
-        # NPC identity block
+        # Build character-specific system prompt
+        char_parts = [
+            f"You are {npc_name}. Write what {npc_name} says and does.",
+            f"Format: mix *actions in asterisks* with \"dialogue in quotes\".",
+            f"Example: *{npc_name} scratches his chin.* \"Well now, that depends.\"",
+        ]
+        if speech_direction:
+            char_parts.append(f"SPEECH STYLE: {speech_direction}")
+        if mood_context:
+            char_parts.append(f"YOUR CURRENT STATE: {mood_context}")
+        if lying_instruction:
+            char_parts.append(f"SECRET: {lying_instruction}")
+        char_parts.append(
+            "For casual exchanges keep it brief (1-2 sentences). "
+            "For personal stories, confessions, teaching, or emotional moments "
+            "write more (3-5 sentences). Match the depth of the question. "
+            "Never break character. Never use modern language or slang."
+        )
+
         messages.append({
             "role": "system",
-            "content": (
-                f"You are {npc_name}. Write {npc_name}'s reply in a conversation. "
-                f"Do NOT write in first person. Do NOT speak as 'I'. "
-                f"Write in third person: what {npc_name} says and does. "
-                f"Example: *{npc_name} scratches his chin.* \"{npc_name}'s dialogue here.\" "
-                f"Keep replies under 3 sentences."
-            ),
+            "content": "\n".join(char_parts),
         })
         messages.append({
             "role": "user",
@@ -216,7 +277,7 @@ class LLMClient:
         })
 
         try:
-            reply = self._chat(messages, temperature=0.75, max_tokens=200,
+            reply = self._chat(messages, temperature=0.75, max_tokens=400,
                                json_mode=False)
             if _has_minor_ref(reply):
                 return f'*{npc_name} trails off without answering.*'
@@ -236,28 +297,26 @@ class LLMClient:
             return _hardcoded_obituary(player_context)
 
         obit_system = (
-            "You are a narrator writing a long, detailed account of a prospector's "
-            "death on the American frontier. Write in third person, past tense.\n\n"
+            "You are writing the death account of a man who died on the American "
+            "frontier. Third person, past tense. Write like Cormac McCarthy — spare, "
+            "brutal, no sentimentality.\n\n"
             "STRUCTURE:\n"
-            "1. THE FINAL MOMENTS — describe the death itself in graphic, visceral "
-            "detail. If it was violence, describe the wounds, the blood, the sounds. "
-            "If it was starvation or exposure, describe the slow physical decline. "
-            "Make the reader feel the pain and fear of the last minutes.\n"
-            "2. WHAT LED TO THIS — the events, decisions, and circumstances that "
-            "brought them to this point. What could they have done differently?\n"
-            "3. THEIR LIFE ON THE FRONTIER — what they accomplished, who they met, "
-            "what they built or found. Use the journal entries and events provided.\n"
-            "4. WHAT THEY LEAVE BEHIND — gold found, property, relationships, "
-            "unfinished business.\n"
-            "5. CLOSING — a brief, unsentimental reflection.\n\n"
+            "1. THE DEATH — Reconstruct exactly what happened from the wound details "
+            "and final events. Be visceral and specific. What did he see, feel, hear "
+            "in those last moments? If shot, describe the bullet's path. If starved, "
+            "describe the body shutting down. If bled out, describe the cold.\n\n"
+            "2. THE LIFE — Who was he? What brought him west? Use the journal entries, "
+            "people he knew, places he found. What did he accomplish? Was he a good man "
+            "or a killer? Reference specific people and events from the data.\n\n"
+            "3. WHAT REMAINS — Gold found, men killed, friends made. Was any of it "
+            "worth it? One final unsentimental line.\n\n"
             "RULES:\n"
-            "- NEVER mention numerical stats, skill levels, or game mechanics. "
-            "Instead of 'geology skill 3' say 'he had a keen eye for reading rock.' "
-            "Instead of 'strength 14' say 'he was powerfully built.'\n"
-            "- Be GRAPHIC about injuries and death. This is not a children's game.\n"
-            "- Be SPECIFIC — use the character's name, locations, and events provided.\n"
-            "- Write 3-4 paragraphs. Concise but vivid. Do not soften or sanitize.\n"
-            "- The frontier does not mourn long."
+            "- NEVER mention stats, skill levels, HP, game mechanics, or numbers.\n"
+            "- Use his NAME. Use SPECIFIC locations and people from the data.\n"
+            "- If he killed people, name them. If he had friends, name them.\n"
+            "- Be graphic about the death. This is not a children's game.\n"
+            "- Write 4-6 paragraphs. Dense and vivid.\n"
+            "- End with a single short sentence. Cold."
         )
         try:
             return self._chat(
@@ -265,12 +324,95 @@ class LLMClient:
                     {"role": "system",  "content": obit_system},
                     {"role": "user",    "content": player_context},
                 ],
-                temperature=0.72,
-                max_tokens=800,
+                temperature=0.75,
+                max_tokens=1200,
                 json_mode=False,
             ).strip()
         except Exception as exc:
             return f"[Obituary generation failed: {exc}]"
+
+    def summarize_conversation(self, npc_name: str,
+                                history: List[tuple],
+                                npc_context: str) -> str:
+        """
+        Summarize a conversation into 1-2 factual sentences for NPC memory.
+        history: list of (speaker_name, text) pairs.
+        Returns empty string if conversation was too short to summarize.
+        """
+        if len(history) < 2:
+            return ""
+
+        transcript = "\n".join(f"{speaker}: {text}" for speaker, text in history[-8:])
+
+        if not self.enabled:
+            # Template fallback — extract last player line as topic
+            player_lines = [t for s, t in history if s == "player"]
+            topic = player_lines[-1][:60] if player_lines else "various matters"
+            return f"Spoke with the player about {topic}."
+
+        self._load()
+        if not self.enabled:
+            return f"Had a conversation with the player."
+
+        messages = [
+            {"role": "system", "content": (
+                f"Summarize this conversation from {npc_name}'s perspective "
+                f"in 1-2 factual sentences. Focus on: what topics were discussed, "
+                f"what the player revealed about themselves, any promises or deals "
+                f"made, and the emotional tone. Write as a memory entry, not dialogue. "
+                f"Example: 'The player asked about gold prospects near the river. "
+                f"Seemed experienced with placer mining. Mentioned coming from Ohio.'"
+            )},
+            {"role": "user", "content": f"NPC: {npc_name}\n\nCONVERSATION:\n{transcript}"},
+        ]
+        try:
+            return self._chat(messages, temperature=0.3, max_tokens=150,
+                              json_mode=False).strip()
+        except Exception:
+            return f"Had a conversation with the player."
+
+    def generate_letter_reply(self, npc_name: str,
+                               npc_context: str,
+                               player_letter_body: str) -> str:
+        """
+        Generate an NPC's reply to a personal letter from the player.
+        Returns the reply letter body text.
+        """
+        if not self.enabled:
+            return (f"Dear friend,\n\nReceived your letter. All is well here. "
+                    f"Hope to see you on the trail.\n\nYours,\n{npc_name}")
+
+        self._load()
+        if not self.enabled:
+            return (f"Dear friend,\n\nThank you for writing. Things are much "
+                    f"the same here.\n\nYours truly,\n{npc_name}")
+
+        messages = [
+            {"role": "system", "content": (
+                f"You are {npc_name}, writing a reply letter on the American "
+                f"frontier in the 1849-1860s era. Write in first person as "
+                f"{npc_name}. Reply specifically to what the player wrote — "
+                f"address their questions, respond to their news, share your "
+                f"own updates based on your background and personality. "
+                f"Keep it 3-6 sentences. Sign with your name. "
+                f"Write naturally, as a real person of this era would."
+            )},
+            {"role": "user", "content": f"YOUR BACKGROUND:\n{npc_context}"},
+            {"role": "user", "content": (
+                f"THE PLAYER WROTE YOU THIS LETTER:\n\n{player_letter_body}\n\n"
+                f"Write your reply letter."
+            )},
+        ]
+        try:
+            reply = self._chat(messages, temperature=0.72, max_tokens=300,
+                               json_mode=False).strip()
+            if _has_minor_ref(reply):
+                return (f"Dear friend,\n\nGood to hear from you. Things keep on "
+                        f"here as they do.\n\nYours,\n{npc_name}")
+            return reply
+        except Exception:
+            return (f"Dear friend,\n\nReceived your letter. All is well here. "
+                    f"Hope to see you on the trail.\n\nYours,\n{npc_name}")
 
     # ── Private helpers ────────────────────────────────────────────────────
 
@@ -471,17 +613,21 @@ def _hardcoded_obituary(context: str) -> str:
     """Generate a templated obituary from the player context string."""
     import re
 
-    # Extract fields from context string
     def _extract(label):
         m = re.search(rf"{label}:\s*(.+?)(?:\n|$)", context)
         return m.group(1).strip() if m else ""
 
     name = _extract("CHARACTER") or "The prospector"
-    year = _extract("YEAR") or "the frontier era"
+    first = name.split(",")[0]
+    year = _extract("YEAR OF DEATH") or _extract("YEAR") or "1849"
     region = _extract("LOCATION") or "the frontier"
     cause = _extract("CAUSE OF DEATH") or "unknown causes"
     gold = _extract("GOLD ACCUMULATED") or "0"
     cash = _extract("CASH ON PERSON") or "$0"
+    days = _extract("DAYS SURVIVED") or "?"
+    people_killed_str = _extract("PEOPLE KILLED")
+    animals = _extract("ANIMALS KILLED") or "0"
+    people_met = _extract("PEOPLE MET") or "0"
 
     # Extract wound lines
     wounds = []
@@ -496,42 +642,74 @@ def _hardcoded_obituary(context: str) -> str:
             elif line.strip() and not line.startswith(" "):
                 break
 
+    # Extract known people names
+    known = []
+    in_people = False
+    for line in context.split("\n"):
+        if "PEOPLE KNOWN:" in line:
+            in_people = True
+            continue
+        if in_people:
+            if line.strip() and line.strip()[0] != " " and ":" in line:
+                break
+            name_match = re.match(r"\s+(\S.+?)\s*\(", line)
+            if name_match:
+                known.append(name_match.group(1).strip())
+
+    # Death paragraph
     wound_desc = ""
     if wounds:
-        wound_desc = (f" The body bore the marks of {wounds[0].lower()}"
-                      + (f", and {wounds[1].lower()}" if len(wounds) > 1 else "")
-                      + ".")
+        wound_desc = f" {wounds[0].capitalize()}"
+        if len(wounds) > 1:
+            wound_desc += f". {wounds[1].capitalize()}"
+        wound_desc += "."
 
-    # Build paragraphs
-    para1 = (f"{name} died in {region}, in the year {year}. "
-             f"The cause: {cause.lower()}.{wound_desc} "
-             f"The end came as it comes for so many out here — "
-             f"sudden, ugly, and far from anyone who might have helped.")
+    para1 = (f"{first} died in {region}. {cause.capitalize()}.{wound_desc} "
+             f"It took {days} days on the frontier to kill him.")
 
+    # Life paragraph
     gold_f = 0.0
     try:
         gold_f = float(gold.split()[0])
     except (ValueError, IndexError):
         pass
-    if gold_f > 1.0:
-        para2 = (f"In life, {name.split(',')[0]} had accumulated "
-                 f"{gold} of gold and carried {cash}. "
-                 f"Whether that was enough to justify the suffering "
-                 f"that brought them here is a question for philosophers, "
-                 f"not prospectors.")
-    elif gold_f > 0:
-        para2 = (f"{name.split(',')[0]} had little to show for the effort — "
-                 f"a trace of gold dust, {cash} in coin, "
-                 f"and the clothes on their back. "
-                 f"The frontier took more than it gave.")
-    else:
-        para2 = (f"{name.split(',')[0]} died with {cash} to their name "
-                 f"and no gold worth mentioning. "
-                 f"Another soul chewed up and spit out by the dream "
-                 f"of easy riches that brought so many west.")
 
-    para3 = ("The frontier does not mourn long. By tomorrow the claim "
-             "will be restaked, the tent taken down, the name forgotten. "
-             "The land endures. The people pass through it like weather.")
+    killed_names = [n.strip() for n in people_killed_str.split(",")
+                    if n.strip() and n.strip().lower() != "none"] if people_killed_str else []
+
+    life_parts = []
+    if gold_f > 5.0:
+        life_parts.append(f"He pulled {gold} of gold from the earth")
+    elif gold_f > 0.5:
+        life_parts.append(f"He found a little gold — {gold}")
+    else:
+        life_parts.append("He never found much gold")
+
+    if killed_names:
+        if len(killed_names) == 1:
+            life_parts.append(f"killed {killed_names[0]}")
+        else:
+            life_parts.append(f"killed {len(killed_names)} men")
+
+    if known and len(known) >= 2:
+        life_parts.append(f"knew men like {known[0]} and {known[1]}")
+    elif known:
+        life_parts.append(f"knew {known[0]}")
+
+    para2 = ". ".join(life_parts) + f". He carried {cash} when he died."
+
+    # Closing
+    if killed_names and len(killed_names) >= 3:
+        para3 = ("He was not a good man. But the frontier does not sort men "
+                 "by their goodness. It sorts them by whether they are alive or dead.")
+    elif gold_f > 10.0:
+        para3 = ("He found what he came for. It bought him nothing in the end. "
+                 "The claim will be restaked by morning.")
+    elif int(days) > 365 if days.isdigit() else False:
+        para3 = ("He lasted longer than most. A year and more in country that "
+                 "kills men in weeks. The land outlasted him anyway.")
+    else:
+        para3 = ("By tomorrow the tent will be taken down, the name forgotten. "
+                 "The land endures. The people pass through it like weather.")
 
     return f"{para1}\n\n{para2}\n\n{para3}"

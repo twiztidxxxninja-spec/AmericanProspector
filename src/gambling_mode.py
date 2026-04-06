@@ -293,6 +293,7 @@ def _enter_poker(engine: "Engine", console, ctx) -> None:
             else:
                 # Caught bluffing
                 penalty = ante * 2
+                player.cash -= penalty
                 total_lost += ante + penalty
                 add_msg(f"Round {round_num}: {best_opp_player['name']} calls your bluff! "
                         f"\"I knew it.\" You lose ${ante + penalty:.2f}.")
@@ -852,7 +853,7 @@ def enter_house_mode(engine: "Engine", console, ctx) -> None:
         console.print(4, y, f"Profit so far: ${total_profit:.2f}", fg=(200, 200, 200))
         if cheat_suspicion > 0:
             susp_color = (255, 200, 100) if cheat_suspicion < 3 else (255, 80, 80)
-            console.print(4, y + 1, f"Suspicion level: {'*' * cheat_suspicion}",
+            console.print(4, y + 1, f"Suspicion level: {'*' * int(cheat_suspicion)}",
                           fg=susp_color)
         y += 3
 

@@ -56,21 +56,30 @@ class LocalTerrain:
     DESK          = 51  # writing desk — blocks
     BARREL_TILE   = 52  # storage barrel — blocks
     GAMBLING_TABLE= 53  # card/faro table — blocks, interactive
+    OVERTURNED_TABLE = 54  # flipped table — partial cover for combat
     # Worked ground — visual feedback from mining/panning
     WORKED_GRAVEL = 30  # panned gravel bar — disturbed, darker
     WORKED_DIRT   = 31  # shoveled ground — loose earth
     SHALLOW_PIT   = 32  # dug 1-2 levels — visible depression
     DEEP_PIT      = 33  # dug 3+ levels — dark hole
     TAILINGS      = 34  # processed waste from sluice/rocker
-    # Z-level terrain types
-    RAMP_UP     = 50  # natural slope connecting to z+1
-    RAMP_DOWN   = 51  # natural slope connecting to z-1
-    CLIFF_EDGE  = 52  # impassable drop-off (z diff >= 2)
-    STAIRS_UP   = 53  # built stairs going up
-    STAIRS_DOWN = 54  # built stairs going down
-    STAIRS_BOTH = 55  # built stairs going both ways
-    LADDER_UP   = 56  # ladder going up
-    LADDER_DOWN = 57  # ladder going down
+    # Deep water — requires swimming
+    DEEP_WATER  = 80
+    BEAVER_DAM  = 90  # impassable dam structure across stream
+    BEAVER_POND = 91  # calm shallow water behind dam
+    # Seasonal terrain
+    FROZEN_WATER = 92  # ice — walkable in winter, reverts to WATER in spring
+    FLOOD_WATER  = 93  # temporary spring flood — shallow, passable, deposits gold
+    ASH_GROUND   = 94  # burned ground from wildfire
+    # Z-level terrain types (70+ to avoid furniture collision)
+    RAMP_UP     = 70  # natural slope connecting to z+1
+    RAMP_DOWN   = 71  # natural slope connecting to z-1
+    CLIFF_EDGE  = 72  # impassable drop-off (z diff >= 2)
+    STAIRS_UP   = 73  # built stairs going up
+    STAIRS_DOWN = 74  # built stairs going down
+    STAIRS_BOTH = 75  # built stairs going both ways
+    LADDER_UP   = 76  # ladder going up
+    LADDER_DOWN = 77  # ladder going down
 
 
 LOCAL_GLYPH = {
@@ -112,6 +121,7 @@ LOCAL_GLYPH = {
     LocalTerrain.DESK:          ("D", (150, 115,  65), (52, 40, 20)),
     LocalTerrain.BARREL_TILE:   ("o", (130, 100,  55), (48, 35, 16)),
     LocalTerrain.GAMBLING_TABLE:("$", ( 60, 140,  60), (20, 50, 20)),  # green felt
+    LocalTerrain.OVERTURNED_TABLE:("=", (140, 110,  60), (50, 38, 18)),  # flipped on side
     # Worked ground
     LocalTerrain.WORKED_GRAVEL: (":", (120, 100,  70), (40, 35, 20)),  # darker, disturbed gravel
     LocalTerrain.WORKED_DIRT:   ("~", ( 90,  75,  45), (30, 25, 12)),  # loose churned earth
@@ -127,6 +137,13 @@ LOCAL_GLYPH = {
     LocalTerrain.STAIRS_BOTH:("X", (160, 140, 100),  (55, 45, 30)),  # up/down stairwell
     LocalTerrain.LADDER_UP:  ("H", (130, 100,  55),  (45, 35, 18)),  # ladder up
     LocalTerrain.LADDER_DOWN:("H", (130, 100,  55),  (45, 35, 18)),  # ladder down
+    LocalTerrain.DEEP_WATER: ("~", (30,  80, 180),  (10, 30,  80)),  # deep water — dark blue
+    LocalTerrain.BEAVER_DAM:  ("#", (120, 80, 30), (50, 35, 15)),
+    LocalTerrain.BEAVER_POND: ("~", (80, 130, 170), (30, 55, 85)),
+    # Seasonal terrain
+    LocalTerrain.FROZEN_WATER: ("=", (180, 220, 255), (100, 140, 180)),  # ice blue
+    LocalTerrain.FLOOD_WATER:  ("~", (100, 160, 200), (40, 80, 120)),    # muddy flood
+    LocalTerrain.ASH_GROUND:   (".", (80, 70, 60), (30, 25, 20)),         # charred
 }
 
 LOCAL_PASSABLE = {
@@ -165,6 +182,7 @@ LOCAL_PASSABLE = {
     LocalTerrain.DESK:          False,  # solid furniture
     LocalTerrain.BARREL_TILE:   False,  # heavy barrel
     LocalTerrain.GAMBLING_TABLE:False,  # card table
+    LocalTerrain.OVERTURNED_TABLE: True,  # can crouch behind it
     LocalTerrain.WORKED_GRAVEL: True,
     LocalTerrain.WORKED_DIRT:   True,
     LocalTerrain.SHALLOW_PIT:   True,
@@ -178,6 +196,12 @@ LOCAL_PASSABLE = {
     LocalTerrain.STAIRS_BOTH:True,
     LocalTerrain.LADDER_UP:  True,
     LocalTerrain.LADDER_DOWN:True,
+    LocalTerrain.DEEP_WATER: False,  # impassable without swimming
+    LocalTerrain.BEAVER_DAM:  False,
+    LocalTerrain.BEAVER_POND: True,
+    LocalTerrain.FROZEN_WATER: True,   # walk on ice
+    LocalTerrain.FLOOD_WATER:  True,   # wade through flood
+    LocalTerrain.ASH_GROUND:   True,   # burned ground, walkable
 }
 
 LOCAL_TRANSPARENT = {
@@ -218,6 +242,7 @@ LOCAL_TRANSPARENT = {
     LocalTerrain.DESK:          True,
     LocalTerrain.BARREL_TILE:   True,
     LocalTerrain.GAMBLING_TABLE:True,
+    LocalTerrain.OVERTURNED_TABLE: True,  # on its side but can see over
     LocalTerrain.WORKED_GRAVEL: True,
     LocalTerrain.WORKED_DIRT:   True,
     LocalTerrain.SHALLOW_PIT:   True,
@@ -231,6 +256,12 @@ LOCAL_TRANSPARENT = {
     LocalTerrain.STAIRS_BOTH:True,
     LocalTerrain.LADDER_UP:  True,
     LocalTerrain.LADDER_DOWN:True,
+    LocalTerrain.DEEP_WATER: True,
+    LocalTerrain.BEAVER_DAM:  True,
+    LocalTerrain.BEAVER_POND: True,
+    LocalTerrain.FROZEN_WATER: True,   # see across ice
+    LocalTerrain.FLOOD_WATER:  True,   # shallow flood
+    LocalTerrain.ASH_GROUND:   True,   # burned open ground
 }
 
 
@@ -243,6 +274,9 @@ class LocalTile:
     dig_depth: int = 0
     spoil_dir: Optional[Tuple[int, int]] = None
     panned: bool = False
+    pan_count: int = 0               # how many times this tile has been panned
+    sluiced: bool = False            # True if run through sluice (not hand-panned)
+    sluice_avg_grade: float = -1.0   # avg gold/tile from cleanout batch (-1 = not set)
     mineral_hint: str = ""           # geology assessment label (set by prospecting)
     blood: int = 0                   # 0=none, 1=light (pink), 2=heavy (dark red)
     gold_column: Optional[GoldColumn] = None
@@ -303,6 +337,12 @@ class LocalMap:
         self._region_name: str = ""
         self._gold_bias: float = 0.3
 
+        # World-level elevation (feet above sea level) for this patch.
+        # Set during generation from world_map.elevation.
+        # Local z-levels are relative relief WITHIN this patch;
+        # world_elevation_ft is the absolute altitude.
+        self.world_elevation_ft: int = 0
+
         # Z-level terrain elevation
         import numpy as np
         self.surface_z = np.zeros((self.height, self.width), dtype=np.int8)
@@ -314,6 +354,7 @@ class LocalMap:
         # Structure registry: id → structure object (sluice boxes, cabins, etc.)
         self.structures: Dict[int, Any] = {}
         self._next_id: int = 1
+        self.beaver_dams: List[Tuple[int, int]] = []  # (x, y) center of each dam
 
         # Fluid simulation — set in _generate() after streams are placed
         self.fluid_system = None
@@ -331,7 +372,16 @@ class LocalMap:
         except ImportError:
             pass
 
+        # Dirty tracking for persistence
+        self._dirty = False           # True if any tile has been modified by gameplay
+        self._dirty_tiles: set = set()  # set of (x, y) modified tiles
+
         self._generate(world_terrain)
+
+        # Snapshot original terrain after generation for delta serialization
+        import numpy as np
+        self._original_terrain = np.array(
+            [[t.terrain for t in row] for row in self.tiles], dtype=np.int16)
 
     def _generate(self, world_terrain: int):
         rng = random.Random(self.seed)
@@ -416,6 +466,10 @@ class LocalMap:
             sg.generate_streams(self, count=stream_count, base_twist=stream_twist)
             sg.add_side_channels(self, probability=0.2)
 
+            # Beaver dams on streams
+            if hasattr(sg, 'place_beaver_dams'):
+                sg.place_beaver_dams(self, year=1849)  # year passed through later
+
         # ── Phase 3: Placer features (FeaturePlacer) ──────────────────────
         from src.feature_placer import FeaturePlacer
         fp = FeaturePlacer(rng)
@@ -434,6 +488,8 @@ class LocalMap:
                                                self.world_x, self.world_y)
                 if layout:
                     self.town_layout = layout
+                    # Town gen modifies terrain — invalidate numpy cache
+                    self.invalidate_terrain_cache()
         except Exception:
             pass
 
@@ -681,6 +737,52 @@ class LocalMap:
             for tile in row:
                 tile.terrain = terrain
 
+    # ── Dirty tracking for persistence ──────────────────────────────
+
+    def mark_dirty(self, x: int = -1, y: int = -1):
+        """Mark this map as modified by gameplay. Optionally track specific tile."""
+        self._dirty = True
+        if x >= 0 and y >= 0:
+            self._dirty_tiles.add((x, y))
+
+    def set_terrain(self, x: int, y: int, terrain: int):
+        """Set tile terrain and auto-mark dirty."""
+        self.tiles[y][x].terrain = terrain
+        self.mark_dirty(x, y)
+        self.invalidate_terrain_cache()
+
+    def add_ground_item(self, x: int, y: int, item):
+        """Add an item to a tile's ground and mark dirty."""
+        self.tiles[y][x].ground_items.append(item)
+        self.mark_dirty(x, y)
+
+    def remove_ground_item(self, x: int, y: int, item):
+        """Remove a ground item and mark dirty."""
+        items = self.tiles[y][x].ground_items
+        if item in items:
+            items.remove(item)
+            self.mark_dirty(x, y)
+
+    @property
+    def is_dirty(self) -> bool:
+        return self._dirty
+
+    def is_tile_modified(self, x: int, y: int) -> bool:
+        """Check if a specific tile has been modified from its generated state."""
+        if (x, y) in self._dirty_tiles:
+            return True
+        tile = self.tiles[y][x]
+        # Check terrain change
+        if hasattr(self, '_original_terrain') and \
+           tile.terrain != self._original_terrain[y][x]:
+            return True
+        # Check non-default state
+        if tile.dig_depth or tile.panned or tile.blood or tile.ground_items:
+            return True
+        if tile.gold_column is not None:
+            return True
+        return False
+
     # ── Cover values per terrain (0=none, 1=partial, 2=full) ─────────
 
     TERRAIN_COVER = {
@@ -755,6 +857,7 @@ class LocalMap:
     def invalidate_terrain_cache(self):
         """Call after modifying tile terrain (dig, pan, build)."""
         self._terrain_np = None
+        self._dirty = True  # terrain change means map is modified
 
     def tile_at(self, x: int, y: int) -> LocalTile:
         """Legacy 2D accessor — returns surface tile."""

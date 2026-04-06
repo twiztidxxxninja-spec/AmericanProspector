@@ -985,6 +985,83 @@ class WritingManager:
 
         return responses
 
+    def check_letter_replies(self, current_day: int,
+                              player_name: str,
+                              nearest_town: str,
+                              npc_lookup_fn,
+                              llm=None,
+                              player=None) -> List:
+        """
+        Check for personal letters the player sent to known NPCs.
+        If enough time has passed, generate and send a reply.
+        npc_lookup_fn: callable(name) -> NPC or None
+        """
+        replies = []
+        for m in self.mail.mail:
+            # Only process letters sent by the player
+            if m.sender.lower() != player_name.lower():
+                continue
+            if m.replied:
+                continue
+            # NPC needs time to receive and read the letter, then write back
+            if current_day < m.arrival_day + 1:
+                continue
+
+            # Find the NPC by recipient name
+            npc = npc_lookup_fn(m.recipient)
+            if npc is None:
+                continue  # not a known NPC — publisher, stranger, etc.
+            if not npc.alive:
+                continue
+
+            m.replied = True
+
+            # Build NPC context for the LLM
+            npc_ctx = ""
+            try:
+                from src.npc_system import build_npc_llm_context
+                npc_ctx = build_npc_llm_context(npc, player)
+            except (ImportError, AttributeError):
+                npc_ctx = f"Name: {npc.name}, Occupation: {npc.occupation}"
+
+            # Generate reply
+            if llm and llm.available:
+                reply_body = llm.generate_letter_reply(
+                    npc.name, npc_ctx, m.body)
+            else:
+                reply_body = (
+                    f"Dear {player_name},\n\n"
+                    f"Thank you for your letter. Things are much the same "
+                    f"here. I hope the prospecting goes well for you.\n\n"
+                    f"Yours truly,\n{npc.name}")
+
+            # Send the reply back to the player
+            reply_mail = self.mail.send_letter(
+                sender=npc.name,
+                recipient=player_name,
+                body=reply_body,
+                day=current_day,
+                origin=m.destination_town,
+                destination=nearest_town,
+                distance_tiles=20,
+                sender_npc_id=getattr(npc, 'npc_id', ''),
+            )
+
+            # Store in NPC memory that they received and replied to a letter
+            if hasattr(npc, 'expanded_memory'):
+                snippet = m.body[:80].replace('\n', ' ')
+                npc.expanded_memory.add(
+                    content=f"Received a letter from {player_name}: \"{snippet}...\" Wrote a reply.",
+                    day=current_day,
+                    significance=0.5,
+                    valence=0.2,
+                    category="interaction",
+                )
+
+            replies.append(reply_mail)
+
+        return replies
+
     def collect_royalties(self, current_day: int) -> float:
         """
         Collect monthly royalties from published books.
@@ -1099,6 +1176,9 @@ class WritingManager:
                     "quality": w.quality, "chapters": w.chapters,
                     "chapters_target": w.chapters_target,
                     "complete": w.complete, "base_value": w.base_value,
+                    "teaches_skill": w.teaches_skill,
+                    "skill_depth": w.skill_depth,
+                    "about_subject": w.about_subject,
                 }
                 for w in self.works
             ],

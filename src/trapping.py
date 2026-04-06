@@ -26,14 +26,17 @@ PELT_GRADE_MULT = [0.0, 0.30, 0.50, 0.70, 1.00, 1.30, 1.60, 2.00]
 # ── Trap types and what they catch ────────────────────────────────────────
 
 TRAP_SPECIES = {
-    "snare": ["jackrabbit", "raccoon", "red_fox", "gray_fox", "pine_marten",
-              "opossum", "skunk", "muskrat", "ground_squirrel", "wild_turkey"],
+    "snare": ["jackrabbit", "cottontail_rabbit", "raccoon", "red_fox",
+              "gray_fox", "pine_marten", "opossum", "skunk", "muskrat",
+              "ground_squirrel", "wild_turkey", "passenger_pigeon",
+              "prairie_dog"],
     "deadfall_trap": ["beaver", "pine_marten", "fisher", "raccoon", "mink",
-                      "muskrat", "opossum"],
+                      "muskrat", "opossum", "cottontail_rabbit"],
     "steel_trap": ["beaver", "river_otter", "red_fox", "gray_fox", "coyote",
-                   "bobcat", "lynx", "wolverine", "mink", "badger"],
+                   "bobcat", "lynx", "wolverine", "mink", "badger",
+                   "wild_boar"],
     "bear_trap": ["grizzly_bear", "black_bear", "gray_wolf", "mountain_lion",
-                  "wolverine"],
+                  "wolverine", "wild_boar"],
 }
 
 # Species → pelt item ID mapping
@@ -45,10 +48,15 @@ SPECIES_PELT = {
     "wolverine": "wolverine_pelt", "lynx": "lynx_pelt",
     "muskrat": "muskrat_pelt", "skunk": "skunk_pelt",
     "grizzly_bear": "bear_pelt", "black_bear": "bear_pelt",
-    "mountain_lion": "cougar_pelt", "badger": "deer_pelt",
+    "mountain_lion": "cougar_pelt", "badger": "badger_pelt",
     "mule_deer": "deer_pelt", "black_tailed_deer": "deer_pelt",
+    "whitetail_deer": "deer_pelt",
     "elk": "elk_pelt", "buffalo": "buffalo_robe",
     "opossum": "raccoon_pelt",  # similar low-value fur
+    "wild_boar": "deer_pelt",   # hog skin similar processing
+    "mountain_goat": "deer_pelt",
+    "wild_horse": "deer_pelt",  # horse hide
+    "cottontail_rabbit": "rabbit_pelt",
 }
 
 
@@ -130,13 +138,15 @@ class TrapManager:
             # Set quality (trapping skill)
             chance *= 1.0 + trap.set_quality * 0.05
 
-            # Season
+            # Season — dramatic difference; winter pelts are prime
             if season == "winter":
-                chance *= 1.3
+                chance *= 1.5
             elif season == "fall":
-                chance *= 1.1
+                chance *= 1.2
+            elif season == "spring":
+                chance *= 0.8
             elif season == "summer":
-                chance *= 0.7
+                chance *= 0.4
 
             # Proximity penalty — traps too close reduce catch
             nearby = sum(1 for t2 in self.traps

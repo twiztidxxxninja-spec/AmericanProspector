@@ -155,10 +155,10 @@ class PackAnimal:
             base *= 1.0 + (load_pct - 0.8) * 0.5
 
         # Fatigue penalty
-        if self.fatigue < 30:
-            base *= 1.3
         if self.fatigue < 10:
             base *= 2.0
+        elif self.fatigue < 30:
+            base *= 1.3
 
         return base
 
@@ -197,15 +197,29 @@ class PackAnimal:
         self.health = max(0, self.health)
 
     def tick_daily(self, on_grassland: bool, has_grain: bool,
-                   rng: random.Random) -> List[str]:
-        """Daily tick. Animals are low-maintenance — they graze on their own.
+                   rng: random.Random, season: str = "summer") -> List[str]:
+        """Daily tick. Grazing depends on terrain and season.
         Returns list of messages."""
         msgs = []
         if not self.alive:
             return msgs
 
-        # Auto-forage — animals find their own food
-        self.hunger = min(100, self.hunger + 20)
+        # Grazing — depends on terrain and season
+        if on_grassland:
+            graze = 25 if season in ("spring", "summer") else 15
+            if season == "winter":
+                graze = 5  # snow covers grass
+        else:
+            graze = 8  # forest, rock — slim pickings
+
+        if has_grain:
+            graze += 20  # supplemental feed
+
+        self.hunger = min(100, self.hunger + graze)
+
+        # Winter starvation warning
+        if self.hunger < 30 and season == "winter":
+            msgs.append(f"{self.name} is hungry. Feed grain or find grass.")
 
         # Condition recovery (natural healing)
         if not self.overloaded and self.fatigue > 40:
@@ -396,7 +410,7 @@ class PackAnimalManager:
             a.tick_hourly(is_traveling, terrain)
 
     def tick_daily(self, on_grassland: bool, player_inventory: list,
-                   rng: random.Random) -> List[str]:
+                   rng: random.Random, season: str = "summer") -> List[str]:
         """Daily care tick. Returns messages."""
         msgs = []
         # Check if player has grain
@@ -404,7 +418,7 @@ class PackAnimalManager:
                         for i in player_inventory)
 
         for a in list(self.animals):
-            for msg in a.tick_daily(on_grassland, has_grain, rng):
+            for msg in a.tick_daily(on_grassland, has_grain, rng, season=season):
                 msgs.append(msg)
 
             # Drop inventory of dead animals

@@ -225,6 +225,13 @@ class MusicManager:
         except Exception:
             pass
 
+    def status_line(self) -> str:
+        if not self.enabled:
+            return "Music: OFF"
+        if not self.current_track:
+            return "Music: No track playing"
+        return f"Now playing: {self.current_track}"
+
     def set_volume(self, vol: float) -> None:
         self.volume = max(0.0, min(1.0, vol))
         if self._initialized:
